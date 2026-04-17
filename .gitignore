@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Xcode
+## User settings
+xcuserdata/
+
+## Build output
+build/
+DerivedData/
+
+## App packaging
+*.dSYM
+*.dSYM.zip
+*.ipa
+
+# Swift Package Manager
+.build/
+.swiftpm/
