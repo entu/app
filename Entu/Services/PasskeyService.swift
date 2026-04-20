@@ -10,6 +10,8 @@ import AuthenticationServices
 import Foundation
 #if os(iOS)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// WebAuthn authentication options returned by GET /auth/passkey.
@@ -138,7 +140,7 @@ extension PasskeyService: ASAuthorizationControllerPresentationContextProviding 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
             #if os(macOS)
-            return ASPresentationAnchor()
+            return NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first ?? ASPresentationAnchor()
             #else
             let scene = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
