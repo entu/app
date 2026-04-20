@@ -28,7 +28,7 @@ enum APIError: LocalizedError {
 /// HTTP client for the Entu REST API with JWT auth and auto-logout.
 @MainActor @Observable
 final class APIClient {
-    static let baseURL = "https://entu.app/api"
+    static let baseURL = "https://api.entu.app"
 
     /// Active database scope for all non-auth requests.
     var databaseId: String?
