@@ -49,7 +49,7 @@ struct EntuApp: App {
                     }
                 }
         }
-        .defaultSize(width: 1100, height: 700)
+        .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) {}
 
