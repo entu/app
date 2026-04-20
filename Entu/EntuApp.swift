@@ -10,6 +10,7 @@ struct EntuApp: App {
     @State private var api = APIClient()
     @State private var auth: AuthModel
     @State private var authService: AuthService?
+    @State private var passkeyService: PasskeyService?
     @State private var search = SearchModel()
 
     init() {
@@ -47,6 +48,9 @@ struct EntuApp: App {
                     if authService == nil {
                         authService = AuthService(auth: auth)
                     }
+                    if passkeyService == nil {
+                        passkeyService = PasskeyService(auth: auth)
+                    }
                 }
         }
         .defaultSize(width: 1280, height: 800)
@@ -64,7 +68,7 @@ struct EntuApp: App {
                 } else {
                     Menu {
                         ForEach(AuthProviderGroup.allCases, id: \.self) { group in
-                            let providers = AuthProvider.allCases.filter { $0.group == group && $0.isEnabled }
+                            let providers = AuthProvider.allCases.filter { $0.group == group }
 
                             if group != .main && !providers.isEmpty {
                                 Divider()
@@ -73,7 +77,11 @@ struct EntuApp: App {
                             ForEach(providers, id: \.self) { provider in
                                 Button(provider.label) {
                                     Task {
-                                        try? await authService?.signIn(with: provider)
+                                        if provider == .passkey {
+                                            try? await passkeyService?.signIn()
+                                        } else {
+                                            try? await authService?.signIn(with: provider)
+                                        }
                                     }
                                 }
                             }

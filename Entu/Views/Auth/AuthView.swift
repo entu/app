@@ -10,6 +10,7 @@ struct AuthView: View {
     @Environment(AuthModel.self) private var auth
 
     @State private var authService: AuthService?
+    @State private var passkeyService: PasskeyService?
     @State private var isLoading = false
     @State private var error: String?
 
@@ -49,7 +50,7 @@ struct AuthView: View {
 
                         VStack(spacing: 12) {
                             ForEach(providers, id: \.self) { provider in
-                                AuthButton(provider: provider, isLoading: isLoading || !provider.isEnabled) {
+                                AuthButton(provider: provider, isLoading: isLoading) {
                                     await signIn(with: provider)
                                 }
                             }
@@ -89,7 +90,10 @@ struct AuthView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
-        .onAppear { authService = AuthService(auth: auth) }
+        .onAppear {
+            authService = AuthService(auth: auth)
+            passkeyService = PasskeyService(auth: auth)
+        }
     }
 
     private func signIn(with provider: AuthProvider) async {
@@ -98,9 +102,15 @@ struct AuthView: View {
         defer { isLoading = false }
 
         do {
-            try await authService?.signIn(with: provider)
+            if provider == .passkey {
+                try await passkeyService?.signIn()
+            } else {
+                try await authService?.signIn(with: provider)
+            }
         } catch let authError as ASWebAuthenticationSessionError where authError.code == .canceledLogin {
-            // User dismissed the browser — not an error
+            // User dismissed the OAuth browser — not an error
+        } catch let authError as ASAuthorizationError where authError.code == .canceled {
+            // User dismissed the passkey sheet — not an error
         } catch {
             self.error = error.localizedDescription
         }

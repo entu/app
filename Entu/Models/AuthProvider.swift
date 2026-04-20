@@ -46,12 +46,6 @@ enum AuthProvider: String, CaseIterable {
         case .smartId, .mobileId, .idCard: return .estonian
         }
     }
-
-    // Passkey requires associated domains + AASA file on the server.
-    // Disabled until that infrastructure is set up.
-    var isEnabled: Bool {
-        self != .passkey
-    }
 }
 
 /// Visual grouping of auth providers on the sign-in screen.
