@@ -80,7 +80,9 @@ final class APIClient {
         let currentToken = await token
         let bearerToken = tokenOverride ?? currentToken
 
+        #if DEBUG
         print("[API] \(method) \(url.path)?\(url.query ?? "")")
+        #endif
 
         var request = URLRequest(url: url)
         request.httpMethod = method

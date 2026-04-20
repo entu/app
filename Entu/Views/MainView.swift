@@ -96,6 +96,7 @@ struct MainView: View {
                         } label: {
                             Image(systemName: "cylinder.split.1x2")
                         }
+                        .accessibilityLabel(String(localized: "database"))
                         .sheet(isPresented: $showDbPicker) {
                             DatabaseListView(showCloseButton: true)
                         }
@@ -163,6 +164,7 @@ struct MainView: View {
                             } label: {
                                 Image(systemName: "chevron.left")
                             }
+                            .accessibilityLabel(String(localized: "back"))
                         }
                     }
                 }

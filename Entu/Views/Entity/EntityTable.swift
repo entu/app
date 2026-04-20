@@ -168,6 +168,7 @@ struct EntityTable: View {
                     Image(systemName: "chevron.left")
                 }
                 .disabled(page <= 1)
+                .accessibilityLabel(String(localized: "previousPage"))
 
                 Text("\(page) / \(totalPages)")
                     .font(.caption)
@@ -180,6 +181,7 @@ struct EntityTable: View {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(page >= totalPages)
+                .accessibilityLabel(String(localized: "nextPage"))
 
                 Picker("", selection: $pageSize) {
                     Text("10").tag(10)
@@ -187,6 +189,7 @@ struct EntityTable: View {
                     Text("100").tag(100)
                 }
                 .frame(width: 70)
+                .accessibilityLabel(String(localized: "pageSize"))
                 .onChange(of: pageSize) {
                     page = 1
                     Task { await loadEntities() }
