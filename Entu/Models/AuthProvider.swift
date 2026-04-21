@@ -46,6 +46,15 @@ enum AuthProvider: String, CaseIterable {
         case .smartId, .mobileId, .idCard: return .estonian
         }
     }
+
+    /// True when this provider is usable on the current platform.
+    /// Estonian ID-card requires a desktop smart-card reader → macOS only.
+    var isAvailableOnCurrentPlatform: Bool {
+        #if !os(macOS)
+        if self == .idCard { return false }
+        #endif
+        return true
+    }
 }
 
 /// Visual grouping of auth providers on the sign-in screen.

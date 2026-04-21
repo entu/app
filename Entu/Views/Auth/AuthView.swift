@@ -46,7 +46,9 @@ struct AuthView: View {
             ScrollView {
                 VStack(spacing: 36) {
                     ForEach(AuthProviderGroup.allCases, id: \.self) { group in
-                        let providers = AuthProvider.allCases.filter { $0.group == group }
+                        let providers = AuthProvider.allCases.filter {
+                            $0.group == group && $0.isAvailableOnCurrentPlatform
+                        }
 
                         VStack(spacing: 12) {
                             ForEach(providers, id: \.self) { provider in
