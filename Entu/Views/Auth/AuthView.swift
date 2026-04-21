@@ -7,10 +7,9 @@ import SwiftUI
 
 /// Sign-in screen with grouped authentication provider buttons.
 struct AuthView: View {
-    @Environment(AuthModel.self) private var auth
+    @Environment(AuthService.self) private var authService
+    @Environment(PasskeyService.self) private var passkeyService
 
-    @State private var authService: AuthService?
-    @State private var passkeyService: PasskeyService?
     @State private var isLoading = false
     @State private var error: String?
 
@@ -92,10 +91,6 @@ struct AuthView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
-        .onAppear {
-            authService = AuthService(auth: auth)
-            passkeyService = PasskeyService(auth: auth)
-        }
     }
 
     private func signIn(with provider: AuthProvider) async {
@@ -105,14 +100,16 @@ struct AuthView: View {
 
         do {
             if provider == .passkey {
-                try await passkeyService?.signIn()
+                try await passkeyService.signIn()
             } else {
-                try await authService?.signIn(with: provider)
+                try await authService.signIn(with: provider)
             }
         } catch let authError as ASWebAuthenticationSessionError where authError.code == .canceledLogin {
             // User dismissed the OAuth browser — not an error
         } catch let authError as ASAuthorizationError where authError.code == .canceled {
             // User dismissed the passkey sheet — not an error
+        } catch is CancellationError {
+            // Rapid double-tap cancelled the prior pending session — not an error
         } catch {
             self.error = error.localizedDescription
         }

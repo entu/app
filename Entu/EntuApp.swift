@@ -7,17 +7,20 @@ import SwiftUI
 /// App entry point — creates shared state and injects via environment.
 @main
 struct EntuApp: App {
-    @State private var api = APIClient()
+    @State private var api: APIClient
     @State private var auth: AuthModel
-    @State private var authService: AuthService?
-    @State private var passkeyService: PasskeyService?
+    @State private var authService: AuthService
+    @State private var passkeyService: PasskeyService
     @State private var search = SearchModel()
 
     init() {
         Self.migrateLegacyDefaults()
         let api = APIClient()
+        let auth = AuthModel(api: api)
         _api = State(initialValue: api)
-        _auth = State(initialValue: AuthModel(api: api))
+        _auth = State(initialValue: auth)
+        _authService = State(initialValue: AuthService(auth: auth))
+        _passkeyService = State(initialValue: PasskeyService(auth: auth))
     }
 
     /// One-time rename of legacy UserDefaults keys to the namespaced scheme (`auth.*`, `ui.*`).
@@ -41,15 +44,17 @@ struct EntuApp: App {
                 .environment(api)
                 .environment(auth)
                 .environment(search)
+                .environment(authService)
+                .environment(passkeyService)
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 700)
                 #endif
-                .onAppear {
-                    if authService == nil {
-                        authService = AuthService(auth: auth)
-                    }
-                    if passkeyService == nil {
-                        passkeyService = PasskeyService(auth: auth)
+                .onOpenURL { url in
+                    authService.handleIncoming(url: url)
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL {
+                        authService.handleIncoming(url: url)
                     }
                 }
         }
@@ -78,9 +83,9 @@ struct EntuApp: App {
                                 Button(provider.label) {
                                     Task {
                                         if provider == .passkey {
-                                            try? await passkeyService?.signIn()
+                                            try? await passkeyService.signIn()
                                         } else {
-                                            try? await authService?.signIn(with: provider)
+                                            try? await authService.signIn(with: provider)
                                         }
                                     }
                                 }

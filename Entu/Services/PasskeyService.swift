@@ -37,6 +37,7 @@ private struct PasskeyAuthBody: Encodable {
 }
 
 /// Handles passkey sign-in via AuthenticationServices.
+@Observable
 @MainActor
 final class PasskeyService: NSObject {
     private let auth: AuthModel
