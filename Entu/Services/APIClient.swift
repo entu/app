@@ -15,12 +15,14 @@ enum APIError: LocalizedError {
     case unauthorized
     case serverError(Int, String)
     case invalidResponse
+    case noAccessibleDatabases
 
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "Unauthorized"
         case .serverError(let code, let message): return "Error \(code): \(message)"
         case .invalidResponse: return "Invalid response"
+        case .noAccessibleDatabases: return "No accessible databases for this account"
         }
     }
 }

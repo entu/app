@@ -73,7 +73,9 @@ struct EntuApp: App {
                 } else {
                     Menu {
                         ForEach(AuthProviderGroup.allCases, id: \.self) { group in
-                            let providers = AuthProvider.allCases.filter { $0.group == group }
+                            let providers = AuthProvider.allCases.filter {
+                                $0.group == group && $0.isAvailableOnCurrentPlatform
+                            }
 
                             if group != .main && !providers.isEmpty {
                                 Divider()

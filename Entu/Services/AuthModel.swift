@@ -51,9 +51,14 @@ final class AuthModel {
 
         let response: AuthResponse = try await api.requestWithToken("auth", params: params, bearerToken: key)
 
-        if let newDatabases = response.accounts, !newDatabases.isEmpty {
-            databases = newDatabases
+        // Reject the response unless the user has at least one database — a
+        // token without databases is unusable and would strand the user on an
+        // empty picker. Validate before saving the token so isAuthenticated
+        // stays false on this branch.
+        guard let newDatabases = response.accounts, !newDatabases.isEmpty else {
+            throw APIError.noAccessibleDatabases
         }
+        databases = newDatabases
 
         if let newToken = response.token {
             KeychainService.saveToken(newToken)
