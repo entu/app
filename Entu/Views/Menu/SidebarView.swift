@@ -11,6 +11,7 @@ struct SidebarView: View {
     @Environment(APIClient.self) private var api
 
     @Binding var selectedMenuId: String?
+    let openPinnedEntity: (String) -> Void
     @State private var expandedGroups: [String: Bool] = [:]
     @State private var showDbPicker = false
 
@@ -54,7 +55,7 @@ struct SidebarView: View {
         .safeAreaBar(edge: .bottom) {
             Button {
                 if let userId = currentDatabase?.user?._id {
-                    selectedMenuId = "_user:\(userId)"
+                    openPinnedEntity(userId)
                 }
             } label: {
                 HStack(spacing: 10) {

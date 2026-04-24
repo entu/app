@@ -21,6 +21,7 @@ struct MainView: View {
     @State private var selectedMenuId: String?
     @State private var selectedEntityId: String?
     @State private var entityHistory: [String] = []
+    @State private var pinnedEntityId: String?
     @State private var showDbPicker = false
 
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = 220
@@ -68,9 +69,31 @@ struct MainView: View {
                 search.text = ""
                 selectedEntityId = nil
                 entityHistory = []
+                if newValue != nil {
+                    pinnedEntityId = nil
+                }
                 selectedMenuId = newValue
             }
         )
+    }
+
+    /// Opens an entity from the sidebar user row. In two-column mode (dashboard visible),
+    /// swap the dashboard for the entity detail. In three-column mode, append to the
+    /// history stack so it becomes the current detail without clearing menu/search.
+    private func openPinnedEntity(_ entityId: String) {
+        if showDashboard {
+            // No-op if already viewing that exact entity with no sub-navigation.
+            if pinnedEntityId == entityId && entityHistory.isEmpty {
+                return
+            }
+            entityHistory = []
+            pinnedEntityId = entityId
+        } else {
+            if entityHistory.last == entityId {
+                return
+            }
+            entityHistory.append(entityId)
+        }
     }
 
     var body: some View {
@@ -106,10 +129,16 @@ struct MainView: View {
                 .onChange(of: selectedEntityId) {
                     entityHistory = []
                 }
+                .onChange(of: search.text) {
+                    if !search.text.isEmpty {
+                        pinnedEntityId = nil
+                    }
+                }
                 .onChange(of: api.databaseId) {
                     selectedMenuId = nil
                     selectedEntityId = nil
                     entityHistory = []
+                    pinnedEntityId = nil
                     search.text = ""
                     EntityDetailModel.clearCache()
                     Task { await menu.load() }
@@ -129,12 +158,31 @@ struct MainView: View {
 
     private func twoColumnView(menu: MenuModel) -> some View {
         NavigationSplitView(preferredCompactColumn: $preferredColumn) {
-            SidebarView(selectedMenuId: menuSelection)
+            SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
         } detail: {
-            DashboardView()
+            if let pinnedEntityId {
+                let shownId = entityHistory.last ?? pinnedEntityId
+                EntityDetailView(entityId: shownId) { entityId in
+                    entityHistory.append(entityId)
+                }
+                .toolbar {
+                    if !entityHistory.isEmpty {
+                        ToolbarItem(placement: .navigation) {
+                            Button {
+                                entityHistory.removeLast()
+                            } label: {
+                                Image(systemName: "chevron.left")
+                            }
+                            .accessibilityLabel(String(localized: "back"))
+                        }
+                    }
+                }
+            } else {
+                DashboardView()
+            }
         }
         .environment(menu)
     }
@@ -143,7 +191,7 @@ struct MainView: View {
 
     private func threeColumnView(menu: MenuModel) -> some View {
         NavigationSplitView {
-            SidebarView(selectedMenuId: menuSelection)
+            SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
