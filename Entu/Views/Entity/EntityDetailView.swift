@@ -30,8 +30,17 @@ struct EntityDetailView: View {
                     .refreshable { await model.load(entityId: entityId) }
                     .id(entity._id)
                     .transition(.opacity)
-                } else if let error = model.error {
-                    ContentUnavailableView(error, systemImage: "exclamationmark.triangle")
+                } else if let message = model.errorMessage {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.largeTitle)
+                        Text(message)
+                            .multilineTextAlignment(.center)
+                            .textSelection(.enabled)
+                    }
+                    .foregroundStyle(.red)
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
                 ProgressView()

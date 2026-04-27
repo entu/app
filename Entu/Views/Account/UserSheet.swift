@@ -200,7 +200,7 @@ struct UserSheet: View {
             } label: {
                 SheetRow(
                     icon: "person.crop.circle",
-                    title: userTypeLabel ?? "",
+                    title: userTypeLabel ?? String(localized: "person"),
                     subtitle: activeDatabase?.user?.name
                 )
             }
@@ -254,7 +254,14 @@ struct UserSheet: View {
 
     /// Fetches the user entity's thumbnail URL and the localized label of its
     /// type entity. Two sequential calls: first the user entity (for
-    /// `_thumbnail` and `_type.reference`), then the type entity (for `label`).
+    /// `_thumbnail` and `_type`), then the type entity (for `label` and `name`).
+    ///
+    /// Resolution order for `userTypeLabel`:
+    ///   1. type entity's `label` (preferred, localized human label)
+    ///   2. type entity's `name` (e.g. "person")
+    ///   3. user entity's inlined `_type[0].string` (set up-front so any
+    ///      later failure path keeps a fallback in place)
+    ///
     /// Resets both caches to nil first so stale values never bleed across
     /// database switches.
     private func loadUserEntity() async {
@@ -268,15 +275,20 @@ struct UserSheet: View {
         ) else { return }
 
         userThumbnail = userResponse.entity?._thumbnail
+        // Apply the inlined fallback first — any later failure leaves it in place.
+        userTypeLabel = userResponse.entity?.typeName
 
         guard let typeId = userResponse.entity?.typeId else { return }
 
-        if let typeResponse: EntityDetailResponse = try? await api.get(
+        guard let typeResponse: EntityDetailResponse = try? await api.get(
             "entity/\(typeId)",
             params: ["props": "label,name"]
-        ) {
-            userTypeLabel = PropertyValue.localized(typeResponse.entity?.properties["label"])
-                ?? typeResponse.entity?.displayName
+        ) else { return }
+
+        if let label = PropertyValue.localized(typeResponse.entity?.properties["label"]) {
+            userTypeLabel = label
+        } else if let name = PropertyValue.localized(typeResponse.entity?.properties["name"]) {
+            userTypeLabel = name
         }
     }
 

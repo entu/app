@@ -83,7 +83,8 @@ final class APIClient {
         let bearerToken = tokenOverride ?? currentToken
 
         #if DEBUG
-        print("[API] \(method) \(url.path)?\(url.query ?? "")")
+        let queryString = url.query.map { "?\($0)" } ?? ""
+        print("[API] \(method) \(url.path)\(queryString)")
         #endif
 
         var request = URLRequest(url: url)

@@ -24,8 +24,8 @@ final class EntityDetailModel {
     /// True while a fetch is in flight.
     var isLoading = false
 
-    /// Localized error message from the last failed load, or nil on success.
-    var error: String?
+    /// Human-readable message from the last failed load, or nil on success.
+    var errorMessage: String?
 
     private let api: APIClient
     private var definitions: [PropertyDefinition] = []
@@ -45,7 +45,7 @@ final class EntityDetailModel {
     /// Fetch entity and its type's property definitions.
     func load(entityId: String) async {
         isLoading = true
-        error = nil
+        errorMessage = nil
         entity = nil
         definitions = []
 
@@ -54,7 +54,7 @@ final class EntityDetailModel {
             let response: EntityDetailResponse = try await api.get("entity/\(entityId)")
 
             guard let fetchedEntity = response.entity else {
-                error = "Entity not found"
+                errorMessage = "Entity not found"
                 isLoading = false
                 return
             }
@@ -71,11 +71,25 @@ final class EntityDetailModel {
                     definitions = defs
                 }
             }
+        } catch APIError.serverError(_, let body) {
+            // Nitro/h3 errors are JSON with a `message` field. Surface only that.
+            errorMessage = parseMessage(from: body)
         } catch {
-            self.error = error.localizedDescription
+            errorMessage = nil
         }
 
         isLoading = false
+    }
+
+    /// Extracts `message` from a Nitro/h3 JSON error body, or nil if the body
+    /// isn't JSON or doesn't carry that field.
+    private func parseMessage(from body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        return json["message"] as? String
     }
 
     /// Properties matched to their definitions, filtered, grouped, and sorted for display.

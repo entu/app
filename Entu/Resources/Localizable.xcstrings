@@ -407,6 +407,22 @@
         }
       }
     },
+    "person" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Person"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persoon"
+          }
+        }
+      }
+    },
     "previousPage" : {
       "localizations" : {
         "en" : {

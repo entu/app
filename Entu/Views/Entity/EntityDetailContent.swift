@@ -1,6 +1,13 @@
 // Scrollable content layout for the entity detail view.
 // Shows entity name, parent breadcrumb, meta info (thumbnail, type, sharing),
 // grouped properties, and child entities.
+//
+// Responsive: in a regular-width column, properties sit on the left and the
+// thumbnail/type/sharing meta sits in a sidebar on the right. Below the
+// `compactThreshold` width (or in a compact size class), the layout folds to
+// a single stack — thumbnail and title up top, properties in the middle, type
+// and sharing badges below the properties, then child entities.
+//
 // Pure presentation — receives all data from the parent view.
 
 import SwiftUI
@@ -16,6 +23,18 @@ struct EntityDetailContent: View {
     // Called when user taps a reference or child entity — navigates to it.
     var onNavigate: ((String) -> Void)?
 
+    /// Measured width of the view. Used to fold to the compact layout when
+    /// the column is narrower than the regular two-column layout needs —
+    /// e.g. macOS users dragging the detail column down to a narrow width.
+    @State private var contentWidth: CGFloat = .infinity
+
+    /// Below this width, fold to the iPhone-style stacked layout.
+    private let compactThreshold: CGFloat = 500
+
+    private var isCompact: Bool {
+        sizeClass == .compact || contentWidth < compactThreshold
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -27,10 +46,11 @@ struct EntityDetailContent: View {
                         .padding(.bottom, 16)
                 }
 
-                // Compact (iPhone): meta info centered above properties
-                if sizeClass == .compact {
+                // Compact (iPhone or narrow macOS column): thumbnail + title at top,
+                // properties, then type and sharing badges below the properties.
+                if isCompact {
                     VStack(spacing: 16) {
-                        metaSidebar
+                        thumbnailView
 
                         Text(entity.displayName)
                             .font(.title)
@@ -44,8 +64,16 @@ struct EntityDetailContent: View {
                     ForEach(groupedProperties) { group in
                         propertyGroupSection(group)
                     }
+
+                    VStack(spacing: 8) {
+                        typeBadge
+                        sharingBadge
+                    }
+                    .frame(maxWidth: 240)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 24)
                 } else {
-                    // Regular (macOS, iPad): name + properties left, meta sidebar right
+                    // Regular (wide macOS, iPad): name + properties left, meta sidebar right
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(entity.displayName)
@@ -68,70 +96,71 @@ struct EntityDetailContent: View {
                 ChildEntitiesSection(entityId: entity._id, onNavigate: onNavigate)
                     .padding(.top, 24)
             }
-            .padding(sizeClass == .compact ? 16 : 24)
+            .padding(isCompact ? 16 : 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
     }
 
-    // MARK: - Meta sidebar (thumbnail + type + sharing)
+    // MARK: - Meta sidebar (thumbnail + type + sharing) — used in regular layout
 
     @ViewBuilder
     private var metaSidebar: some View {
         VStack(spacing: 8) {
-            // Thumbnail — only shown if available
-            if let thumbnail = entity._thumbnail, let url = URL(string: thumbnail) {
-                ThumbnailView(url: url, token: api.token)
-            }
-
-            // Type badge — tappable, navigates to the type entity
-            if let typeName = entity.typeName, let typeId = entity.typeId {
-                Button {
-                    onNavigate?(typeId)
-                } label: {
-                    Text(typeName)
-                        .font(.caption)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
-                        .background(.fill.tertiary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Sharing badge
+            thumbnailView
+            typeBadge
             sharingBadge
         }
         .frame(width: 160)
+    }
+
+    /// Thumbnail image, when the entity has one.
+    @ViewBuilder
+    private var thumbnailView: some View {
+        if let thumbnail = entity._thumbnail, let url = URL(string: thumbnail) {
+            ThumbnailView(url: url, token: api.token)
+        }
+    }
+
+    /// Tappable type badge — navigates to the type entity.
+    @ViewBuilder
+    private var typeBadge: some View {
+        if let typeName = entity.typeName, let typeId = entity.typeId {
+            Button {
+                onNavigate?(typeId)
+            } label: {
+                Text(typeName)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .background(.fill.tertiary)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     @ViewBuilder
     private var sharingBadge: some View {
         switch entity.sharing {
         case "domain":
-            Label(String(localized: "sharingDomain"), systemImage: "person.2")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .background(.yellow.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            sharingLabel("sharingDomain", systemImage: "person.2", color: .yellow)
         case "public":
-            Label(String(localized: "sharingPublic"), systemImage: "globe")
-                .font(.caption)
-                .foregroundStyle(.orange)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .background(.orange.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            sharingLabel("sharingPublic", systemImage: "globe", color: .orange)
         default:
-            Label(String(localized: "sharingPrivate"), systemImage: "lock")
-                .font(.caption)
-                .foregroundStyle(.green)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .background(.green.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            sharingLabel("sharingPrivate", systemImage: "lock", color: .green)
         }
+    }
+
+    /// Caption-sized rounded badge — used by `sharingBadge` for each variant.
+    private func sharingLabel(_ key: LocalizedStringResource, systemImage: String, color: Color) -> some View {
+        Label(key, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: - Parent breadcrumbs
@@ -139,10 +168,7 @@ struct EntityDetailContent: View {
     /// Renders the parent hierarchy as a horizontal chain of tappable links.
     private func parentBreadcrumbs(_ parents: [PropertyValue]) -> some View {
         HStack(spacing: 0) {
-            Image(systemName: "arrow.up")
-                .font(.caption2)
-                .foregroundStyle(.separator)
-                .frame(width: 20)
+            breadcrumbArrow
 
             ForEach(Array(parents.enumerated()), id: \.offset) { index, parent in
                 if index > 0 {
@@ -164,11 +190,16 @@ struct EntityDetailContent: View {
                 }
             }
 
-            Image(systemName: "arrow.up")
-                .font(.caption2)
-                .foregroundStyle(.separator)
-                .frame(width: 20)
+            breadcrumbArrow
         }
+    }
+
+    /// Up-arrow icon used at both ends of the breadcrumb row.
+    private var breadcrumbArrow: some View {
+        Image(systemName: "arrow.up")
+            .font(.caption2)
+            .foregroundStyle(.separator)
+            .frame(width: 20)
     }
 
     // MARK: - Property group section
@@ -187,7 +218,7 @@ struct EntityDetailContent: View {
             }
 
             // Property rows
-            ForEach(Array(group.properties.enumerated()), id: \.offset) { _, prop in
+            ForEach(group.properties, id: \.definition.name) { prop in
                 PropertyRow(
                     definition: prop.definition,
                     values: prop.values,
@@ -202,7 +233,7 @@ struct EntityDetailContent: View {
 
 // MARK: - Thumbnail image view
 
-// Loads entity thumbnail with auth token, using the shared ImageLoader.
+// Square 160pt thumbnail loaded with the auth token.
 private struct ThumbnailView: View {
     let url: URL
     let token: String?
@@ -212,17 +243,17 @@ private struct ThumbnailView: View {
     var body: some View {
         Group {
             if let image {
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                image.resizable().scaledToFill()
             } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.fill.quaternary)
-                    .frame(height: 160)
+                Rectangle().fill(.fill.quaternary)
             }
         }
-        .frame(width: 160)
+        .frame(width: 160, height: 160)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(.gray.opacity(0.3), lineWidth: 1)
+        }
         .task {
             image = await loadImage(from: url, token: token)
         }
