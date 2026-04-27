@@ -7,11 +7,6 @@ import SwiftUI
 /// Dashboard showing database usage statistics with interactive progress bars.
 struct DashboardView: View {
     @Environment(APIClient.self) private var api
-    @Environment(AuthModel.self) private var auth
-
-    private var currentDatabase: Database? {
-        auth.databases.first { $0._id == api.databaseId }
-    }
 
     @State private var stats: DatabaseStats?
     @State private var isLoading = false
@@ -26,20 +21,6 @@ struct DashboardView: View {
             } else if let stats {
                 VStack(spacing: 8) {
                     Spacer()
-
-                    // MARK: - Header
-
-                    Image("Logo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 64, height: 64)
-
-                    Text(currentDatabase?.name ?? "")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .padding(.bottom, 16)
-
-                    // MARK: - Stat rows
 
                     StatsRow(label: String(localized: "entities"),
                              usage: stats.entities.usage ?? 0,

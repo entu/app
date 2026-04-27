@@ -50,6 +50,22 @@
         }
       }
     },
+    "cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loobu"
+          }
+        }
+      }
+    },
     "childCount1" : {
       "localizations" : {
         "en" : {
@@ -94,6 +110,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Andmebaas"
+          }
+        }
+      }
+    },
+    "deleteAccount" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete account"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kustuta konto"
+          }
+        }
+      }
+    },
+    "deleteAccountConfirmTitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete account from %@?"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kustutada konto andmebaasist %@?"
+          }
+        }
+      }
+    },
+    "deleteAccountFailed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account deletion failed"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konto kustutamine ebaõnnestus"
+          }
+        }
+      }
+    },
+    "deleteAccountMessage" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This permanently removes your account and all your data from the selected database. This cannot be undone."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See eemaldab jäädavalt sinu konto ja kõik andmed valitud andmebaasist. Seda ei saa tagasi võtta."
           }
         }
       }
@@ -167,6 +247,86 @@
         }
       }
     },
+    "language" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keel"
+          }
+        }
+      }
+    },
+    "languageEnglish" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "English"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inglise"
+          }
+        }
+      }
+    },
+    "languageEstonian" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estonian"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eesti"
+          }
+        }
+      }
+    },
+    "languageRestartNote" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restart the app to fully apply the language change."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keele muudatuse täielikuks rakendumiseks taaskäivita rakendus."
+          }
+        }
+      }
+    },
+    "languageSystem" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Süsteem"
+          }
+        }
+      }
+    },
     "nextPage" : {
       "localizations" : {
         "en" : {
@@ -195,6 +355,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Objekte ei leitud"
+          }
+        }
+      }
+    },
+    "ok" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
           }
         }
       }

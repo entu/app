@@ -13,6 +13,12 @@ struct EntuApp: App {
     @State private var passkeyService: PasskeyService
     @State private var search = SearchModel()
 
+    /// User-selected in-app language ("" = follow system, "en", "et"). Applied
+    /// to SwiftUI's environment locale below so `Text(LocalizedStringKey)`
+    /// switches without a restart. `String(localized:)` calls still rely on
+    /// the bundle-level locale set via `AppleLanguages` and require restart.
+    @AppStorage("ui.appLanguage") private var appLanguage: String = ""
+
     init() {
         Self.migrateLegacyDefaults()
         let api = APIClient()
@@ -46,6 +52,7 @@ struct EntuApp: App {
                 .environment(search)
                 .environment(authService)
                 .environment(passkeyService)
+                .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 700)
                 #endif

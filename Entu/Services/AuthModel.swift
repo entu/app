@@ -84,4 +84,30 @@ final class AuthModel {
         databases = []
         user = nil
     }
+
+    /// Permanently delete the signed-in user's person entity in the active
+    /// database. After success, drop the database from the local list and
+    /// either switch to another database or sign out entirely.
+    func deleteCurrentAccount() async throws {
+        guard let activeId = api.databaseId,
+              let database = databases.first(where: { $0._id == activeId }),
+              let personId = database.user?._id else {
+            throw APIError.invalidResponse
+        }
+
+        let _: DeleteResponse = try await api.delete("entity/\(personId)")
+
+        databases.removeAll { $0._id == activeId }
+
+        if let next = databases.first {
+            selectDatabase(next)
+        } else {
+            logOut()
+        }
+    }
+}
+
+/// Response shape from `DELETE /{db}/entity/{_id}`.
+struct DeleteResponse: Decodable {
+    let deleted: Bool?
 }

@@ -22,7 +22,6 @@ struct MainView: View {
     @State private var selectedEntityId: String?
     @State private var entityHistory: [String] = []
     @State private var pinnedEntityId: String?
-    @State private var showDbPicker = false
 
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = 220
     @AppStorage("ui.contentWidth") private var contentWidth: Double = 320
@@ -94,6 +93,10 @@ struct MainView: View {
             }
             entityHistory.append(entityId)
         }
+
+        // Push the detail column on compact (iPhone) so NavigationSplitView
+        // navigates to the entity instead of staying on the sidebar.
+        preferredColumn = .detail
     }
 
     var body: some View {
@@ -112,19 +115,6 @@ struct MainView: View {
                 #if os(macOS)
                 .navigationTitle("Entu")
                 .navigationSubtitle(currentDatabase?.name ?? "")
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            showDbPicker.toggle()
-                        } label: {
-                            Image(systemName: "cylinder.split.1x2")
-                        }
-                        .accessibilityLabel(String(localized: "database"))
-                        .sheet(isPresented: $showDbPicker) {
-                            DatabaseListView(showCloseButton: true)
-                        }
-                    }
-                }
                 #endif
                 .onChange(of: selectedEntityId) {
                     entityHistory = []

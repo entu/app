@@ -1,10 +1,9 @@
 // Left sidebar — shows menu groups as expandable sections.
-// Clicking the db icon opens a popover to switch databases.
-// Bottom bar shows the current user on all platforms.
+// Bottom bar shows the current user on all platforms; tapping it opens UserSheet.
 
 import SwiftUI
 
-/// Sidebar with menu groups, database picker, and current user bar.
+/// Sidebar with menu groups and the current user bar.
 struct SidebarView: View {
     @Environment(MenuModel.self) private var menu
     @Environment(AuthModel.self) private var auth
@@ -13,7 +12,8 @@ struct SidebarView: View {
     @Binding var selectedMenuId: String?
     let openPinnedEntity: (String) -> Void
     @State private var expandedGroups: [String: Bool] = [:]
-    @State private var showDbPicker = false
+    @State private var showUserSheet = false
+    @State private var userThumbnail: String?
 
     private var currentDatabase: Database? {
         auth.databases.first { $0._id == api.databaseId }
@@ -37,29 +37,14 @@ struct SidebarView: View {
         #if os(iOS)
         .navigationTitle("Entu")
         .navigationSubtitle(currentDatabase?.name ?? "")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    showDbPicker.toggle()
-                } label: {
-                    Image(systemName: "cylinder.split.1x2")
-                }
-                .accessibilityLabel(String(localized: "database"))
-                .sheet(isPresented: $showDbPicker) {
-                    DatabaseListView(showCloseButton: true)
-                }
-            }
-        }
         #endif
         // Bottom bar: current user
         .safeAreaBar(edge: .bottom) {
             Button {
-                if let userId = currentDatabase?.user?._id {
-                    openPinnedEntity(userId)
-                }
+                showUserSheet = true
             } label: {
                 HStack(spacing: 10) {
-                    EntityAvatar(name: currentDatabase?.user?.name ?? "", thumbnail: nil)
+                    UserAvatar(thumbnail: userThumbnail, size: 28)
                     Text(currentDatabase?.user?.name ?? String(localized: "user"))
                         .lineLimit(1)
                     Spacer()
@@ -68,6 +53,27 @@ struct SidebarView: View {
                 .padding(.vertical, 10)
             }
             .buttonStyle(.plain)
+            .sheet(isPresented: $showUserSheet) {
+                UserSheet(openPinnedEntity: openPinnedEntity)
+            }
+        }
+        .task(id: currentDatabase?.user?._id) {
+            await loadUserThumbnail()
+        }
+    }
+
+    /// Fetches the active database user's `_thumbnail` for the bottom bar
+    /// avatar. Cleared before fetching so a stale thumbnail never bleeds across
+    /// database switches.
+    private func loadUserThumbnail() async {
+        userThumbnail = nil
+        guard let userId = currentDatabase?.user?._id else { return }
+
+        if let response: EntityDetailResponse = try? await api.get(
+            "entity/\(userId)",
+            params: ["props": "_thumbnail"]
+        ) {
+            userThumbnail = response.entity?._thumbnail
         }
     }
 
