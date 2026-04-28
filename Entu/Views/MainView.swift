@@ -14,6 +14,7 @@ struct MainView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
+    @Environment(DeepLinkRouter.self) private var router
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
     @State private var menu: MenuModel?
@@ -76,6 +77,44 @@ struct MainView: View {
         )
     }
 
+    /// Apply a pending deep link from `DeepLinkRouter`. Switches the database
+    /// if needed, resets navigation state, optionally pre-fills search/menu
+    /// from query params, then opens the linked entity (if any). Cleared
+    /// once consumed so the same link doesn't re-fire.
+    private func applyPendingDeepLink() {
+        guard auth.isAuthenticated, let dbId = router.pendingDatabaseId else { return }
+
+        if dbId != api.databaseId {
+            if let target = auth.databases.first(where: { $0._id == dbId }) {
+                auth.selectDatabase(target)
+            } else {
+                router.clear()
+                return
+            }
+        }
+
+        search.text = ""
+        selectedEntityId = nil
+        entityHistory = []
+        pinnedEntityId = nil
+        selectedMenuId = nil
+
+        if let q = router.pendingQuery["q"], !q.isEmpty {
+            search.text = q
+        }
+
+        if let menuId = router.pendingQuery["menu"], menu?.queryById[menuId] != nil {
+            selectedMenuId = menuId
+        }
+
+        if let entityId = router.pendingEntityId {
+            entityHistory.append(entityId)
+            preferredColumn = .detail
+        }
+
+        router.clear()
+    }
+
     /// Opens an entity from the sidebar user row. In two-column mode (dashboard visible),
     /// swap the dashboard for the entity detail. In three-column mode, append to the
     /// history stack so it becomes the current detail without clearing menu/search.
@@ -133,6 +172,12 @@ struct MainView: View {
                     EntityDetailModel.clearCache()
                     Task { await menu.load() }
                 }
+                .onChange(of: router.pendingDatabaseId) {
+                    applyPendingDeepLink()
+                }
+                .onChange(of: auth.isAuthenticated) {
+                    applyPendingDeepLink()
+                }
             } else {
                 ProgressView()
             }
@@ -141,6 +186,7 @@ struct MainView: View {
             let menuModel = MenuModel(api: api)
             menu = menuModel
             await menuModel.load()
+            applyPendingDeepLink()
         }
     }
 

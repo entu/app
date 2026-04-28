@@ -371,6 +371,22 @@
         }
       }
     },
+    "offline" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Võrgust väljas"
+          }
+        }
+      }
+    },
     "ok" : {
       "localizations" : {
         "en" : {

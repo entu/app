@@ -12,6 +12,8 @@ struct EntuApp: App {
     @State private var authService: AuthService
     @State private var passkeyService: PasskeyService
     @State private var search = SearchModel()
+    @State private var network = NetworkMonitor()
+    @State private var router = DeepLinkRouter()
 
     /// User-selected in-app language. Drives `.environment(\.locale, ...)`
     /// below — SwiftUI APIs that take a `LocalizedStringKey` (`Text("key")`,
@@ -56,6 +58,8 @@ struct EntuApp: App {
                 .environment(search)
                 .environment(authService)
                 .environment(passkeyService)
+                .environment(network)
+                .environment(router)
                 .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
                 // SwiftUI's `Text("key")` doesn't always re-resolve when the
                 // env locale changes — it caches against `Bundle.main`'s
@@ -69,11 +73,15 @@ struct EntuApp: App {
                 .frame(minWidth: 800, minHeight: 700)
                 #endif
                 .onOpenURL { url in
-                    authService.handleIncoming(url: url)
+                    if !router.handle(url: url) {
+                        authService.handleIncoming(url: url)
+                    }
                 }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     if let url = activity.webpageURL {
-                        authService.handleIncoming(url: url)
+                        if !router.handle(url: url) {
+                            authService.handleIncoming(url: url)
+                        }
                     }
                 }
         }

@@ -145,8 +145,8 @@ extension PasskeyService: ASAuthorizationControllerPresentationContextProviding 
             #else
             let scene = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
-                .first
-            return scene?.keyWindow ?? UIWindow()
+                .first!
+            return scene.keyWindow ?? UIWindow(windowScene: scene)
             #endif
         }
     }
