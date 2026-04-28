@@ -83,11 +83,16 @@ final class AuthModel {
         UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
         databases = []
         user = nil
+        MenuModel.clearCache()
+        EntityDetailModel.clearCache()
     }
 
     /// Permanently delete the signed-in user's person entity in the active
-    /// database. After success, drop the database from the local list and
-    /// either switch to another database or sign out entirely.
+    /// database. Before deleting the entity, hard-deletes the user's auth
+    /// properties (`entu_user`, `entu_passkey`, `entu_api_key`) so a stale
+    /// passkey or OAuth provider mapping cannot be matched on a later sign-in.
+    /// After success, drops the database from the local list and either
+    /// switches to another database or signs out entirely.
     func deleteCurrentAccount() async throws {
         guard let activeId = api.databaseId,
               let database = databases.first(where: { $0._id == activeId }),
@@ -95,9 +100,17 @@ final class AuthModel {
             throw APIError.invalidResponse
         }
 
+        await deleteAuthProperties(personId: personId)
+
         let _: DeleteResponse = try await api.delete("entity/\(personId)")
 
         databases.removeAll { $0._id == activeId }
+
+        // Drop cached menu/type entries — the deleted database's entries are
+        // now stale, and `logOut()` would clear them anyway in the no-more-
+        // databases branch.
+        MenuModel.clearCache()
+        EntityDetailModel.clearCache()
 
         if let next = databases.first {
             selectDatabase(next)
@@ -105,9 +118,30 @@ final class AuthModel {
             logOut()
         }
     }
+
+    /// Best-effort hard delete of the auth-related properties on the user's
+    /// person entity. Failures are swallowed so the entity delete still
+    /// proceeds — the entity-level soft-delete is the source of truth, this
+    /// is a belt-and-braces cleanup.
+    private func deleteAuthProperties(personId: String) async {
+        let authPropertyNames = ["entu_user", "entu_passkey", "entu_api_key"]
+
+        guard let response: EntityDetailResponse = try? await api.get(
+            "entity/\(personId)",
+            params: ["props": authPropertyNames.joined(separator: ",")]
+        ) else { return }
+
+        for name in authPropertyNames {
+            for value in response.entity?.properties[name] ?? [] {
+                guard let propId = value._id else { continue }
+
+                let _: DeleteResponse? = try? await api.delete("property/\(propId)")
+            }
+        }
+    }
 }
 
-/// Response shape from `DELETE /{db}/entity/{_id}`.
+/// Response shape from `DELETE /{db}/entity/{_id}` and `DELETE /{db}/property/{_id}`.
 struct DeleteResponse: Decodable {
     let deleted: Bool?
 }

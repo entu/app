@@ -166,7 +166,7 @@ struct MainView: View {
                             } label: {
                                 Image(systemName: "chevron.left")
                             }
-                            .accessibilityLabel(String(localized: "back"))
+                            .accessibilityLabel("back")
                         }
                     }
                 }
@@ -202,7 +202,7 @@ struct MainView: View {
                             } label: {
                                 Image(systemName: "chevron.left")
                             }
-                            .accessibilityLabel(String(localized: "back"))
+                            .accessibilityLabel("back")
                         }
                     }
                 }
@@ -222,7 +222,7 @@ private struct MenuScopedSearchable: ViewModifier {
 
     func body(content: Content) -> some View {
         if enabled {
-            content.searchable(text: $text, prompt: String(localized: "search"))
+            content.searchable(text: $text, prompt: "search")
         } else {
             content
         }

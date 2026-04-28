@@ -25,11 +25,11 @@ struct AuthView: View {
                 .padding(.bottom, 16)
 
             VStack(spacing: 4) {
-                Text(String(localized: "signInTitle"))
+                Text("signInTitle")
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text(String(localized: "signInDescription"))
+                Text("signInDescription")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

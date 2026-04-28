@@ -30,12 +30,20 @@ final class EntityDetailModel {
     private let api: APIClient
     private var definitions: [PropertyDefinition] = []
 
-    // Shared across navigations — avoids refetching type metadata for the same entity type.
+    // Shared across navigations — avoids refetching type metadata for the
+    // same entity type. Keyed by `"<lang>:<typeId>"` so entries for different
+    // languages coexist; switching language hits the other language's cache
+    // without a refetch.
     private static var typeCache: [String: [PropertyDefinition]] = [:]
 
     /// Clears the type definition cache — call on database change.
     static func clearCache() {
         typeCache = [:]
+    }
+
+    /// Cache key combining the active in-app language with the type id.
+    private static func cacheKey(typeId: String) -> String {
+        "\(AppLanguage.current.rawValue):\(typeId)"
     }
 
     init(api: APIClient) {
@@ -61,13 +69,14 @@ final class EntityDetailModel {
 
             entity = fetchedEntity
 
-            // 2. Resolve type definitions (cached per typeId)
+            // 2. Resolve type definitions (cached per language + typeId)
             if let typeId = fetchedEntity.typeId {
-                if let cached = Self.typeCache[typeId] {
+                let key = Self.cacheKey(typeId: typeId)
+                if let cached = Self.typeCache[key] {
                     definitions = cached
                 } else {
                     let defs = await fetchTypeDefinitions(typeId: typeId)
-                    Self.typeCache[typeId] = defs
+                    Self.typeCache[key] = defs
                     definitions = defs
                 }
             }
@@ -75,7 +84,8 @@ final class EntityDetailModel {
             // Nitro/h3 errors are JSON with a `message` field. Surface only that.
             errorMessage = parseMessage(from: body)
         } catch {
-            errorMessage = nil
+            // URLErrors, decode errors, cancellation — show a generic network message.
+            errorMessage = String(localized: "networkError", bundle: .currentLocalized)
         }
 
         isLoading = false

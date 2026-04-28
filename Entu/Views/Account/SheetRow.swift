@@ -6,20 +6,24 @@
 import SwiftUI
 
 /// Tappable row used inside the post-login database picker and the user sheet.
+///
+/// Title and subtitle are `Text` so callers can mix `Text("key")`
+/// (`LocalizedStringKey`, observes env locale) with `Text(verbatim:)` for
+/// dynamic, non-localizable content like database names.
 struct SheetRow: View {
     let icon: String
-    let title: String
-    var subtitle: String?
+    let title: Text
+    var subtitle: Text?
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon).frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).fontWeight(.medium)
+                title.fontWeight(.medium)
 
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
+                if let subtitle {
+                    subtitle
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

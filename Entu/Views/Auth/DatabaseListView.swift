@@ -18,11 +18,11 @@ struct DatabaseListView: View {
                 .padding(.bottom, 16)
 
             VStack(spacing: 4) {
-                Text(String(localized: "selectDatabaseTitle"))
+                Text("selectDatabaseTitle")
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text(String(localized: "selectDatabaseDescription"))
+                Text("selectDatabaseDescription")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -39,8 +39,8 @@ struct DatabaseListView: View {
                         } label: {
                             SheetRow(
                                 icon: "cylinder",
-                                title: database.name,
-                                subtitle: database.user?.name
+                                title: Text(verbatim: database.name),
+                                subtitle: (database.user?.name).map { Text(verbatim: $0) }
                             )
                         }
                         .buttonStyle(.plain)
@@ -63,7 +63,7 @@ struct DatabaseListView: View {
             Spacer()
 
             Button { auth.logOut() } label: {
-                Text(String(localized: "signOut"))
+                Text("signOut")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)

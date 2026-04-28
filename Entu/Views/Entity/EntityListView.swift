@@ -55,7 +55,7 @@ struct EntityListView: View {
             if isLoading && items.isEmpty {
                 ProgressView()
             } else if !isLoading && items.isEmpty {
-                ContentUnavailableView(String(localized: "noResults"), systemImage: "magnifyingglass")
+                ContentUnavailableView("noResults", systemImage: "magnifyingglass")
             }
         }
         .task(id: query) {

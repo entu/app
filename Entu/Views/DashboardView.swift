@@ -22,26 +22,26 @@ struct DashboardView: View {
                 VStack(spacing: 8) {
                     Spacer()
 
-                    StatsRow(label: String(localized: "entities"),
+                    StatsRow(label: "entities",
                              usage: stats.entities.usage ?? 0,
                              limit: stats.entities.limit ?? 0,
                              deleted: stats.entities.deleted ?? 0,
                              color: .cyan)
 
-                    StatsRow(label: String(localized: "properties"),
+                    StatsRow(label: "properties",
                              usage: stats.properties.usage ?? 0,
                              limit: 0,
                              deleted: stats.properties.deleted ?? 0,
                              color: .yellow)
 
-                    StatsRow(label: String(localized: "files"),
+                    StatsRow(label: "files",
                              usage: stats.files.usage ?? 0,
                              limit: stats.files.limit ?? 0,
                              deleted: stats.files.deleted ?? 0,
                              color: .green,
                              isBytes: true)
 
-                    StatsRow(label: String(localized: "requests"),
+                    StatsRow(label: "requests",
                              usage: stats.requests.usage ?? 0,
                              limit: stats.requests.limit ?? 0,
                              deleted: 0,
@@ -60,7 +60,7 @@ struct DashboardView: View {
                 Spacer()
             } else {
                 Spacer()
-                Text(String(localized: "statistics"))
+                Text("statistics")
                     .foregroundStyle(.secondary)
                 Spacer()
             }
@@ -91,7 +91,7 @@ struct DashboardView: View {
 // Bottom: total value (left) + limit value (right)
 // Popover: grid with color squares and values
 private struct StatsRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let usage: Int
     let limit: Int
     let deleted: Int
@@ -112,7 +112,7 @@ private struct StatsRow: View {
                 Text(label)
                 Spacer()
                 if limit > 0 {
-                    Text(String(localized: "statsLimit"))
+                    Text("statsLimit")
                         .foregroundStyle(isOverLimit ? .red : .secondary)
                 }
             }
@@ -167,7 +167,7 @@ private struct StatsRow: View {
                 GridRow {
                     HStack(spacing: 6) {
                         Rectangle().fill(color).frame(width: 14, height: 14)
-                        Text(String(localized: "statsCurrent"))
+                        Text("statsCurrent")
                     }
                     Text(formatValue(usage))
                         .gridColumnAlignment(.trailing)
@@ -179,7 +179,7 @@ private struct StatsRow: View {
                 GridRow {
                     HStack(spacing: 6) {
                         Rectangle().fill(color.opacity(0.3)).frame(width: 14, height: 14)
-                        Text(String(localized: "statsDeleted"))
+                        Text("statsDeleted")
                     }
                     Text(formatValue(deleted)).monospacedDigit()
                 }
@@ -189,7 +189,7 @@ private struct StatsRow: View {
                 GridRow {
                     HStack(spacing: 6) {
                         Rectangle().fill(color.opacity(0.1)).frame(width: 14, height: 14)
-                        Text(String(localized: "statsLimit"))
+                        Text("statsLimit")
                     }
                     Text(formatValue(limit)).monospacedDigit()
                 }
@@ -199,7 +199,7 @@ private struct StatsRow: View {
                 GridRow {
                     HStack(spacing: 6) {
                         Rectangle().fill(.red.opacity(0.2)).frame(width: 14, height: 14)
-                        Text(String(localized: "statsOverLimit"))
+                        Text("statsOverLimit")
                             .fontWeight(.bold)
                             .foregroundStyle(.red)
                     }

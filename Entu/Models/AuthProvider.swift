@@ -1,7 +1,7 @@
 // Available sign-in methods and their visual grouping on the auth screen.
 // Each provider maps to an API endpoint (e.g. /auth/apple, /auth/smart-id).
 
-import Foundation
+import SwiftUI
 
 /// Available sign-in methods (Apple, Google, email, Estonian ID).
 enum AuthProvider: String, CaseIterable {
@@ -13,15 +13,17 @@ enum AuthProvider: String, CaseIterable {
     case mobileId = "mobile-id"
     case idCard = "id-card"
 
-    var label: String {
+    /// Display label as a `LocalizedStringKey` so SwiftUI views resolve it
+    /// against the active env locale automatically.
+    var label: LocalizedStringKey {
         switch self {
-        case .passkey: return String(localized: "passkey")
-        case .email: return String(localized: "email")
+        case .passkey: return "passkey"
+        case .email: return "email"
         case .apple: return "Apple"
         case .google: return "Google"
         case .smartId: return "Smart-ID"
         case .mobileId: return "Mobile-ID"
-        case .idCard: return String(localized: "idCard")
+        case .idCard: return "idCard"
         }
     }
 

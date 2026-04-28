@@ -37,10 +37,10 @@ struct ChildEntitiesSection: View {
                         )
                     } label: {
                         HStack {
-                            Text(group.label)
+                            Text(verbatim: group.label)
                                 .font(.headline)
                             Spacer()
-                            Text(group.countLabel)
+                            group.countLabel
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -137,16 +137,13 @@ private struct ChildGroup: Identifiable {
 
     var id: String { "\(referenceField)-\(typeId)" }
 
-    // Count label matching webapp: "1 child" / "n childs" or "1 referrer" / "n referrers"
-    var countLabel: String {
+    // Count label matching webapp: "1 child" / "n childs" or "1 referrer" / "n referrers".
+    // Returned as `Text` so the `LocalizedStringKey` interpolation observes the env locale.
+    var countLabel: Text {
         if type == "child" {
-            return count == 1
-                ? String(localized: "childCount1")
-                : String(localized: "childCountN \(count)")
+            return count == 1 ? Text("childCount1") : Text("childCountN \(count)")
         } else {
-            return count == 1
-                ? String(localized: "referrerCount1")
-                : String(localized: "referrerCountN \(count)")
+            return count == 1 ? Text("referrerCount1") : Text("referrerCountN \(count)")
         }
     }
 }

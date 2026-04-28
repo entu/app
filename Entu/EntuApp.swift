@@ -13,14 +13,18 @@ struct EntuApp: App {
     @State private var passkeyService: PasskeyService
     @State private var search = SearchModel()
 
-    /// User-selected in-app language ("" = follow system, "en", "et"). Applied
-    /// to SwiftUI's environment locale below so `Text(LocalizedStringKey)`
-    /// switches without a restart. `String(localized:)` calls still rely on
-    /// the bundle-level locale set via `AppleLanguages` and require restart.
-    @AppStorage("ui.appLanguage") private var appLanguage: String = ""
+    /// User-selected in-app language. Drives `.environment(\.locale, ...)`
+    /// below — SwiftUI APIs that take a `LocalizedStringKey` (`Text("key")`,
+    /// `Button("key")`, `.alert("key", …)`, etc.) re-render automatically when
+    /// this changes. The handful of pure-Swift `String` contexts (the
+    /// `String(format:)` confirmation title, `EntityDetailModel.errorMessage`)
+    /// read `Bundle.currentLocalized` directly when they're computed.
+    /// See `AppLanguage` for the full set of helpers.
+    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
 
     init() {
         Self.migrateLegacyDefaults()
+
         let api = APIClient()
         let auth = AuthModel(api: api)
         _api = State(initialValue: api)
@@ -53,6 +57,14 @@ struct EntuApp: App {
                 .environment(authService)
                 .environment(passkeyService)
                 .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+                // SwiftUI's `Text("key")` doesn't always re-resolve when the
+                // env locale changes — it caches against `Bundle.main`'s
+                // preferred localization set at launch. Re-keying the root
+                // view forces a full rebuild on language change so every
+                // `LocalizedStringKey` resolves against the active locale.
+                // Session state lives in `EntuApp` (not `ContentView`), so
+                // it survives the rebuild.
+                .id(appLanguage)
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 700)
                 #endif
@@ -75,7 +87,7 @@ struct EntuApp: App {
                     Button {
                         auth.logOut()
                     } label: {
-                        Label(String(localized: "signOut"), systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("signOut", systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } else {
                     Menu {
@@ -101,14 +113,14 @@ struct EntuApp: App {
                             }
                         }
                     } label: {
-                        Label(String(localized: "signIn"), systemImage: "rectangle.portrait.and.arrow.forward")
+                        Label("signIn", systemImage: "rectangle.portrait.and.arrow.forward")
                     }
                 }
             }
 
             // Database menu — only visible when signed in
             if auth.isAuthenticated {
-                CommandMenu(String(localized: "database")) {
+                CommandMenu("database") {
                     ForEach(auth.databases) { database in
                         Toggle(database.name, isOn: Binding(
                             get: { database._id == api.databaseId },

@@ -20,11 +20,7 @@ struct UserSheet: View {
     let openPinnedEntity: (String) -> Void
 
     /// Persisted language preference. Empty = follow system.
-    @AppStorage("ui.appLanguage") private var appLanguage: String = ""
-
-    /// Snapshot of `appLanguage` taken when the sheet opens — used to show the
-    /// "restart needed" hint only when the user changed it during this session.
-    @State private var initialAppLanguage: String = ""
+    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
 
     /// Caches the user entity's `_thumbnail` URL for the active database.
     @State private var userThumbnail: String?
@@ -50,30 +46,35 @@ struct UserSheet: View {
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                 #endif
         }
+        // Sheets are hosted outside the parent's view tree, so the
+        // `.id(appLanguage)` on `ContentView` doesn't propagate. Re-key the
+        // sheet itself so its body re-runs when the user picks a new language
+        // from inside it.
+        .id(appLanguage)
+        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
         .disabled(isDeleting)
         .overlay { if isDeleting { deletingOverlay } }
-        .onAppear { initialAppLanguage = appLanguage }
         .task(id: activeDatabase?.user?._id) { await loadUserEntity() }
         .confirmationDialog(
-            String(format: String(localized: "deleteAccountConfirmTitle"), activeDatabase?.name ?? ""),
+            String(format: String(localized: "deleteAccountConfirmTitle", bundle: .currentLocalized), activeDatabase?.name ?? ""),
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button(String(localized: "deleteAccount"), role: .destructive) {
+            Button("deleteAccount", role: .destructive) {
                 Task { await performDelete() }
             }
-            Button(String(localized: "cancel"), role: .cancel) {}
+            Button("cancel", role: .cancel) {}
         } message: {
-            Text(String(localized: "deleteAccountMessage"))
+            Text("deleteAccountMessage")
         }
         .alert(
-            String(localized: "deleteAccountFailed"),
+            "deleteAccountFailed",
             isPresented: Binding(
                 get: { deleteError != nil },
                 set: { if !$0 { deleteError = nil } }
             )
         ) {
-            Button(String(localized: "ok"), role: .cancel) {}
+            Button("ok", role: .cancel) {}
         } message: {
             Text(deleteError ?? "")
         }
@@ -87,7 +88,7 @@ struct UserSheet: View {
             Button(role: .close) { dismiss() }
         }
         ToolbarItem(placement: .destructiveAction) {
-            Button(String(localized: "signOut"), role: .destructive) {
+            Button("signOut", role: .destructive) {
                 auth.logOut()
                 dismiss()
             }
@@ -117,14 +118,6 @@ struct UserSheet: View {
                         personEntityRow
 
                         languageRow
-
-                        if appLanguage != initialAppLanguage {
-                            Text(String(localized: "languageRestartNote"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 8)
-                        }
                     }
                     // 16pt of empty padding sits under the top fade gradient
                     // so the first row stays fully visible at scroll origin.
@@ -182,8 +175,8 @@ struct UserSheet: View {
         } label: {
             SheetRow(
                 icon: "cylinder",
-                title: String(localized: "database"),
-                subtitle: activeDatabase?.name
+                title: Text("database"),
+                subtitle: (activeDatabase?.name).map { Text(verbatim: $0) }
             )
         }
         .buttonStyle(.plain)
@@ -200,8 +193,8 @@ struct UserSheet: View {
             } label: {
                 SheetRow(
                     icon: "person.crop.circle",
-                    title: userTypeLabel ?? String(localized: "person"),
-                    subtitle: activeDatabase?.user?.name
+                    title: userTypeLabel.map { Text(verbatim: $0) } ?? Text("person"),
+                    subtitle: (activeDatabase?.user?.name).map { Text(verbatim: $0) }
                 )
             }
             .buttonStyle(.plain)
@@ -214,7 +207,6 @@ struct UserSheet: View {
             ForEach(AppLanguage.allCases) { language in
                 Button {
                     appLanguage = language.rawValue
-                    applyLanguage(language)
                 } label: {
                     if appLanguage == language.rawValue {
                         Label(language.label, systemImage: "checkmark")
@@ -226,8 +218,8 @@ struct UserSheet: View {
         } label: {
             SheetRow(
                 icon: "globe",
-                title: String(localized: "language"),
-                subtitle: (AppLanguage(rawValue: appLanguage) ?? .system).label
+                title: Text("language"),
+                subtitle: Text((AppLanguage(rawValue: appLanguage) ?? .system).label)
             )
         }
         .buttonStyle(.plain)
@@ -242,7 +234,7 @@ struct UserSheet: View {
             Button {
                 showDeleteConfirmation = true
             } label: {
-                Text(String(localized: "deleteAccount"))
+                Text("deleteAccount")
                     .foregroundStyle(.red)
             }
             .buttonStyle(.plain)
@@ -292,17 +284,6 @@ struct UserSheet: View {
         }
     }
 
-    /// Persists the language choice in `AppleLanguages` so `String(localized:)`
-    /// picks it up on the next launch. The SwiftUI environment locale is set
-    /// at app root for immediate effect on `Text(LocalizedStringKey)`.
-    private func applyLanguage(_ language: AppLanguage) {
-        if language == .system {
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
-        } else {
-            UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
-        }
-    }
-
     private func performDelete() async {
         isDeleting = true
         defer { isDeleting = false }
@@ -312,27 +293,6 @@ struct UserSheet: View {
             dismiss()
         } catch {
             deleteError = error.localizedDescription
-        }
-    }
-}
-
-// MARK: - AppLanguage
-
-/// Available in-app language overrides. The raw value is the ISO code stored
-/// in `@AppStorage("ui.appLanguage")` and `UserDefaults.AppleLanguages`.
-private enum AppLanguage: String, CaseIterable, Identifiable {
-    case system = ""
-    case english = "en"
-    case estonian = "et"
-
-    var id: String { rawValue }
-
-    /// Localized display label for the language picker row and menu items.
-    var label: String {
-        switch self {
-        case .system: return String(localized: "languageSystem")
-        case .english: return String(localized: "languageEnglish")
-        case .estonian: return String(localized: "languageEstonian")
         }
     }
 }

@@ -45,7 +45,7 @@ struct SidebarView: View {
             } label: {
                 HStack(spacing: 10) {
                     UserAvatar(thumbnail: userThumbnail, size: 28)
-                    Text(currentDatabase?.user?.name ?? String(localized: "user"))
+                    ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
                         .lineLimit(1)
                     Spacer()
                 }

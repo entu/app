@@ -24,11 +24,12 @@ struct PropertyValue: Codable {
     let ordinal: Double?
 
     /// Picks the best localized value from an array of PropertyValues.
-    /// Priority: user's language > no language set > first available.
+    /// Priority: in-app language preference > system preferred language >
+    /// no language set > first available.
     static func localized(_ values: [PropertyValue]?, type: String = "string") -> String? {
-        let locale = Locale.preferredLanguages.first?.prefix(2).lowercased() ?? "en"
+        let language = AppLanguage.resolvedLanguageCode
 
-        let value = values?.first { $0.language == locale }
+        let value = values?.first { $0.language == language }
             ?? values?.first { $0.language == nil }
             ?? values?.first
 
