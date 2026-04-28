@@ -1,12 +1,15 @@
 // Dashboard — shown as the default detail view when no menu item is selected.
-// Displays database usage statistics (entities, properties, files, requests)
-// with progress bars and a detail popover on tap.
+// In an authenticated session, displays database usage statistics
+// (entities, properties, files, requests) with progress bars and a detail
+// popover on tap. In a public-database session, the stats endpoint requires
+// auth so this falls back to a "Viewing as guest" placeholder card.
 
 import SwiftUI
 
 /// Dashboard showing database usage statistics with interactive progress bars.
 struct DashboardView: View {
     @Environment(APIClient.self) private var api
+    @Environment(AuthModel.self) private var auth
 
     @State private var stats: DatabaseStats?
     @State private var isLoading = false
@@ -14,7 +17,9 @@ struct DashboardView: View {
 
     var body: some View {
         VStack {
-            if isLoading {
+            if auth.isCurrentDatabasePublic {
+                publicPlaceholder
+            } else if isLoading {
                 Spacer()
                 ProgressView()
                 Spacer()
@@ -70,7 +75,28 @@ struct DashboardView: View {
         .task(id: api.databaseId) { await loadStats() }
     }
 
+    /// Card shown instead of stats when the active database is being browsed
+    /// as a guest — the stats endpoint requires auth so we have nothing to
+    /// fetch, but we still want a friendly empty state.
+    private var publicPlaceholder: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "globe")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+            Text(verbatim: api.databaseId ?? "")
+                .font(.title2)
+                .fontWeight(.semibold)
+            Text("viewingAsGuest")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private func loadStats() async {
+        guard !auth.isCurrentDatabasePublic else { return }
         isLoading = true
         error = nil
         do {

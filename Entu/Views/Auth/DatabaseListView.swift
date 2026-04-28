@@ -1,12 +1,15 @@
-// Database picker — shown after sign-in when the user has access to multiple databases.
-// Each database is a separate Entu tenant (multi-tenant model).
-// Selecting one sets the active databaseId for all subsequent API calls.
+// Database picker — shown when the user has access to more than one
+// database (any combination of authenticated tenants and saved public
+// databases) and none is currently active. Selecting a row sets the
+// active databaseId for all subsequent API calls; the entry below the
+// list opens the "Browse public database" alert to add another.
 
 import SwiftUI
 
 /// Database picker — select a database or sign out. Used in the post-login auth flow.
 struct DatabaseListView: View {
     @Environment(AuthModel.self) private var auth
+    @State private var showingPublicEntry = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,33 +35,64 @@ struct DatabaseListView: View {
             .padding(.bottom, 24)
 
             ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(auth.databases) { database in
-                        Button {
-                            auth.selectDatabase(database)
-                        } label: {
-                            SheetRow(
-                                icon: "cylinder",
-                                title: Text(verbatim: database.name),
-                                subtitle: (database.user?.name).map { Text(verbatim: $0) }
-                            )
+                VStack(spacing: 0) {
+                    VStack(spacing: 36) {
+                        if !auth.databases.isEmpty {
+                            VStack(spacing: 12) {
+                                ForEach(auth.databases) { database in
+                                    Button {
+                                        auth.selectDatabase(database)
+                                    } label: {
+                                        SheetRow(
+                                            icon: "cylinder",
+                                            title: Text(verbatim: database.name),
+                                            subtitle: (database.user?.name).map { Text(verbatim: $0) }
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
-                        .buttonStyle(.plain)
+
+                        if !auth.publicDatabases.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("publicDatabasesSection")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+
+                                VStack(spacing: 12) {
+                                    ForEach(auth.publicDatabases, id: \.self) { id in
+                                        Button {
+                                            auth.selectPublicDatabase(id)
+                                        } label: {
+                                            SheetRow(
+                                                icon: "globe",
+                                                title: Text(verbatim: id),
+                                                subtitle: Text("viewingAsGuest")
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    VStack(spacing: 20) {
+                        OrSeparator()
+                        BrowsePublicDatabaseButton {
+                            showingPublicEntry = true
+                        }
+                    }
+                    .padding(.top, 20)
                 }
                 .padding(.horizontal, 32)
                 .padding(.vertical, 20)
                 .frame(maxWidth: 320)
             }
-            .mask(
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 16)
-                    Color.black
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 16)
-                }
-            )
+            .scrollFadeMask()
 
             Spacer()
 
@@ -73,5 +107,6 @@ struct DatabaseListView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
+        .publicDatabaseEntry(isPresented: $showingPublicEntry)
     }
 }

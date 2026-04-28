@@ -1,5 +1,6 @@
 // Global authentication state — tracks whether the user is signed in,
-// which databases they can access, and who they are.
+// which authenticated databases they can access, which public databases
+// they have added for guest browsing, and who they are.
 //
 // @Observable = SwiftUI automatically re-renders views when these properties change.
 // @MainActor = all mutations happen on the main thread (safe for UI updates).
@@ -18,11 +19,29 @@ final class AuthModel {
         }
     }
 
+    /// Names of public databases the user has added (independent of any sign-in).
+    /// The API gives us no display name or user info for unauthenticated reads,
+    /// so the id doubles as the rendered label. Persisted to UserDefaults
+    /// (non-sensitive list of public ids — no token attached).
+    var publicDatabases: [String] = [] {
+        didSet {
+            if let data = try? JSONEncoder().encode(publicDatabases) {
+                UserDefaults.standard.set(data, forKey: "auth.publicDatabases")
+            }
+        }
+    }
+
     /// Currently signed-in user, or nil when logged out.
     var user: AuthUser?
 
     /// True when a valid JWT is stored on the API client.
     var isAuthenticated: Bool { api.token != nil }
+
+    /// True when the active database is being browsed as a guest.
+    var isCurrentDatabasePublic: Bool {
+        guard let id = api.databaseId else { return false }
+        return publicDatabases.contains(id) && !databases.contains(where: { $0._id == id })
+    }
 
     let api: APIClient
 
@@ -35,7 +54,26 @@ final class AuthModel {
            !saved.isEmpty {
             self.databases = saved
             self.api.token = KeychainService.loadToken()
-            self.api.databaseId = UserDefaults.standard.string(forKey: "auth.lastDatabaseId")
+        }
+
+        // Restore the saved public-database list (no secrets — just ids).
+        if let data = UserDefaults.standard.data(forKey: "auth.publicDatabases"),
+           let savedPublic = try? JSONDecoder().decode([String].self, from: data) {
+            self.publicDatabases = savedPublic
+        }
+
+        // Resolve the previously-active database. Authenticated dbs win when
+        // the same id appears in both sets (shouldn't happen, but defensive).
+        if let lastId = UserDefaults.standard.string(forKey: "auth.lastDatabaseId") {
+            if databases.contains(where: { $0._id == lastId }) {
+                self.api.databaseId = lastId
+                self.api.suppressToken = false
+            } else if publicDatabases.contains(lastId) {
+                self.api.databaseId = lastId
+                self.api.suppressToken = true
+            } else {
+                UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
+            }
         }
 
         // Auto-logout when the API returns 401 (expired/invalid token)
@@ -68,21 +106,40 @@ final class AuthModel {
         user = response.user
     }
 
-    /// Set the active database for all subsequent API calls.
+    /// Set the active database for all subsequent API calls (authenticated).
     func selectDatabase(_ database: Database) {
         api.databaseId = database._id
+        api.suppressToken = false
         UserDefaults.standard.set(database._id, forKey: "auth.lastDatabaseId")
     }
 
-    /// Clear all stored credentials and return to the sign-in screen.
+    /// Set the active database to one of the saved public databases.
+    /// Suppresses the Authorization header for as long as it remains active,
+    /// so a signed-in user is treated as a guest by the API.
+    func selectPublicDatabase(_ id: String) {
+        api.databaseId = id
+        api.suppressToken = true
+        UserDefaults.standard.set(id, forKey: "auth.lastDatabaseId")
+    }
+
+    /// Add a public database id to the saved list (no-op if already present).
+    func addPublicDatabase(_ id: String) {
+        guard !publicDatabases.contains(id) else { return }
+        publicDatabases.append(id)
+    }
+
+    /// Reset everything — clear stored credentials, the saved public-database
+    /// list, and the active database. Returns the user to `AuthView`.
     func logOut() {
         KeychainService.deleteToken()
         KeychainService.deleteDatabases()
         api.token = nil
+        api.suppressToken = false
         api.databaseId = nil
-        UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
         databases = []
+        publicDatabases = []
         user = nil
+        UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
         MenuModel.clearCache()
         EntityDetailModel.clearCache()
     }

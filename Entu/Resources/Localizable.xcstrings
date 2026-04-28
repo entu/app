@@ -54,6 +54,38 @@
         }
       }
     },
+    "browsePublicDatabase" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View public database"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaata avalikku andmebaasi"
+          }
+        }
+      }
+    },
+    "browsePublicDatabaseMenu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View public database…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaata avalikku andmebaasi…"
+          }
+        }
+      }
+    },
     "cancel" : {
       "localizations" : {
         "en" : {
@@ -114,6 +146,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Andmebaas"
+          }
+        }
+      }
+    },
+    "databaseInvalidFormat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use lowercase letters, digits and underscores. Must start with a letter."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kasuta väiketähti, numbreid ja allkriipse. Peab algama tähega."
+          }
+        }
+      }
+    },
+    "databaseName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database name"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andmebaasi nimi"
+          }
+        }
+      }
+    },
+    "databaseNotFound" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database not found"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andmebaasi ei leitud"
+          }
+        }
+      }
+    },
+    "databaseNotPublic" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database is not public"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andmebaas ei ole avalik"
           }
         }
       }
@@ -403,6 +499,54 @@
         }
       }
     },
+    "myDatabases" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My databases"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minu andmebaasid"
+          }
+        }
+      }
+    },
+    "or" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OR"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VÕI"
+          }
+        }
+      }
+    },
+    "open" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava"
+          }
+        }
+      }
+    },
     "pageSize" : {
       "localizations" : {
         "en" : {
@@ -479,6 +623,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Parameetreid"
+          }
+        }
+      }
+    },
+    "publicDatabasePrompt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter a database name to browse its public entities"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sisesta andmebaasi nimi avalike kirjete sirvimiseks"
+          }
+        }
+      }
+    },
+    "publicDatabasesSection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Public databases"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avalikud andmebaasid"
+          }
+        }
+      }
+    },
+    "publicDatabaseTitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Public database"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avalik andmebaas"
           }
         }
       }
@@ -787,6 +979,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kasutaja"
+          }
+        }
+      }
+    },
+    "viewingAsGuest" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viewing as guest"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaatad külalisena"
           }
         }
       }

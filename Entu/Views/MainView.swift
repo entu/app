@@ -28,7 +28,15 @@ struct MainView: View {
     @AppStorage("ui.contentWidth") private var contentWidth: Double = 320
 
     private var currentDatabase: Database? {
-        auth.databases.first { $0._id == api.databaseId }
+        if let authenticated = auth.databases.first(where: { $0._id == api.databaseId }) {
+            return authenticated
+        }
+        // Public databases have no name/user info from the API — synthesize a
+        // Database value from the id so the macOS subtitle can show something.
+        if let id = api.databaseId, auth.publicDatabases.contains(id) {
+            return Database(_id: id, name: id, user: nil)
+        }
+        return nil
     }
 
     /// Resolves the selected menu item ID to its API query string.
@@ -81,18 +89,44 @@ struct MainView: View {
     /// if needed, resets navigation state, optionally pre-fills search/menu
     /// from query params, then opens the linked entity (if any). Cleared
     /// once consumed so the same link doesn't re-fire.
+    ///
+    /// Resolves the target database in this order:
+    ///   1. authenticated database — `selectDatabase`
+    ///   2. saved public database — `selectPublicDatabase`
+    ///   3. unknown database — probe for public access; on success add it to
+    ///      the saved list and select. On failure clear the pending state and
+    ///      stay where we are.
     private func applyPendingDeepLink() {
-        guard auth.isAuthenticated, let dbId = router.pendingDatabaseId else { return }
+        guard let dbId = router.pendingDatabaseId else { return }
 
         if dbId != api.databaseId {
             if let target = auth.databases.first(where: { $0._id == dbId }) {
                 auth.selectDatabase(target)
+            } else if auth.publicDatabases.contains(dbId) {
+                auth.selectPublicDatabase(dbId)
             } else {
-                router.clear()
+                Task { await bootstrapPublicDeepLink(dbId: dbId) }
                 return
             }
         }
 
+        consumePendingDeepLink()
+    }
+
+    /// Probe an unknown database from a deep link and add it as public on success.
+    private func bootstrapPublicDeepLink(dbId: String) async {
+        let result = (try? await api.probePublicDatabase(dbId)) ?? .notFound
+        guard result == .found else {
+            router.clear()
+            return
+        }
+        auth.addPublicDatabase(dbId)
+        auth.selectPublicDatabase(dbId)
+        consumePendingDeepLink()
+    }
+
+    /// Apply the pending search/menu/entity state and clear the router.
+    private func consumePendingDeepLink() {
         search.text = ""
         selectedEntityId = nil
         entityHistory = []

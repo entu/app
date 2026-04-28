@@ -1,8 +1,7 @@
-// Root view — decides which screen to show based on auth state:
-//   1. Not signed in        → AuthView (sign-in screen)
-//   2. Signed in, DB chosen → MainView (sidebar + content)
-//   3. Single database      → auto-select it and go to MainView
-//   4. Multiple databases   → DatabaseListView (picker)
+// Root view — decides which screen to show based on auth + public-db state:
+//   1. A database is active                  → MainView
+//   2. At least one database known           → DatabaseListView (or auto-select if only one)
+//   3. Nothing known and not signed in       → AuthView
 
 import SwiftUI
 
@@ -12,31 +11,40 @@ struct ContentView: View {
     @Environment(APIClient.self) private var api
     @Environment(NetworkMonitor.self) private var network
 
+    /// Total number of selectable databases (authenticated + saved public).
+    private var totalDatabaseCount: Int {
+        auth.databases.count + auth.publicDatabases.count
+    }
+
+    /// True when there's at least one entry to pick — either authenticated or
+    /// a remembered public database.
+    private var hasAnyDatabase: Bool {
+        auth.isAuthenticated || !auth.publicDatabases.isEmpty
+    }
+
     // Determines which screen state we're in for animation transitions.
     private var screenState: String {
-        if !auth.isAuthenticated { return "auth" }
         if api.databaseId != nil { return "main" }
-        return "dbSelect"
+        if hasAnyDatabase { return "dbSelect" }
+        return "auth"
     }
 
     var body: some View {
         ZStack(alignment: .top) {
             Group {
-                if !auth.isAuthenticated {
-                    AuthView()
-                        .transition(.opacity)
-                } else if api.databaseId != nil {
+                if api.databaseId != nil {
                     MainView()
                         .transition(.opacity)
-                } else if auth.databases.count == 1 {
-                    ProgressView()
-                        .onAppear {
-                            if let database = auth.databases.first {
-                                auth.selectDatabase(database)
-                            }
-                        }
+                } else if hasAnyDatabase {
+                    if totalDatabaseCount == 1 {
+                        ProgressView()
+                            .onAppear { autoSelectSoleDatabase() }
+                    } else {
+                        DatabaseListView()
+                            .transition(.opacity)
+                    }
                 } else {
-                    DatabaseListView()
+                    AuthView()
                         .transition(.opacity)
                 }
             }
@@ -49,5 +57,14 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: network.isOnline)
+    }
+
+    /// Selects the only available database (authenticated first, public otherwise).
+    private func autoSelectSoleDatabase() {
+        if let database = auth.databases.first {
+            auth.selectDatabase(database)
+        } else if let publicId = auth.publicDatabases.first {
+            auth.selectPublicDatabase(publicId)
+        }
     }
 }

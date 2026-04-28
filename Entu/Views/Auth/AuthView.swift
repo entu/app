@@ -1,6 +1,7 @@
-// Sign-in screen — shown when the user has no stored token.
-// Displays the app logo and a list of authentication providers
-// (Apple, Google, email, Estonian ID methods, passkey).
+// Sign-in screen — shown when the user has no stored token and no saved
+// public database. Displays the app logo, a list of authentication providers
+// (Apple, Google, email, Estonian ID methods, passkey), and an entry point
+// for browsing public databases as a guest.
 
 import AuthenticationServices
 import SwiftUI
@@ -12,6 +13,7 @@ struct AuthView: View {
 
     @State private var isLoading = false
     @State private var error: String?
+    @State private var showingPublicEntry = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,39 +40,44 @@ struct AuthView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 24)
 
-            // MARK: - Provider buttons
+            // MARK: - Provider buttons + browse public
 
-            // Provider buttons grouped by type, with dividers between groups.
-            // Gradient mask fades the top/bottom edges of the scroll area.
+            // Provider buttons grouped by type. The "Browse public database"
+            // button lives inside the same ScrollView so it stays visually
+            // tied to the provider list and doesn't get pushed to the bottom
+            // edge on compact iPhone layouts. Gradient mask fades the top/
+            // bottom edges of the scroll area.
             ScrollView {
-                VStack(spacing: 36) {
-                    ForEach(AuthProviderGroup.allCases, id: \.self) { group in
-                        let providers = AuthProvider.allCases.filter {
-                            $0.group == group && $0.isAvailableOnCurrentPlatform
-                        }
+                VStack(spacing: 0) {
+                    VStack(spacing: 36) {
+                        ForEach(AuthProviderGroup.allCases, id: \.self) { group in
+                            let providers = AuthProvider.allCases.filter {
+                                $0.group == group && $0.isAvailableOnCurrentPlatform
+                            }
 
-                        VStack(spacing: 12) {
-                            ForEach(providers, id: \.self) { provider in
-                                AuthButton(provider: provider, isLoading: isLoading) {
-                                    await signIn(with: provider)
+                            VStack(spacing: 12) {
+                                ForEach(providers, id: \.self) { provider in
+                                    AuthButton(provider: provider, isLoading: isLoading) {
+                                        await signIn(with: provider)
+                                    }
                                 }
                             }
                         }
                     }
+
+                    VStack(spacing: 20) {
+                        OrSeparator()
+                        BrowsePublicDatabaseButton(isLoading: isLoading) {
+                            showingPublicEntry = true
+                        }
+                    }
+                    .padding(.top, 20)
                 }
                 .padding(.horizontal, 32)
                 .padding(.vertical, 20)
                 .frame(maxWidth: 320)
             }
-            .mask(
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 16)
-                    Color.black
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 16)
-                }
-            )
+            .scrollFadeMask()
 
             // MARK: - Error message
 
@@ -83,14 +90,13 @@ struct AuthView: View {
                     .padding(.horizontal, 32)
                     .multilineTextAlignment(.center)
             }
-
-            Spacer()
         }
         .frame(maxWidth: .infinity)
         .navigationTitle("")
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
+        .publicDatabaseEntry(isPresented: $showingPublicEntry)
     }
 
     private func signIn(with provider: AuthProvider) async {

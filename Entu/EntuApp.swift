@@ -14,6 +14,7 @@ struct EntuApp: App {
     @State private var search = SearchModel()
     @State private var network = NetworkMonitor()
     @State private var router = DeepLinkRouter()
+    @State private var showingPublicEntry = false
 
     /// User-selected in-app language. Drives `.environment(\.locale, ...)`
     /// below — SwiftUI APIs that take a `LocalizedStringKey` (`Text("key")`,
@@ -53,6 +54,7 @@ struct EntuApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .publicDatabaseEntry(isPresented: $showingPublicEntry)
                 .environment(api)
                 .environment(auth)
                 .environment(search)
@@ -85,13 +87,15 @@ struct EntuApp: App {
                     }
                 }
         }
-        .defaultSize(width: 1280, height: 800)
+        .defaultSize(width: 1280, height: 850)
         .commands {
             CommandGroup(replacing: .newItem) {}
 
-            // Entu menu — Sign In (with providers submenu) or Sign Out
+            // Entu menu — Sign In (with providers submenu) when nothing is
+            // remembered, otherwise Sign Out (which wipes both authenticated
+            // credentials and the saved public-database list).
             CommandGroup(after: .appInfo) {
-                if auth.isAuthenticated {
+                if auth.isAuthenticated || !auth.publicDatabases.isEmpty {
                     Button {
                         auth.logOut()
                     } label: {
@@ -126,15 +130,40 @@ struct EntuApp: App {
                 }
             }
 
-            // Database menu — only visible when signed in
-            if auth.isAuthenticated {
-                CommandMenu("database") {
-                    ForEach(auth.databases) { database in
-                        Toggle(database.name, isOn: Binding(
-                            get: { database._id == api.databaseId },
-                            set: { if $0 { auth.selectDatabase(database) } }
-                        ))
+            // Database menu — authenticated databases first, then public,
+            // then a Browse-public entry. Always shown so the user can add a
+            // public database from the menu bar even before signing in.
+            CommandMenu("database") {
+                if !auth.databases.isEmpty {
+                    Section("myDatabases") {
+                        ForEach(auth.databases) { database in
+                            Toggle(database.name, isOn: Binding(
+                                get: { database._id == api.databaseId },
+                                set: { if $0 { auth.selectDatabase(database) } }
+                            ))
+                        }
                     }
+                }
+
+                if !auth.publicDatabases.isEmpty {
+                    Section("publicDatabasesSection") {
+                        ForEach(auth.publicDatabases, id: \.self) { id in
+                            Toggle(id, isOn: Binding(
+                                get: { id == api.databaseId },
+                                set: { if $0 { auth.selectPublicDatabase(id) } }
+                            ))
+                        }
+                    }
+                }
+
+                if auth.isAuthenticated || !auth.publicDatabases.isEmpty {
+                    Divider()
+                }
+
+                Button {
+                    showingPublicEntry = true
+                } label: {
+                    Text("browsePublicDatabaseMenu")
                 }
             }
         }

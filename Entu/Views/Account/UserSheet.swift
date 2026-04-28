@@ -1,11 +1,19 @@
 // User sheet — opened by tapping the current-user bar in the sidebar.
 //
-// Hero: round user avatar (or Entu logo fallback) and the user's name.
-// Rows: switch active database, open the user's profile entity, switch the
-// app language.
-// Toolbar: close (cancellation) and Sign Out (destructive).
-// Footer row: delete the user's account in the active database — required by
-// App Store guideline 5.1.1(v).
+// Renders identical chrome whether the active database is authenticated or
+// being browsed as a guest:
+//   Hero: round user avatar (or Entu logo fallback) and a title — user
+//         name when signed in, database id when browsing a public database.
+//   Rows: switch active database (lists authenticated and saved public
+//         databases plus a "Browse public database…" entry), open the
+//         user's profile entity (only when there's a resolved user), switch
+//         the app language.
+//   Toolbar: close (cancellation) and Sign Out (destructive — wipes
+//         credentials and the saved public-database list, returning to
+//         AuthView).
+//   Footer row: delete the user's account in the active database — required
+//         by App Store guideline 5.1.1(v); rendered as a hidden spacer in
+//         public mode so the bottom fade never overlaps the language row.
 
 import SwiftUI
 
@@ -31,9 +39,29 @@ struct UserSheet: View {
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var deleteError: String?
+    @State private var showingPublicEntry = false
 
+    /// Active authenticated database, or nil when browsing as a guest.
     private var activeDatabase: Database? {
         auth.databases.first { $0._id == api.databaseId }
+    }
+
+    /// Hero title — user's name when signed in, database id when browsing
+    /// a public database. Keeps the sheet header non-empty in both modes.
+    private var headerTitle: String {
+        if let userName = activeDatabase?.user?.name ?? auth.user?.name, !userName.isEmpty {
+            return userName
+        }
+        return api.databaseId ?? ""
+    }
+
+    /// Database-row subtitle — authenticated database name when signed in,
+    /// or the bare database id when browsing as a guest.
+    private var databaseRowSubtitle: Text? {
+        if auth.isCurrentDatabasePublic, let id = api.databaseId {
+            return Text(verbatim: id)
+        }
+        return (activeDatabase?.name).map { Text(verbatim: $0) }
     }
 
     // MARK: - Body
@@ -104,7 +132,7 @@ struct UserSheet: View {
                 .padding(.top, 48)
                 .padding(.bottom, 16)
 
-            Text(activeDatabase?.user?.name ?? auth.user?.name ?? "")
+            Text(headerTitle)
                 .font(.title2)
                 .fontWeight(.semibold)
                 .padding(.horizontal, 32)
@@ -129,22 +157,12 @@ struct UserSheet: View {
                 .padding(.horizontal, 32)
                 .frame(maxWidth: 320)
             }
-            .mask(scrollFadeMask)
+            .scrollFadeMask()
 
             Spacer()
         }
         .frame(maxWidth: .infinity)
-    }
-
-    /// Top + bottom fade-out gradient applied to the scrolling list of rows.
-    private var scrollFadeMask: some View {
-        VStack(spacing: 0) {
-            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: 16)
-            Color.black
-            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: 16)
-        }
+        .publicDatabaseEntry(isPresented: $showingPublicEntry)
     }
 
     /// Blocking spinner shown while the delete request is in flight.
@@ -157,26 +175,55 @@ struct UserSheet: View {
 
     // MARK: - Rows
 
-    /// Switches the active database. Lists every accessible database with a
-    /// checkmark on the current one.
+    /// Switches the active database. Lists every authenticated and public
+    /// database with a checkmark on the current one, plus a final entry to
+    /// add a new public database via the entry sheet.
     private var databaseRow: some View {
         Menu {
-            ForEach(auth.databases) { database in
-                Button {
-                    auth.selectDatabase(database)
-                } label: {
-                    if database._id == api.databaseId {
-                        Label(database.name, systemImage: "checkmark")
-                    } else {
-                        Text(database.name)
+            if !auth.databases.isEmpty {
+                Section("myDatabases") {
+                    ForEach(auth.databases) { database in
+                        Button {
+                            auth.selectDatabase(database)
+                        } label: {
+                            if database._id == api.databaseId {
+                                Label(database.name, systemImage: "checkmark")
+                            } else {
+                                Text(database.name)
+                            }
+                        }
                     }
                 }
+            }
+
+            if !auth.publicDatabases.isEmpty {
+                Section("publicDatabasesSection") {
+                    ForEach(auth.publicDatabases, id: \.self) { id in
+                        Button {
+                            auth.selectPublicDatabase(id)
+                        } label: {
+                            if id == api.databaseId {
+                                Label(id, systemImage: "checkmark")
+                            } else {
+                                Text(id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button {
+                showingPublicEntry = true
+            } label: {
+                Text("browsePublicDatabaseMenu")
             }
         } label: {
             SheetRow(
                 icon: "cylinder",
                 title: Text("database"),
-                subtitle: (activeDatabase?.name).map { Text(verbatim: $0) }
+                subtitle: databaseRowSubtitle
             )
         }
         .buttonStyle(.plain)
@@ -227,7 +274,9 @@ struct UserSheet: View {
     }
 
     /// Permanently deletes the user's `person` entity in the active database.
-    /// Hidden when there is no resolvable user `_id` for the active database.
+    /// Hidden when there is no resolvable user `_id` for the active database —
+    /// rendered as an invisible spacer so the bottom fade gradient never
+    /// overlaps the language row.
     @ViewBuilder
     private var deleteRow: some View {
         if activeDatabase?.user?._id != nil {
@@ -239,6 +288,10 @@ struct UserSheet: View {
             }
             .buttonStyle(.plain)
             .disabled(isDeleting)
+        } else {
+            Text("deleteAccount")
+                .hidden()
+                .accessibilityHidden(true)
         }
     }
 
