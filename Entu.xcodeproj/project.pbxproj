@@ -314,6 +314,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = Entu/Entu.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				OTHER_CODE_SIGN_FLAGS = "-r=designated => anchor apple generic and identifier \"app.entu\" and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 6B4F7S5J46;
