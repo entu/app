@@ -1,0 +1,1 @@
+designated => anchor apple generic and identifier "app.entu" and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */
