@@ -43,6 +43,14 @@ final class AuthModel {
         return publicDatabases.contains(id) && !databases.contains(where: { $0._id == id })
     }
 
+    /// User id of the signed-in user *in the active authenticated database*.
+    /// Nil while signed out and nil in public mode — write affordances treat
+    /// nil as "no rights anywhere" via `EntityDetail.rights(for:)`.
+    var currentUserId: String? {
+        guard let id = api.databaseId else { return nil }
+        return databases.first { $0._id == id }?.user?._id
+    }
+
     let api: APIClient
 
     init(api: APIClient) {

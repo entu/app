@@ -46,6 +46,33 @@ final class AuthService {
         self.auth = auth
     }
 
+    /// Force the system to spin up its `SFAuthenticationViewController` /
+    /// Safari XPC service before the user taps a provider. Without this the
+    /// first `session.start()` of an app launch can stall ~10–15 s on real
+    /// devices while the system warms up that subsystem, which feels like
+    /// the tap was lost. Called from `AuthView.onAppear` — fire-and-forget;
+    /// the dummy session is cancelled immediately so no browser sheet ever
+    /// becomes visible.
+    func warmUpWebAuth() {
+        guard pendingSession == nil else { return }
+        let dummy = ASWebAuthenticationSession(
+            url: URL(string: "https://\(callbackHost)\(callbackPath)")!,
+            callback: .https(host: callbackHost, path: callbackPath)
+        ) { _, _ in }
+        dummy.presentationContextProvider = contextProvider
+        dummy.start()
+        dummy.cancel()
+    }
+
+    /// Clear any in-flight web-auth session and pending continuation. Called
+    /// from `AuthView.onAppear` so a stuck session left over from a previous
+    /// attempt (e.g. `SFAuthenticationViewController` deallocated without
+    /// firing its completion) doesn't leave the UI in a permanently-loading
+    /// state.
+    func cancelPending() {
+        resume(.failure(CancellationError()))
+    }
+
     /// Open the OAuth browser sheet for the given provider and complete the auth callback.
     /// The API redirects back to `https://entu.app/auth/app-callback?key=...` after successful auth.
     func signIn(with provider: AuthProvider) async throws {
@@ -80,6 +107,32 @@ final class AuthService {
     /// the callback fires either inside the sheet (Apple/Google) or via `handleIncoming` (email, Smart-ID).
     private func startWebAuth(url: URL) async throws -> String {
         resume(.failure(CancellationError()))
+
+        // Wait for the previous `SFAuthenticationViewController` to fully
+        // deallocate. ASWebAuthenticationSession's `cancel()` initiates an
+        // animated dismissal — there's no "did finish dismissing" callback,
+        // so we sleep long enough for UIKit's transition coordinator to
+        // run the dismiss animation and free the controller. Without this
+        // gap UIKit tries to load the new session's view while the old
+        // one is mid-tear-down ("Attempting to load the view of a view
+        // controller while it is deallocating") which locks up the main
+        // thread for many seconds on real devices. 350 ms covers Apple's
+        // standard modal dismiss + a small safety margin.
+        try? await Task.sleep(for: .milliseconds(350))
+
+        // Safety timeout — if the OS never delivers the completion
+        // callback (sheet dismissed in a way ASWebAuthenticationSession
+        // doesn't see), `isLoading` would stay true forever and every
+        // provider button would remain disabled. After 60 s we cancel
+        // the pending session so the UI can recover. If the session
+        // resumes normally first, this Task's `resume(...)` call is a
+        // no-op because `pendingContinuation` is already nil.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            await MainActor.run {
+                self?.resume(.failure(CancellationError()))
+            }
+        }
 
         return try await withCheckedThrowingContinuation { continuation in
             // @Sendable on the closure is load-bearing: without it, Swift 6 infers

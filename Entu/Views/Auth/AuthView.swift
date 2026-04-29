@@ -11,9 +11,9 @@ struct AuthView: View {
     @Environment(AuthService.self) private var authService
     @Environment(PasskeyService.self) private var passkeyService
 
-    @State private var isLoading = false
     @State private var error: String?
     @State private var showingPublicEntry = false
+    @State private var isProbingPublicDatabase = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,7 +57,7 @@ struct AuthView: View {
 
                             VStack(spacing: 12) {
                                 ForEach(providers, id: \.self) { provider in
-                                    AuthButton(provider: provider, isLoading: isLoading) {
+                                    AuthButton(provider: provider) {
                                         await signIn(with: provider)
                                     }
                                 }
@@ -67,7 +67,9 @@ struct AuthView: View {
 
                     VStack(spacing: 20) {
                         OrSeparator()
-                        BrowsePublicDatabaseButton(isLoading: isLoading) {
+                        BrowsePublicDatabaseButton(
+                            isWorking: showingPublicEntry || isProbingPublicDatabase
+                        ) {
                             showingPublicEntry = true
                         }
                     }
@@ -96,13 +98,27 @@ struct AuthView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
-        .publicDatabaseEntry(isPresented: $showingPublicEntry)
+        .publicDatabaseEntry(
+            isPresented: $showingPublicEntry,
+            isSubmitting: $isProbingPublicDatabase
+        )
+        .onAppear {
+            // Clear any leftover pending session — e.g. a previous attempt
+            // where SFAuthenticationViewController deallocated without firing
+            // its completion handler. Without this, the next tap would race
+            // with the stale continuation.
+            authService.cancelPending()
+
+            // Force the system's ASWebAuthenticationSession subsystem to warm
+            // up now, while the user is still reading the screen, instead of
+            // on the first provider tap (which otherwise stalls 10–15 s on
+            // real devices the first time per app launch).
+            authService.warmUpWebAuth()
+        }
     }
 
     private func signIn(with provider: AuthProvider) async {
         error = nil
-        isLoading = true
-        defer { isLoading = false }
 
         do {
             if provider == .passkey {
@@ -127,16 +143,27 @@ struct AuthView: View {
 // Styled button for a single auth provider row.
 private struct AuthButton: View {
     let provider: AuthProvider
-    let isLoading: Bool
     let action: () async -> Void
+
+    @State private var isWorking = false
 
     var body: some View {
         Button {
-            Task { await action() }
+            guard !isWorking else { return }
+            Task {
+                isWorking = true
+                await action()
+                isWorking = false
+            }
         } label: {
             HStack(spacing: 12) {
                 Group {
-                    if provider.icon.hasPrefix("sf:") {
+                    if isWorking {
+                        ProgressView()
+                            #if os(macOS)
+                            .controlSize(.small)
+                            #endif
+                    } else if provider.icon.hasPrefix("sf:") {
                         Image(systemName: String(provider.icon.dropFirst(3)))
                     } else {
                         Image(provider.icon).resizable().scaledToFit()
@@ -153,6 +180,5 @@ private struct AuthButton: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .disabled(isLoading)
     }
 }

@@ -21,6 +21,26 @@ struct PropertyDefinition: Identifiable {
     let multilingual: Bool
     let description: String?
 
+    /// True when the property accepts multiple values (Phase 6 editor adds "+" rows).
+    let list: Bool
+
+    /// Set when the value is computed by the server — skipped in the editor.
+    let formula: String?
+
+    /// Default value used when creating a new entity. Format depends on `type`.
+    let `default`: String?
+
+    /// Reference filter — API query string scoping which entities are
+    /// valid targets when `type == "reference"`. Set on the property
+    /// definition entity as `reference_query` (matches webapp's
+    /// `entity-type.js` `referenceQuery: getValue(p.reference_query)`).
+    let query: String?
+
+    /// Predefined option values for `string` / `number` properties.
+    /// When non-empty, the editor renders a `Picker` instead of a free
+    /// text input. Mirrors webapp's `:set="property.set?.map(x => x.string)"`.
+    let set: [String]
+
     var id: String { _id }
 
     /// Returns the best display label — plural when `valueCount > 1`, falling back to the property name.
@@ -49,6 +69,11 @@ struct PropertyDefinition: Identifiable {
         multilingual = entity.additionalProperties?["multilingual"]?.first?.boolean ?? false
         description = PropertyValue.localized(entity.additionalProperties?["description"])
         decimals = entity.additionalProperties?["decimals"]?.first?.number.map { Int($0) }
+        list = entity.additionalProperties?["list"]?.first?.boolean ?? false
+        formula = PropertyValue.localized(entity.additionalProperties?["formula"])
+        `default` = PropertyValue.localized(entity.additionalProperties?["default"])
+        query = PropertyValue.localized(entity.additionalProperties?["reference_query"])
+        set = (entity.additionalProperties?["set"] ?? []).compactMap { $0.string }
     }
 
     // MARK: - Fallback for untyped properties
@@ -68,6 +93,11 @@ struct PropertyDefinition: Identifiable {
         self.readonly = false
         self.multilingual = false
         self.description = nil
+        self.list = false
+        self.formula = nil
+        self.default = nil
+        self.query = nil
+        self.set = []
 
         if let first = values.first {
             if first.reference != nil { self.type = "reference" }

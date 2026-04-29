@@ -7,11 +7,20 @@
 
 import Foundation
 
+/// Type entity that can be added under a menu (or under another type).
+/// Mirrors the webapp's `addFromEntities` items in `stores/menu.js`.
+struct AddFromType: Identifiable, Hashable {
+    let _id: String
+    let label: String
+    var id: String { _id }
+}
+
 /// Cached, language-aware menu payload. Stored as a value type so the static
 /// cache holds resolved labels per language without re-fetching from the API.
 private struct CachedMenu {
     let groups: [MenuGroup]
     let queryById: [String: String]
+    let addFromTypes: [String: [AddFromType]]
 }
 
 /// Fetches menu entities from the API, groups and sorts them for the sidebar.
@@ -25,6 +34,12 @@ final class MenuModel {
 
     /// Menu entity ID → query string lookup. Used to resolve NavigationLink selection.
     var queryById: [String: String] = [:]
+
+    /// Menu (or type) entity ID → list of types that can be added under it.
+    /// Drives the toolbar Add button at menu level (`activeMenu.addFrom`)
+    /// and per-entity child add (`addChildOptions`) — same data source as
+    /// webapp's `addFromEntities` in `stores/menu.js`.
+    var addFromTypes: [String: [AddFromType]] = [:]
 
     private let api: APIClient
 
@@ -51,6 +66,7 @@ final class MenuModel {
         if let cached = Self.cache[key] {
             groups = cached.groups
             queryById = cached.queryById
+            addFromTypes = cached.addFromTypes
             return
         }
 
@@ -98,13 +114,53 @@ final class MenuModel {
                 )
             }.sorted { entuSort($0.ordinal, $0.name, $1.ordinal, $1.name) }
 
+            // Fetch all entity-type entities that declare an `add_from`,
+            // then group them by which menu/type they can be added under.
+            let addFromMap = await fetchAddFromTypes()
+
             queryById = newQueryById
             groups = newGroups
-            Self.cache[key] = CachedMenu(groups: newGroups, queryById: newQueryById)
+            addFromTypes = addFromMap
+            Self.cache[key] = CachedMenu(groups: newGroups, queryById: newQueryById, addFromTypes: addFromMap)
         } catch {
             groups = []
             queryById = [:]
+            addFromTypes = [:]
         }
+    }
+
+    /// Look up all entity types that declare `add_from`, then build a map
+    /// from each `add_from` reference (a menu id or type id) to the list
+    /// of types that can be created under it.
+    private func fetchAddFromTypes() async -> [String: [AddFromType]] {
+        let response: EntityListResponse?
+        do {
+            response = try await api.get("entity", params: [
+                "_type.string": "entity",
+                "add_from._id.exists": "true",
+                "props": "name,label,add_from.reference"
+            ])
+        } catch {
+            return [:]
+        }
+
+        var map: [String: [AddFromType]] = [:]
+        for type in response?.entities ?? [] {
+            let label = PropertyValue.localized(type.additionalProperties?["label"]) ??
+                        PropertyValue.localized(type.name) ?? type._id
+            let entry = AddFromType(_id: type._id, label: label)
+
+            for parent in type.additionalProperties?["add_from"] ?? [] {
+                guard let parentId = parent.reference else { continue }
+                map[parentId, default: []].append(entry)
+            }
+        }
+
+        // Stable alphabetical order per parent — matches webapp's sort.
+        for key in map.keys {
+            map[key]?.sort { $0.label.localizedCompare($1.label) == .orderedAscending }
+        }
+        return map
     }
 
     /// Cache key combining the active in-app language with the database id.

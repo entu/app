@@ -149,6 +149,28 @@ struct MainView: View {
         router.clear()
     }
 
+    /// Pop the entity history when an entity is deleted while pinned via the
+    /// sidebar user row (two-column mode). When history is empty, clear the
+    /// pinned entity so the dashboard takes over.
+    private func popOrClearPinnedDetail() {
+        if !entityHistory.isEmpty {
+            entityHistory.removeLast()
+        } else {
+            pinnedEntityId = nil
+        }
+    }
+
+    /// Pop the entity history when an entity is deleted while a list row is
+    /// selected (three-column mode). When history is empty, clear the
+    /// selection so the detail column shows nothing.
+    private func popOrClearListDetail() {
+        if !entityHistory.isEmpty {
+            entityHistory.removeLast()
+        } else {
+            selectedEntityId = nil
+        }
+    }
+
     /// Opens an entity from the sidebar user row. In two-column mode (dashboard visible),
     /// swap the dashboard for the entity detail. In three-column mode, append to the
     /// history stack so it becomes the current detail without clearing menu/search.
@@ -235,9 +257,13 @@ struct MainView: View {
         } detail: {
             if let pinnedEntityId {
                 let shownId = entityHistory.last ?? pinnedEntityId
-                EntityDetailView(entityId: shownId) { entityId in
-                    entityHistory.append(entityId)
-                }
+                EntityDetailView(
+                    entityId: shownId,
+                    menuId: selectedMenuId,
+                    onNavigate: { entityHistory.append($0) },
+                    onDelete: { popOrClearPinnedDetail() }
+                )
+                .navigationBarBackButtonHidden(!entityHistory.isEmpty)
                 .toolbar {
                     if !entityHistory.isEmpty {
                         ToolbarItem(placement: .navigation) {
@@ -266,14 +292,18 @@ struct MainView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
         } content: {
-            EntityListView(query: activeQuery, selectedEntityId: $selectedEntityId)
+            EntityListView(query: activeQuery, menuId: selectedMenuId, selectedEntityId: $selectedEntityId)
                 .navigationSplitViewColumnWidth(min: 240, ideal: contentWidth, max: 600)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { contentWidth = $0 }
         } detail: {
             if let currentEntityId {
-                EntityDetailView(entityId: currentEntityId) { entityId in
-                    entityHistory.append(entityId)
-                }
+                EntityDetailView(
+                    entityId: currentEntityId,
+                    menuId: selectedMenuId,
+                    onNavigate: { entityHistory.append($0) },
+                    onDelete: { popOrClearListDetail() }
+                )
+                .navigationBarBackButtonHidden(!entityHistory.isEmpty)
                 .toolbar {
                     if !entityHistory.isEmpty {
                         ToolbarItem(placement: .navigation) {

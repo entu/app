@@ -10,6 +10,7 @@ import SwiftUI
 struct DatabaseListView: View {
     @Environment(AuthModel.self) private var auth
     @State private var showingPublicEntry = false
+    @State private var isProbingPublicDatabase = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -82,7 +83,9 @@ struct DatabaseListView: View {
 
                     VStack(spacing: 20) {
                         OrSeparator()
-                        BrowsePublicDatabaseButton {
+                        BrowsePublicDatabaseButton(
+                            isWorking: showingPublicEntry || isProbingPublicDatabase
+                        ) {
                             showingPublicEntry = true
                         }
                     }
@@ -107,6 +110,9 @@ struct DatabaseListView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
-        .publicDatabaseEntry(isPresented: $showingPublicEntry)
+        .publicDatabaseEntry(
+            isPresented: $showingPublicEntry,
+            isSubmitting: $isProbingPublicDatabase
+        )
     }
 }

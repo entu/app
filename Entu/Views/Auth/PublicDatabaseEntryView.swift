@@ -12,8 +12,16 @@ import SwiftUI
 
 extension View {
     /// Attach the "Browse public database" prompt + result alert to this view.
-    func publicDatabaseEntry(isPresented: Binding<Bool>) -> some View {
-        modifier(PublicDatabaseEntryModifier(isPresented: isPresented))
+    /// `isSubmitting`, when supplied, is driven `true` while the API probe is
+    /// in flight so the parent's button can render a spinner.
+    func publicDatabaseEntry(
+        isPresented: Binding<Bool>,
+        isSubmitting: Binding<Bool> = .constant(false)
+    ) -> some View {
+        modifier(PublicDatabaseEntryModifier(
+            isPresented: isPresented,
+            externalIsSubmitting: isSubmitting
+        ))
     }
 }
 
@@ -27,9 +35,16 @@ private struct PublicDatabaseEntryModifier: ViewModifier {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
 
+    /// Re-apply the in-app language to the alert content. Alerts present
+    /// at scene root and don't always inherit the parent's `\.locale`.
+    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
+
     @Binding var isPresented: Bool
+    @Binding var externalIsSubmitting: Bool
     @State private var input: String = ""
-    @State private var isSubmitting = false
+    @State private var isSubmitting = false {
+        didSet { externalIsSubmitting = isSubmitting }
+    }
     @State private var error: LocalizedStringKey?
 
     func body(content: Content) -> some View {
@@ -65,7 +80,8 @@ private struct PublicDatabaseEntryModifier: ViewModifier {
                     Text(error)
                 }
             }
-            .disabled(isSubmitting)
+            .id(appLanguage)
+            .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
     }
 
     private func submit() async {

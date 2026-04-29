@@ -14,8 +14,11 @@ struct PropertyValue: Codable {
     let number: Double?
     let boolean: Bool?
     let reference: String?
-    let date: Double?
-    let datetime: Double?
+    /// ISO 8601 date string, e.g. `"2026-04-29T00:00:00.000Z"`. The API
+    /// returns date / datetime in ISO form (after `new Date(...)` round-trip
+    /// in `insertProperties`); writes are sent in the same shape.
+    let date: String?
+    let datetime: String?
     let filename: String?
     let filesize: Int?
     let language: String?

@@ -41,6 +41,13 @@ final class EntityDetailModel {
         typeCache = [:]
     }
 
+    /// Drop the type cache entry for `typeId`. Use after a successful write
+    /// when the type's property definitions may have changed.
+    static func invalidate(typeId: String) {
+        let key = cacheKey(typeId: typeId)
+        typeCache[key] = nil
+    }
+
     /// Cache key combining the active in-app language with the type id.
     private static func cacheKey(typeId: String) -> String {
         "\(AppLanguage.current.rawValue):\(typeId)"
@@ -177,7 +184,7 @@ final class EntityDetailModel {
     private func fetchTypeDefinitions(typeId: String) async -> [PropertyDefinition] {
         let params: [String: String] = [
             "_parent.reference": typeId,
-            "props": "decimals,default,description,formula,group,hidden,label_plural,label,list,mandatory,markdown,multilingual,name,ordinal,readonly,type"
+            "props": "decimals,default,description,formula,group,hidden,label_plural,label,list,mandatory,markdown,multilingual,name,ordinal,readonly,reference_query,set,type"
         ]
 
         guard let response: EntityListResponse = try? await api.get("entity", params: params) else {

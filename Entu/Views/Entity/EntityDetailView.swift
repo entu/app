@@ -10,8 +10,16 @@ struct EntityDetailView: View {
 
     let entityId: String
 
+    /// ID of the currently-selected menu entity. Drives the menu-level
+    /// Add button in the entity toolbar so a top-level entity can be
+    /// created without going back to the list column.
+    var menuId: String?
+
     /// Called when user taps a reference or child entity — navigates to it.
     var onNavigate: ((String) -> Void)?
+
+    /// Called after the entity is deleted — parent pops navigation.
+    var onDelete: (() -> Void)?
 
     @State private var model: EntityDetailModel?
 
@@ -30,6 +38,16 @@ struct EntityDetailView: View {
                     .refreshable { await model.load(entityId: entityId) }
                     .id(entity._id)
                     .transition(.opacity)
+                    .entityToolbarHost(
+                        entity: entity,
+                        menuId: menuId,
+                        onEdited: { Task { await model.load(entityId: entityId) } },
+                        onCreated: { newId in onNavigate?(newId) },
+                        onDelete: {
+                            EntityDetailModel.clearCache()
+                            onDelete?()
+                        }
+                    )
                 } else if let message = model.errorMessage {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")

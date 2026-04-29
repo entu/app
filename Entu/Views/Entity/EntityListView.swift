@@ -7,8 +7,15 @@ import SwiftUI
 /// Scrollable entity list with search, infinite scroll, and pull-to-refresh.
 struct EntityListView: View {
     @Environment(APIClient.self) private var api
+    @Environment(AuthModel.self) private var auth
     @Environment(SearchModel.self) private var search
+    @Environment(MenuModel.self) private var menu
     let query: String
+
+    /// ID of the currently-selected menu entity, used to look up which
+    /// types can be added under it (`menu.addFromTypes`). Nil while the
+    /// list is showing a global search result rather than a menu.
+    let menuId: String?
 
     // Selection binding — drives the detail column in NavigationSplitView.
     @Binding var selectedEntityId: String?
@@ -19,6 +26,14 @@ struct EntityListView: View {
     @State private var isLoadingMore = false
     @State private var pageSize = 50
     @State private var searchDebounceTask: Task<Void, Never>?
+    @State private var pendingCreate: EntityEditMode?
+
+    /// Captured during a create-mode commit, surfaced after the sheet
+    /// dismisses — same deferred-close pattern as `EntityToolbarHost`.
+    /// Calling `pendingCreate = nil` from inside `onSaved` would
+    /// dismiss the sheet on the very first autosave; users want to
+    /// keep typing into other fields before closing.
+    @State private var pendingCreatedId: String?
 
     private var hasMore: Bool { items.count < totalCount }
 
@@ -75,6 +90,68 @@ struct EntityListView: View {
                 items = []
                 totalCount = 0
                 await loadEntities()
+            }
+        }
+        .toolbar { addToolbarContent }
+        .sheet(
+            item: $pendingCreate,
+            onDismiss: {
+                if let id = pendingCreatedId {
+                    selectedEntityId = id
+                    Task { await loadEntities() }
+                }
+                pendingCreatedId = nil
+            }
+        ) { mode in
+            NavigationStack {
+                EntityEditView(mode: mode) { newId in
+                    pendingCreatedId = newId
+                }
+            }
+            .presentationDetents([.large])
+        }
+    }
+
+    // MARK: - Add toolbar
+
+    /// Menu-level Add button. Mirrors the webapp's left-most
+    /// `<entity-toolbar-add>` in `entity/toolbar.vue` — visible whenever
+    /// the active menu has any types declaring it as an `add_from`.
+    /// Single type: direct button with the type label. Multiple: a Menu.
+    @ToolbarContentBuilder
+    private var addToolbarContent: some ToolbarContent {
+        // Hidden when an entity is open — the entity detail toolbar
+        // renders the same Add button there to avoid visual duplication.
+        // Also hidden in public-database mode (no authenticated user) —
+        // creating top-level entities requires write access, which a
+        // read-only public session never has.
+        if auth.currentUserId != nil,
+           selectedEntityId == nil,
+           let menuId,
+           let types = menu.addFromTypes[menuId],
+           !types.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                if types.count == 1, let only = types.first {
+                    Button {
+                        pendingCreate = .create(parentId: nil, typeId: only._id, typeLabel: only.label)
+                    } label: {
+                        Label {
+                            Text("addOne \(only.label.lowercased())")
+                        } icon: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                    }
+                } else {
+                    Menu {
+                        ForEach(types) { type in
+                            Button(type.label.lowercased()) {
+                                pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+                            }
+                        }
+                    } label: {
+                        Label("add", systemImage: "square.and.pencil")
+                    }
+                }
             }
         }
     }

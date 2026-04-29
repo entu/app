@@ -1,0 +1,785 @@
+// Sheet that hosts the create/edit form for a single entity, with the
+// webapp's **autosave-on-blur** model — there is no Save button.
+//
+// Each editor commits its own value the moment the user finishes typing
+// (TextField loses focus) or changes a control (Toggle / DatePicker / the
+// reference picker's onSelect). The commit decides which API call to make
+// based on `currentEntityId` and the value's existing `_id`:
+//
+//   currentEntityId | value._id    | value present? | call
+//   ------------------------------------------------------------------
+//   nil             | nil          | yes            | POST /entity        (creates the entity, response id stored)
+//   id              | nil          | yes            | POST /entity/{id}   (adds a new value)
+//   id              | _id          | yes            | POST /entity/{id}   (edits the existing value)
+//   id              | _id          | no/empty       | DELETE /property/{_id} (removes the value)
+//   anything else                                   | no-op
+//
+// Mirrors `components/property/edit.vue::updateValue` in the webapp.
+//
+// Modes:
+//   .edit(entityId)
+//     — load the entity, render values for editing.
+//   .create(parentId, typeId, typeLabel)
+//     — start blank. The very first commit promotes the form into edit
+//       mode by setting `currentEntityId` from the create response; from
+//       that point every subsequent field is an update on the new entity.
+//
+// Whole-entity delete lives in the bottom toolbar (iOS) / a Form footer
+// section (macOS) and is enabled in edit mode + owner rights only.
+
+import SwiftUI
+
+/// Distinguishes the edit vs create entry points for `EntityEditView`.
+/// `Hashable + Identifiable` so it can drive `.sheet(item:)` / navigation.
+///
+/// `typeLabel` lets the sheet build a webapp-parity navigation title
+/// ("Add new person" / "Edit person" / "Add person as a new child")
+/// without re-fetching the type entity. Callers already have the label
+/// from `AddFromType.label` (create) or `EntityDetail.typeName` (edit).
+enum EntityEditMode: Hashable, Identifiable {
+    case edit(entityId: String)
+    case create(parentId: String?, typeId: String, typeLabel: String)
+
+    var id: String {
+        switch self {
+        case .edit(let id): return "edit:\(id)"
+        case .create(let parent, let type, _): return "create:\(parent ?? ""):\(type)"
+        }
+    }
+}
+
+/// Modal sheet that creates or edits a single entity, autosaving per-field.
+struct EntityEditView: View {
+    @Environment(APIClient.self) private var api
+    @Environment(AuthModel.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    let mode: EntityEditMode
+
+    /// Called with the entity's id once the first field has been committed
+    /// (create mode) or the entity exists already (edit mode). Caller can
+    /// use it to navigate to the new entity after the sheet closes.
+    var onSaved: ((String) -> Void)?
+
+    /// Called after a successful entity delete. Only fires from edit mode.
+    /// Caller pops navigation and removes the entity from any list.
+    var onDeleted: (() -> Void)?
+
+    /// Re-apply the in-app language inside the sheet so confirmation
+    /// dialogs / button labels translate. See `AppLanguage` notes.
+    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
+
+    @State private var entity: EntityDetail?
+    @State private var definitions: [PropertyDefinition] = []
+    @State private var values: [String: [EditableValue]] = [:]
+
+    /// The id we're currently editing. Set up-front for edit mode; for
+    /// create mode it stays nil until the first field commits, then the
+    /// upsert response populates it. Every later commit goes through the
+    /// `addValue` / `editValue` branch.
+    @State private var currentEntityId: String?
+
+    /// Type id we're editing. Mirrors `currentEntityId` — set up-front for
+    /// edit mode (resolved from the loaded entity) or for create mode
+    /// (taken from the EntityEditMode payload).
+    @State private var currentTypeId: String?
+
+    @State private var isLoading = true
+    @State private var isDeleting = false
+    @State private var loadError: String?
+    @State private var commitError: String?
+    @State private var showingDeleteConfirm = false
+
+    /// Serializes commit operations so two editors blurring near-
+    /// simultaneously can't both fire `createEntity` (or step on each
+    /// other's `currentEntityId` / row `_id` updates). Each `commit`
+    /// awaits the previous task before running its own work.
+    @State private var commitChain: Task<Void, Never>?
+
+    var body: some View {
+        Group {
+            if isLoading {
+                // Reserve a tall placeholder area while the entity loads so
+                // the auto-sizing form sheet (iPad / macOS) doesn't open
+                // tiny around the spinner and then jump to full height once
+                // the form renders. iPhone already uses a `.large` detent
+                // so the height is fixed regardless.
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 400)
+            } else if let loadError {
+                ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 400)
+            } else {
+                formBody
+            }
+        }
+        .navigationTitle(navigationTitle)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(role: .close) { dismiss() }
+                    .disabled(isDeleting)
+            }
+            if showsDelete {
+                ToolbarItem(placement: .destructiveAction) {
+                    Button("delete", role: .destructive) {
+                        showingDeleteConfirm = true
+                    }
+                    .disabled(isDeleting)
+                }
+            }
+        }
+        .alert(
+            Text(deleteConfirmTitle),
+            isPresented: $showingDeleteConfirm
+        ) {
+            Button("cancel", role: .cancel) {}
+            Button("delete", role: .destructive) {
+                Task { await deleteEntity() }
+            }
+        } message: {
+            Text("deleteEntityMessage")
+        }
+        .alert(
+            "save",
+            isPresented: Binding(
+                get: { commitError != nil },
+                set: { if !$0 { commitError = nil } }
+            )
+        ) {
+            Button("ok", role: .cancel) {}
+        } message: {
+            if let commitError { Text(commitError) }
+        }
+        .task { await load() }
+        .id(appLanguage)
+        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+    }
+
+    /// Sheet title — mirrors webapp's `components/entity/drawer/edit.vue`:
+    ///   parentId set       → `titleChild` "Add {type} as a new child"
+    ///   typeId only        → `titleAdd`   "Add new {type}"
+    ///   editing existing   → `titleEdit`  "Edit {type}"
+    /// `{type}` is the type entity's label, lowercased.
+    private var navigationTitle: Text {
+        switch mode {
+        case .edit:
+            guard let typeName = entity?.typeName, !typeName.isEmpty else {
+                return Text("edit")
+            }
+            return Text("titleEdit \(typeName.lowercased())")
+        case .create(let parentId, _, let typeLabel):
+            let label = typeLabel.lowercased()
+            if parentId != nil {
+                return Text("titleChild \(label)")
+            }
+            return Text("titleAdd \(label)")
+        }
+    }
+
+    // MARK: - Form body
+
+    /// `.formStyle(.grouped)` — system grouped sections with rounded
+    /// backgrounds and consistent margins on every platform. The OS
+    /// handles row layout, label alignment, and content positioning;
+    /// PropertyEditor uses `LabeledContent` the way the system intends.
+    private var formBody: some View {
+        Form {
+            ForEach(orderedGroups, id: \.id) { group in
+                Section {
+                    ForEach(group.definitions, id: \._id) { def in
+                        propertyRows(for: def)
+                    }
+                } header: {
+                    if let name = group.name {
+                        Text(verbatim: name)
+                    }
+                }
+            }
+
+        }
+        .formStyle(.grouped)
+    }
+
+    /// Show the destructive Delete affordance only when editing an existing
+    /// entity AND the active user has owner rights.
+    private var showsDelete: Bool {
+        guard currentEntityId != nil, let entity else { return false }
+        return entity.rights(for: auth.currentUserId).owner
+    }
+
+    /// Title for the Delete confirmation dialog. Matches the webapp's
+    /// "Delete entity" / "Kustuta objekt" — no entity-name interpolation.
+    private var deleteConfirmTitle: String {
+        String(localized: "deleteEntityConfirmTitle", bundle: .currentLocalized)
+    }
+
+    /// Render every editable row for a single property definition. List
+    /// properties keep two trailing empty rows automatically (managed by
+    /// `manageEmptyFields`), so there's no explicit "Add value" button.
+    @ViewBuilder
+    private func propertyRows(for def: PropertyDefinition) -> some View {
+        let rows = values[def.name] ?? []
+
+        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+            PropertyEditor(
+                definition: def,
+                value: row,
+                showsLabel: !def.list || index == 0,
+                valueCount: rows.filter { $0._id != nil }.count,
+                onCommit: { await commit(propertyName: def.name, value: row) }
+            )
+            .swipeActions {
+                if def.list, let _id = row._id {
+                    Button(role: .destructive) {
+                        Task { await deleteValue(propertyName: def.name, value: row, propertyId: _id) }
+                    } label: {
+                        Label("removeValue", systemImage: "trash")
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Property grouping
+
+    private struct EditorGroup: Identifiable {
+        let name: String?
+        let definitions: [PropertyDefinition]
+        var id: String { name ?? "_ungrouped" }
+    }
+
+    /// Group + sort definitions for display. Includes `name` so the user
+    /// can edit it (the read view skips name since the title shows it).
+    private var orderedGroups: [EditorGroup] {
+        let visible = definitions.filter { !$0.hidden && $0.formula == nil && !$0.readonly }
+        var byGroup: [String: [PropertyDefinition]] = [:]
+        for def in visible {
+            byGroup[def.group ?? "", default: []].append(def)
+        }
+        return byGroup
+            .map { EditorGroup(name: $0.key.isEmpty ? nil : $0.key, definitions: $0.value.sorted { $0.ordinal < $1.ordinal }) }
+            .sorted { ($0.name ?? "") < ($1.name ?? "") }
+    }
+
+    // MARK: - Loading
+
+    private func load() async {
+        isLoading = true
+        loadError = nil
+
+        let typeId: String?
+        switch mode {
+        case .edit(let entityId):
+            do {
+                let response: EntityDetailResponse = try await api.get("entity/\(entityId)")
+                entity = response.entity
+                typeId = response.entity?.typeId
+                currentEntityId = entityId
+            } catch {
+                loadError = String(localized: "networkError", bundle: .currentLocalized)
+                isLoading = false
+                return
+            }
+        case .create(_, let id, _):
+            entity = nil
+            typeId = id
+            currentEntityId = nil
+        }
+        currentTypeId = typeId
+
+        if let typeId {
+            definitions = await fetchDefinitions(typeId: typeId)
+        }
+
+        seedValues()
+        isLoading = false
+    }
+
+    /// Fetch property definitions for the entity type — same query as
+    /// `EntityDetailModel.fetchTypeDefinitions`.
+    private func fetchDefinitions(typeId: String) async -> [PropertyDefinition] {
+        let params: [String: String] = [
+            "_parent.reference": typeId,
+            "props": "decimals,default,description,formula,group,hidden,label_plural,label,list,mandatory,markdown,multilingual,name,ordinal,readonly,reference_query,set,type"
+        ]
+        guard let response: EntityListResponse = try? await api.get("entity", params: params) else {
+            return []
+        }
+        return response.entities.map { PropertyDefinition(from: $0) }
+    }
+
+    /// Build initial `values` from the loaded entity (edit) or definitions
+    /// (create). Mirrors webapp's empty-field logic — see manageEmptyFields.
+    private func seedValues() {
+        var seeded: [String: [EditableValue]] = [:]
+        for def in definitions where !def.hidden && def.formula == nil && !def.readonly {
+            if case .edit = mode, let existing = entity?.properties[def.name], !existing.isEmpty {
+                seeded[def.name] = existing.map { rowFromExisting($0, definition: def) }
+            } else if def.type == "file" {
+                // File rows can't be created inline yet (Phase 7 = upload).
+                // Leave the property without any blank rows so we don't
+                // render empty "📄 label" placeholder rows.
+                seeded[def.name] = []
+            } else {
+                seeded[def.name] = [defaultRow(for: def)]
+            }
+        }
+        values = seeded
+        for def in definitions {
+            manageEmptyFields(for: def)
+        }
+    }
+
+    private func rowFromExisting(_ existing: PropertyValue, definition: PropertyDefinition) -> EditableValue {
+        let row = EditableValue(_id: existing._id, language: existing.language)
+        switch definition.type {
+        case "boolean": row.boolValue = existing.boolean ?? false
+        case "number":  row.numberValue = existing.number.map { String($0) } ?? ""
+        case "date", "datetime":
+            if let iso = existing.date ?? existing.datetime {
+                row.dateValue = ISO8601DateFormatter.parse(iso)
+            }
+        case "reference":
+            row.referenceId = existing.reference
+            row.referenceLabel = existing.string
+        case "file":
+            // Files carry their display name in `filename`. Fall back to
+            // `string` so rows with both still render something useful.
+            row.stringValue = existing.filename ?? existing.string ?? ""
+        default:
+            row.stringValue = existing.string ?? ""
+        }
+        return row
+    }
+
+    private func defaultRow(for definition: PropertyDefinition) -> EditableValue {
+        let row = EditableValue()
+        if let raw = definition.default, !raw.isEmpty {
+            switch definition.type {
+            case "boolean": row.boolValue = raw == "true" || raw == "1"
+            case "number":  row.numberValue = raw
+            default:        row.stringValue = raw
+            }
+        }
+        return row
+    }
+
+    // MARK: - Per-value commit (autosave)
+
+    /// Commit a single value. Mirrors `property/edit.vue::updateValue`.
+    /// Serialised via `commitChain` so concurrent blurs run sequentially —
+    /// otherwise two editors could each see `currentEntityId == nil` and
+    /// each fire `createEntity`, producing two entities.
+    private func commit(propertyName: String, value: EditableValue) async {
+        let prior = commitChain
+        let task = Task { @MainActor in
+            _ = await prior?.value
+            await runCommit(propertyName: propertyName, value: value)
+        }
+        commitChain = task
+        _ = await task.value
+    }
+
+    /// Actual commit logic — only ever runs one at a time thanks to the
+    /// serialising `commit` wrapper.
+    private func runCommit(propertyName: String, value: EditableValue) async {
+        guard let def = definitions.first(where: { $0.name == propertyName }) else { return }
+        if def.readonly || def.formula != nil { return }
+
+        let isEmpty = isEditableValueEmpty(value, definition: def)
+
+        // No-op when there's nothing to send and no existing value to delete.
+        if isEmpty && value._id == nil { return }
+
+        // No-op when an existing value was edited but didn't actually change.
+        if let _id = value._id,
+           let existing = entity?.properties[propertyName]?.first(where: { $0._id == _id }),
+           valueMatchesExisting(value, existing: existing, type: def.type) {
+            return
+        }
+
+        do {
+            if currentEntityId == nil && !isEmpty && value._id == nil {
+                try await createEntity(propertyName: propertyName, value: value, definition: def)
+            } else if let entityId = currentEntityId, !isEmpty, value._id == nil {
+                try await addValue(entityId: entityId, propertyName: propertyName, value: value, definition: def)
+            } else if let entityId = currentEntityId, !isEmpty, value._id != nil {
+                try await editValue(entityId: entityId, propertyName: propertyName, value: value, definition: def)
+            } else if isEmpty, let _id = value._id {
+                let _: DeleteResponse = try await api.delete("property/\(_id)")
+                value._id = nil
+                removeFromLocalEntity(propertyName: propertyName, propertyId: _id)
+                if var rows = values[propertyName] {
+                    rows.removeAll { $0.id == value.id && $0._id == nil }
+                    values[propertyName] = rows
+                }
+            }
+        } catch {
+            commitError = error.localizedDescription
+        }
+
+        manageEmptyFields(for: def)
+    }
+
+    /// Create the entity from the very first committed value. Sends the
+    /// property + the synthesised `_parent` (when present) and `_type`
+    /// references in one request, matching webapp's `addEntity`. The
+    /// upsert response carries the newly-assigned property `_id`s, so
+    /// no separate GET is needed — we read them straight off the
+    /// response and update the local row + cache.
+    private func createEntity(propertyName: String, value: EditableValue, definition def: PropertyDefinition) async throws {
+        guard case .create(let parentId, let typeId, _) = mode else { return }
+        var changes: [EntityPropertyChange] = []
+        if let change = makeChange(propertyName: propertyName, value: value, definition: def) {
+            changes.append(change)
+        }
+        if let parentId {
+            changes.append(EntityPropertyChange(type: "_parent", reference: parentId))
+        }
+        changes.append(EntityPropertyChange(type: "_type", reference: typeId))
+
+        let response: EntityUpsertResponse = try await api.post("entity", body: changes)
+        guard let newId = response._id else { return }
+        currentEntityId = newId
+        bootstrapLocalEntity(id: newId, typeId: typeId, parentId: parentId)
+        applyUpsertResponse(response, propertyName: propertyName, value: value, definition: def)
+        onSaved?(newId)
+    }
+
+    /// Add a brand-new value to an already-existing entity. Response's
+    /// `properties` includes the just-inserted value with its server
+    /// `_id`, which we copy onto the local row.
+    private func addValue(entityId: String, propertyName: String, value: EditableValue, definition def: PropertyDefinition) async throws {
+        guard let change = makeChange(propertyName: propertyName, value: value, definition: def) else { return }
+        let response: EntityUpsertResponse = try await api.post("entity/\(entityId)", body: [change])
+        applyUpsertResponse(response, propertyName: propertyName, value: value, definition: def)
+        onSaved?(entityId)
+    }
+
+    /// Replace an existing value. The response carries the same `_id`
+    /// (replace mutates in place) plus the new value fields — we update
+    /// the local cache so subsequent unchanged-skip checks short-circuit.
+    private func editValue(entityId: String, propertyName: String, value: EditableValue, definition def: PropertyDefinition) async throws {
+        guard var change = makeChange(propertyName: propertyName, value: value, definition: def) else { return }
+        change._id = value._id
+        let response: EntityUpsertResponse = try await api.post("entity/\(entityId)", body: [change])
+        applyUpsertResponse(response, propertyName: propertyName, value: value, definition: def)
+        onSaved?(entityId)
+    }
+
+    /// Walk the upsert response, find the property entry that matches the
+    /// row we just committed (by `type` + `language`), and update both:
+    ///   - `value._id` ← server-assigned id (for newly-created values)
+    ///   - the local `entity.properties` cache so the next commit can
+    ///     compare against it without refetching.
+    private func applyUpsertResponse(_ response: EntityUpsertResponse, propertyName: String, value: EditableValue, definition def: PropertyDefinition) {
+        guard let returned = response.properties else { return }
+
+        // Pick the matching property — same name + same language. For
+        // editValue, prefer the entry whose `_id` matches the row's.
+        let match: UpsertedProperty?
+        if let rowId = value._id {
+            match = returned.first { $0._id == rowId && $0.type == propertyName }
+                ?? returned.first { $0.type == propertyName && $0.language == value.language }
+        } else {
+            match = returned.first { $0.type == propertyName && $0.language == value.language }
+                ?? returned.first { $0.type == propertyName }
+        }
+
+        if let match, let serverId = match._id {
+            value._id = serverId
+            updateLocalEntityCache(propertyName: propertyName, propertyId: serverId, value: value, definition: def)
+        }
+    }
+
+    /// Build a fresh `EntityDetail` for a just-created entity so later
+    /// commits in the same session can short-circuit unchanged-rows
+    /// against this in-memory cache without a refetch.
+    private func bootstrapLocalEntity(id: String, typeId: String, parentId: String?) {
+        var props: [String: [PropertyValue]] = [:]
+        props["_type"] = [makeReferencePropertyValue(reference: typeId)]
+        if let parentId {
+            props["_parent"] = [makeReferencePropertyValue(reference: parentId)]
+        }
+        let json: [String: Any] = ["_id": id]
+        if let data = try? JSONSerialization.data(withJSONObject: json),
+           let response = try? JSONDecoder().decode(EntityDetailResponse.self, from: data) {
+            entity = response.entity
+        }
+        // The decoder above only carries `_id`; layer the type/parent
+        // entries we synthesised into the in-memory model.
+        if var current = entity {
+            var merged = current.properties
+            for (k, v) in props { merged[k] = v }
+            current = mergedEntity(current, propertiesOverride: merged)
+            entity = current
+        }
+    }
+
+    /// Insert or replace one property in the local `entity.properties`
+    /// cache so it stays in sync after a commit without a refetch.
+    private func updateLocalEntityCache(propertyName: String, propertyId: String, value: EditableValue, definition def: PropertyDefinition) {
+        guard var current = entity else { return }
+        var rows = current.properties[propertyName] ?? []
+        rows.removeAll { $0._id == propertyId }
+        rows.append(makePropertyValue(_id: propertyId, value: value, definition: def))
+        var merged = current.properties
+        merged[propertyName] = rows
+        current = mergedEntity(current, propertiesOverride: merged)
+        entity = current
+    }
+
+    /// Drop a property value from the local `entity.properties` cache.
+    private func removeFromLocalEntity(propertyName: String, propertyId: String) {
+        guard var current = entity else { return }
+        guard var rows = current.properties[propertyName] else { return }
+        rows.removeAll { $0._id == propertyId }
+        var merged = current.properties
+        merged[propertyName] = rows
+        current = mergedEntity(current, propertiesOverride: merged)
+        entity = current
+    }
+
+    /// Build a reference-only `PropertyValue` for the local cache.
+    private func makeReferencePropertyValue(reference: String) -> PropertyValue {
+        let json: [String: Any] = ["reference": reference]
+        if let data = try? JSONSerialization.data(withJSONObject: json),
+           let value = try? JSONDecoder().decode(PropertyValue.self, from: data) {
+            return value
+        }
+        return PropertyValue(_id: nil, string: nil, number: nil, boolean: nil, reference: reference, date: nil, datetime: nil, filename: nil, filesize: nil, language: nil, provider: nil, email: nil, ordinal: nil)
+    }
+
+    /// Build a `PropertyValue` for the local cache from an `EditableValue`.
+    private func makePropertyValue(_id: String, value: EditableValue, definition def: PropertyDefinition) -> PropertyValue {
+        let stringValue: String? = {
+            switch def.type {
+            case "boolean", "number", "date", "datetime", "reference", "file": return nil
+            default:
+                let trimmed = value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+        }()
+        let numberValue: Double? = {
+            guard def.type == "number" else { return nil }
+            return Double(value.numberValue.replacingOccurrences(of: ",", with: "."))
+        }()
+        let dateIso: String? = {
+            guard let date = value.dateValue else { return nil }
+            switch def.type {
+            case "date", "datetime": return ISO8601DateFormatter().string(from: date)
+            default: return nil
+            }
+        }()
+
+        var json: [String: Any] = ["_id": _id]
+        if let s = stringValue { json["string"] = s }
+        if let n = numberValue { json["number"] = n }
+        if def.type == "boolean" { json["boolean"] = value.boolValue }
+        if let id = value.referenceId { json["reference"] = id }
+        if def.type == "date", let iso = dateIso { json["date"] = iso }
+        if def.type == "datetime", let iso = dateIso { json["datetime"] = iso }
+        if let lang = value.language { json["language"] = lang }
+
+        if let data = try? JSONSerialization.data(withJSONObject: json),
+           let decoded = try? JSONDecoder().decode(PropertyValue.self, from: data) {
+            return decoded
+        }
+        return PropertyValue(_id: _id, string: stringValue, number: numberValue, boolean: def.type == "boolean" ? value.boolValue : nil, reference: value.referenceId, date: def.type == "date" ? dateIso : nil, datetime: def.type == "datetime" ? dateIso : nil, filename: nil, filesize: nil, language: value.language, provider: nil, email: nil, ordinal: nil)
+    }
+
+    /// Reassemble an `EntityDetail` with a new `properties` map. Required
+    /// because `EntityDetail` decodes its dynamic properties via a custom
+    /// decoder and exposes `properties` as `let` — there's no in-place
+    /// mutator, so we re-encode + decode through JSON to land a fresh copy.
+    private func mergedEntity(_ entity: EntityDetail, propertiesOverride: [String: [PropertyValue]]) -> EntityDetail {
+        var json: [String: Any] = [:]
+        json["_id"] = entity._id
+        if let thumb = entity._thumbnail { json["_thumbnail"] = thumb }
+        for (key, values) in propertiesOverride {
+            if let data = try? JSONEncoder().encode(values),
+               let any = try? JSONSerialization.jsonObject(with: data) {
+                json[key] = any
+            }
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: json),
+           let decoded = try? JSONDecoder().decode(EntityDetail.self, from: data) {
+            return decoded
+        }
+        return entity
+    }
+
+    /// Build the wire-shape change for a row. Returns nil for the empty
+    /// non-counter case; that branch is handled by the delete path.
+    private func makeChange(propertyName: String, value: EditableValue, definition def: PropertyDefinition) -> EntityPropertyChange? {
+        var change = EntityPropertyChange(type: propertyName)
+        change.language = value.language
+
+        switch def.type {
+        case "boolean":
+            change.boolean = value.boolValue
+        case "number":
+            guard let num = Double(value.numberValue.replacingOccurrences(of: ",", with: ".")) else { return nil }
+            let rounded = def.decimals.map { decimals in
+                (num * pow(10.0, Double(decimals))).rounded() / pow(10.0, Double(decimals))
+            } ?? num
+            change.number = rounded
+        case "date":
+            guard let date = value.dateValue else { return nil }
+            change.date = ISO8601DateFormatter().string(from: date)
+        case "datetime":
+            guard let date = value.dateValue else { return nil }
+            change.datetime = ISO8601DateFormatter().string(from: date)
+        case "reference":
+            guard let id = value.referenceId else { return nil }
+            change.reference = id
+        case "counter":
+            // Counter Generate — webapp sends `string` (current value)
+            // alongside `counter: 1`; the API increments and returns
+            // the next sequence value. Always sends the change even
+            // if the current string is empty, so the very first
+            // Generate creates the initial value.
+            change.string = value.stringValue
+            change.counter = 1
+        default:
+            let trimmed = value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return nil }
+            change.string = trimmed
+        }
+
+        return change
+    }
+
+    /// True when an `EditableValue` carries no content for its type.
+    private func isEditableValueEmpty(_ value: EditableValue, definition def: PropertyDefinition) -> Bool {
+        switch def.type {
+        case "boolean":
+            // Booleans are never empty per se — the toggle always has a
+            // state. Treat false-on-an-unsaved-row as no-content so we
+            // don't fire create-entity from a freshly-rendered Toggle.
+            return value._id == nil && value.boolValue == false
+        case "number":
+            return value.numberValue.trimmingCharacters(in: .whitespaces).isEmpty
+        case "date", "datetime":
+            return value.dateValue == nil
+        case "reference":
+            return value.referenceId == nil
+        case "counter":
+            // Counter Generate always commits — server resolves the
+            // next sequence value even when the row's `stringValue`
+            // is empty. Reporting "empty" here would short-circuit
+            // the first Generate.
+            return false
+        default:
+            return value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    /// Whether a row currently matches its server-side counterpart, so
+    /// commit can short-circuit unchanged blurs.
+    private func valueMatchesExisting(_ row: EditableValue, existing: PropertyValue, type: String) -> Bool {
+        switch type {
+        case "boolean": return row.boolValue == (existing.boolean ?? false)
+        case "number":  return Double(row.numberValue.replacingOccurrences(of: ",", with: ".")) == existing.number
+        case "date", "datetime":
+            let serverIso = existing.date ?? existing.datetime
+            let serverDate = serverIso.flatMap { ISO8601DateFormatter.parse($0) }
+            guard let local = row.dateValue, let serverDate else {
+                return row.dateValue == nil && serverDate == nil
+            }
+            return abs(local.timeIntervalSince1970 - serverDate.timeIntervalSince1970) < 1.0
+        case "reference": return row.referenceId == existing.reference
+        default: return row.stringValue == (existing.string ?? "")
+        }
+    }
+
+    // MARK: - Per-value delete (swipe)
+
+    private func deleteValue(propertyName: String, value: EditableValue, propertyId: String) async {
+        do {
+            let _: DeleteResponse = try await api.delete("property/\(propertyId)")
+            if var rows = values[propertyName] {
+                rows.removeAll { $0.id == value.id }
+                values[propertyName] = rows
+            }
+            if let def = definitions.first(where: { $0.name == propertyName }) {
+                manageEmptyFields(for: def)
+            }
+        } catch {
+            commitError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Empty-field housekeeping
+
+    /// Mirrors webapp's `manageEmptyFields`. Keeps trailing empty rows
+    /// tidy after every commit so the user can keep typing without
+    /// pressing a "+" button each time.
+    ///   non-list, non-multilingual : one empty row only when no values
+    ///   list                       : two empty rows trailing
+    ///   multilingual               : per-language tracking — TODO once
+    ///                                multilingual editing lands
+    private func manageEmptyFields(for def: PropertyDefinition) {
+        guard !def.readonly, def.formula == nil else { return }
+        // File rows can't be created without an upload flow (Phase 7),
+        // so don't pad them with trailing empties. Existing files still
+        // render — only the empty placeholders are suppressed.
+        if def.type == "file" { return }
+        var rows = values[def.name] ?? []
+
+        if def.list {
+            let emptyTrailing = rows.suffix(while: { $0._id == nil && isEditableValueEmpty($0, definition: def) }).count
+            if emptyTrailing < 2 {
+                for _ in 0..<(2 - emptyTrailing) {
+                    rows.append(defaultRow(for: def))
+                }
+            } else if emptyTrailing > 2 {
+                rows.removeLast(emptyTrailing - 2)
+            }
+        } else {
+            let saved = rows.filter { $0._id != nil }
+            let trailingEmpty = rows.filter { $0._id == nil && isEditableValueEmpty($0, definition: def) }
+            if !saved.isEmpty {
+                rows = saved + trailingEmpty.prefix(0).map { $0 } // drop empty trailing rows
+            } else {
+                rows = saved + Array(trailingEmpty.prefix(1))
+                if rows.isEmpty {
+                    rows = [defaultRow(for: def)]
+                }
+            }
+        }
+
+        values[def.name] = rows
+    }
+
+    // MARK: - Whole-entity delete
+
+    private func deleteEntity() async {
+        guard let entityId = currentEntityId else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            let _: DeleteResponse = try await api.delete("entity/\(entityId)")
+            onDeleted?()
+            dismiss()
+        } catch {
+            commitError = error.localizedDescription
+        }
+    }
+}
+
+private extension Array {
+    /// Trailing run length where `predicate` is true.
+    func suffix(while predicate: (Element) -> Bool) -> [Element] {
+        var i = endIndex
+        while i > startIndex, predicate(self[i - 1]) {
+            i -= 1
+        }
+        return Array(self[i..<endIndex])
+    }
+}

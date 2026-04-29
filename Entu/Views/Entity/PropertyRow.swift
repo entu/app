@@ -1,5 +1,21 @@
 // Renders a single property as a row: label on the left, value(s) on the right.
 // Handles type-specific formatting: string, number, boolean, reference, date, datetime, file.
+// Parses ISO 8601 strings tolerating both fractional-seconds
+// (`2026-04-29T15:30:45.123Z`) and plain (`2026-04-29T15:30:45Z`)
+// formats — which is what the API can send back depending on the
+// underlying value's precision.
+extension ISO8601DateFormatter {
+    static func parse(_ string: String) -> Date? {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = withFractional.date(from: string) { return d }
+
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: string)
+    }
+}
+
 // File properties use QuickLook for native preview on all platforms.
 
 import QuickLook
@@ -143,16 +159,41 @@ struct PropertyRow: View {
 
     // MARK: - Date and datetime
 
-    /// Render a date value — the API formats this server-side so we just show the string.
+    /// Render a date — parsed from the API's ISO 8601 string, formatted
+    /// client-side against the env locale (matches webapp's
+    /// `d(value.date, 'date')`).
     @ViewBuilder
     private func dateValue(_ value: PropertyValue) -> some View {
-        if let str = value.string { Text(str) }
+        if let iso = value.date, let date = ISO8601DateFormatter.parse(iso) {
+            Text(
+                date,
+                format: Date.FormatStyle()
+                    .year(.defaultDigits)
+                    .month(.twoDigits)
+                    .day(.twoDigits)
+            )
+        } else if let str = value.string {
+            Text(str)
+        }
     }
 
-    /// Render a datetime value — the API formats this server-side so we just show the string.
+    /// Render a datetime — locale chooses 12h (EN) vs 24h (ET)
+    /// automatically, matching webapp's i18n format options.
     @ViewBuilder
     private func datetimeValue(_ value: PropertyValue) -> some View {
-        if let str = value.string { Text(str) }
+        if let iso = value.datetime, let date = ISO8601DateFormatter.parse(iso) {
+            Text(
+                date,
+                format: Date.FormatStyle()
+                    .year(.defaultDigits)
+                    .month(.twoDigits)
+                    .day(.twoDigits)
+                    .hour(.twoDigits(amPM: .abbreviated))
+                    .minute(.twoDigits)
+            )
+        } else if let str = value.string {
+            Text(str)
+        }
     }
 
     // MARK: - Reference
