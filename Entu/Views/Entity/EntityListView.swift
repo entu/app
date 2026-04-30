@@ -6,8 +6,8 @@ import SwiftUI
 
 /// Scrollable entity list with search, infinite scroll, and pull-to-refresh.
 struct EntityListView: View {
-    @Environment(APIClient.self) private var api
     @Environment(AuthModel.self) private var auth
+    @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
     @Environment(MenuModel.self) private var menu
     let query: String

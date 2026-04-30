@@ -33,8 +33,8 @@ enum EntityEditMode: Hashable, Identifiable {
 
 /// Modal sheet that creates or edits a single entity, autosaving per-field.
 struct EntityEditView: View {
-    @Environment(APIClient.self) private var api
     @Environment(AuthModel.self) private var auth
+    @Environment(APIClient.self) private var api
     @Environment(\.dismiss) private var dismiss
 
     let mode: EntityEditMode
@@ -197,10 +197,18 @@ struct EntityEditView: View {
                 value: row,
                 showsLabel: !def.list || index == 0,
                 valueCount: rows.filter { $0._id != nil }.count,
-                onCommit: { await commit(propertyName: def.name, value: row) }
+                onCommit: { await commit(propertyName: def.name, value: row) },
+                onFilesPicked: { picks in handleFilesPicked(propertyName: def.name, hostRow: row, picks: picks) },
+                onDelete: {
+                    if let _id = row._id {
+                        await deleteValue(propertyName: def.name, value: row, propertyId: _id)
+                    }
+                }
             )
             .swipeActions {
-                if def.list, let _id = row._id {
+                // Files use the inline trash button on `savedFileRow`; only
+                // list-type non-file rows still need the swipe affordance.
+                if def.list, def.type != "file", let _id = row._id {
                     Button(role: .destructive) {
                         Task { await deleteValue(propertyName: def.name, value: row, propertyId: _id) }
                     } label: {
@@ -286,11 +294,6 @@ struct EntityEditView: View {
         for def in definitions where !def.hidden && def.formula == nil && !def.readonly {
             if case .edit = mode, let existing = entity?.properties[def.name], !existing.isEmpty {
                 seeded[def.name] = existing.map { rowFromExisting($0, definition: def) }
-            } else if def.type == "file" {
-                // File rows can't be created inline yet (Phase 7 = upload).
-                // Leave the property without any blank rows so we don't
-                // render empty "📄 label" placeholder rows.
-                seeded[def.name] = []
             } else {
                 seeded[def.name] = [defaultRow(for: def)]
             }
@@ -317,6 +320,7 @@ struct EntityEditView: View {
             // Files carry their display name in `filename`. Fall back to
             // `string` so rows with both still render something useful.
             row.stringValue = existing.filename ?? existing.string ?? ""
+            row.filesize = existing.filesize
         default:
             row.stringValue = existing.string ?? ""
         }
@@ -356,6 +360,14 @@ struct EntityEditView: View {
     private func runCommit(propertyName: String, value: EditableValue) async {
         guard let def = definitions.first(where: { $0.name == propertyName }) else { return }
         if def.readonly || def.formula != nil { return }
+
+        // Files take a separate path: POST metadata, decode upload intent,
+        // PUT the bytes to S3. Skip the empty/equality short-circuits.
+        if def.type == "file" && value.pendingFileURL != nil {
+            await runFileUpload(propertyName: propertyName, value: value)
+            manageEmptyFields(for: def)
+            return
+        }
 
         let isEmpty = isEditableValueEmpty(value, definition: def)
 
@@ -436,6 +448,82 @@ struct EntityEditView: View {
         let response: EntityUpsertResponse = try await api.post("entity/\(entityId)", body: [change])
         applyUpsertResponse(response, propertyName: propertyName, value: value, definition: def)
         onSaved?(entityId)
+    }
+
+    /// Two-step file upload: POST metadata to receive an `UploadIntent`
+    /// (presigned S3 PUT), then stream the temp file to S3 via that intent.
+    /// On success, finalize the row to the saved state. On failure, clear
+    /// the pending bytes (the temp file is removed unconditionally) and
+    /// surface a `commitError` — the user re-picks to retry.
+    private func runFileUpload(propertyName: String, value: EditableValue) async {
+        guard let def = definitions.first(where: { $0.name == propertyName }) else { return }
+        guard let fileURL = value.pendingFileURL,
+              let filename = value.pendingFilename,
+              let mimetype = value.pendingFiletype else { return }
+
+        value.isUploading = true
+        value.uploadProgress = -1
+        defer {
+            value.isUploading = false
+            value.uploadProgress = -1
+            value.pendingFileURL = nil
+            value.pendingFilename = nil
+            value.pendingFiletype = nil
+            value.pendingFilesize = nil
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        do {
+            // Step 1: POST file metadata. Creates the entity first if we're
+            // in create mode and this is the first commit.
+            let change = EntityPropertyChange(
+                type: propertyName,
+                language: value.language,
+                filename: filename,
+                filesize: value.pendingFilesize,
+                filetype: mimetype
+            )
+
+            let response: EntityUpsertResponse
+            if let entityId = currentEntityId {
+                response = try await api.post("entity/\(entityId)", body: [change])
+            } else {
+                guard case .create(let parentId, let typeId, _) = mode else { return }
+                var changes: [EntityPropertyChange] = [change]
+                if let parentId { changes.append(EntityPropertyChange(type: "_parent", reference: parentId)) }
+                changes.append(EntityPropertyChange(type: "_type", reference: typeId))
+
+                response = try await api.post("entity", body: changes)
+                if let newId = response._id {
+                    currentEntityId = newId
+                    bootstrapLocalEntity(id: newId, typeId: typeId, parentId: parentId)
+                    onSaved?(newId)
+                }
+            }
+
+            // Step 2: extract the just-inserted property's `upload` block.
+            guard let property = response.properties?
+                    .first(where: { $0.type == propertyName && $0.upload != nil }),
+                  let intent = property.upload else {
+                throw APIError.invalidResponse
+            }
+
+            // Step 3: stream bytes to S3 with progress.
+            try await api.uploadFile(intent: intent, fileURL: fileURL) { fraction in
+                value.uploadProgress = fraction
+            }
+
+            // Finalize the row to the saved state.
+            if let serverId = property._id {
+                value._id = serverId
+                value.stringValue = filename
+                value.filesize = value.pendingFilesize
+                updateLocalEntityCache(propertyName: propertyName, propertyId: serverId, value: value, definition: def)
+            }
+            if let entityId = currentEntityId { onSaved?(entityId) }
+        } catch {
+            commitError = error.localizedDescription
+        }
     }
 
     /// Walk the upsert response, find the property entry that matches the
@@ -624,6 +712,12 @@ struct EntityEditView: View {
     /// True when an `EditableValue` carries no content for its type.
     private func isEditableValueEmpty(_ value: EditableValue, definition def: PropertyDefinition) -> Bool {
         switch def.type {
+        case "file":
+            // A file row only counts as content when there's already a saved
+            // file (`_id`) or one staged for upload (`pendingFileURL`). The
+            // empty trailing-upload row is intentionally "empty" so the
+            // commit chain skips it.
+            return value._id == nil && value.pendingFileURL == nil
         case "boolean":
             // Booleans are never empty per se — the toggle always has a
             // state. Treat false-on-an-unsaved-row as no-content so we
@@ -664,6 +758,50 @@ struct EntityEditView: View {
         }
     }
 
+    // MARK: - File picker handoff
+
+    /// User picked one or more files from the upload row. Stage each pick
+    /// onto an editable row (reusing the host row for the first, appending
+    /// fresh rows for the rest) and queue each upload through the commit
+    /// chain — `manageEmptyFields` then re-renders a trailing empty row
+    /// so the user can pick more files for `list` properties.
+    private func handleFilesPicked(propertyName: String, hostRow: EditableValue, picks: [PickedFile]) {
+        guard !picks.isEmpty else { return }
+        guard let def = definitions.first(where: { $0.name == propertyName }) else { return }
+        var rows = values[propertyName] ?? []
+
+        var stagedRows: [EditableValue] = []
+        for (index, pick) in picks.enumerated() {
+            let target: EditableValue
+            if index == 0 {
+                target = hostRow
+            } else {
+                target = EditableValue()
+                if let hostIndex = rows.firstIndex(where: { $0.id == hostRow.id }) {
+                    rows.insert(target, at: hostIndex + index)
+                } else {
+                    rows.append(target)
+                }
+            }
+            target.pendingFileURL = pick.url
+            target.pendingFilename = pick.filename
+            target.pendingFiletype = pick.mimetype
+            target.pendingFilesize = pick.size
+            target.isUploading = true
+            target.uploadProgress = -1
+            stagedRows.append(target)
+        }
+
+        values[propertyName] = rows
+        manageEmptyFields(for: def)
+
+        // Fire each upload through the commit chain — chained so the first
+        // creates the entity (if needed) before later rows try to add values.
+        for row in stagedRows {
+            Task { await commit(propertyName: propertyName, value: row) }
+        }
+    }
+
     // MARK: - Per-value delete (swipe)
 
     private func deleteValue(propertyName: String, value: EditableValue, propertyId: String) async {
@@ -692,11 +830,21 @@ struct EntityEditView: View {
     ///                                multilingual editing lands
     private func manageEmptyFields(for def: PropertyDefinition) {
         guard !def.readonly, def.formula == nil else { return }
-        // File rows can't be created without an upload flow (Phase 7),
-        // so don't pad them with trailing empties. Existing files still
-        // render — only the empty placeholders are suppressed.
-        if def.type == "file" { return }
         var rows = values[def.name] ?? []
+
+        // Files: keep all saved + uploading rows, plus exactly one trailing
+        // empty row for the upload button. Single-value properties hide the
+        // upload row when one file is already saved (delete first to swap).
+        if def.type == "file" {
+            let occupied = rows.filter { $0._id != nil || $0.isUploading || $0.pendingFileURL != nil }
+            if def.list || occupied.isEmpty {
+                rows = occupied + [defaultRow(for: def)]
+            } else {
+                rows = occupied
+            }
+            values[def.name] = rows
+            return
+        }
 
         if def.list {
             let emptyTrailing = rows.suffix(while: { $0._id == nil && isEditableValueEmpty($0, definition: def) }).count

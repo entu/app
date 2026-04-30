@@ -82,6 +82,60 @@ final class APIClient {
         try await performRequest(path, method: "DELETE")
     }
 
+    /// Resolve a file property to a local URL ready for QuickLook. Hits
+    /// `GET /property/{id}` for a 60 s presigned S3 URL, downloads the
+    /// bytes, and writes them to the temp dir under `filename` (falling
+    /// back to the property id when no name is known). Returns `nil` on
+    /// any failure — callers display nothing.
+    func downloadFileForPreview(propertyId: String, filename: String?) async -> URL? {
+        struct FilePropertyResponse: Decodable { let url: String? }
+        guard let response: FilePropertyResponse = try? await get("property/\(propertyId)"),
+              let urlString = response.url,
+              let url = URL(string: urlString),
+              let (data, _) = try? await URLSession.shared.data(from: url) else {
+            return nil
+        }
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent(filename ?? propertyId)
+        guard (try? data.write(to: dest)) != nil else { return nil }
+        return dest
+    }
+
+    /// Stream a file from disk to an S3 presigned URL described by an
+    /// `UploadIntent`. `Content-Length` is stripped — URLSession derives
+    /// it from the file's size, and S3 rejects a duplicate. `onProgress`
+    /// receives 0…1 fractions on the main actor as bytes go up.
+    ///
+    /// Streaming via `upload(for:fromFile:)` keeps memory bounded — works
+    /// for multi-GB uploads where loading into `Data` would crash.
+    nonisolated func uploadFile(
+        intent: UploadIntent,
+        fileURL: URL,
+        onProgress: (@MainActor @Sendable (Double) -> Void)? = nil
+    ) async throws {
+        guard let url = URL(string: intent.url) else { throw APIError.invalidResponse }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = intent.method
+        for (header, value) in intent.headers ?? [:] {
+            if header.lowercased() == "content-length" { continue }
+            request.setValue(value, forHTTPHeaderField: header)
+        }
+
+        let delegate = onProgress.map { UploadProgressDelegate(callback: $0) }
+        let (_, response) = try await URLSession.shared.upload(
+            for: request,
+            fromFile: fileURL,
+            delegate: delegate
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if http.statusCode >= 400 {
+            throw APIError.serverError(http.statusCode, "Upload failed")
+        }
+    }
+
     /// GET using a one-time bearer token instead of the stored token — for the auth callback flow.
     func requestWithToken<T: Decodable>(_ path: String, params: [String: String] = [:], bearerToken: String) async throws -> T {
         try await performRequest(path, method: "GET", params: params, tokenOverride: bearerToken)
@@ -193,5 +247,28 @@ final class APIClient {
         }
 
         return components.url!
+    }
+}
+
+/// `URLSessionTaskDelegate` that forwards `didSendBodyData` ticks as a
+/// 0…1 fraction. Hops to the main actor so the SwiftUI `EditableValue`
+/// can be updated without isolation warnings.
+private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    let callback: @MainActor @Sendable (Double) -> Void
+
+    init(callback: @escaping @MainActor @Sendable (Double) -> Void) {
+        self.callback = callback
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        let fraction = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+        Task { @MainActor in callback(fraction) }
     }
 }

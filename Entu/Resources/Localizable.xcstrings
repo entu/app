@@ -37,13 +37,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New ..."
+            "value": "New …"
           }
         },
         "et": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uus ..."
+            "value": "Uus …"
           }
         }
       }
@@ -53,13 +53,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add ..."
+            "value": "Add …"
           }
         },
         "et": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lisa ..."
+            "value": "Lisa …"
           }
         }
       }
@@ -185,7 +185,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld childs"
+            "value": "%lld children"
           }
         },
         "et": {
@@ -1313,6 +1313,102 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vaatad külalisena"
+          }
+        }
+      }
+    },
+    "uploadFile": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload file"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lae fail üles"
+          }
+        }
+      }
+    },
+    "uploadFiles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload files"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lae failid üles"
+          }
+        }
+      }
+    },
+    "chooseFromPhotos": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose from Photos"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vali fotodest"
+          }
+        }
+      }
+    },
+    "chooseFromFiles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose from Files"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vali failidest"
+          }
+        }
+      }
+    },
+    "uploadFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload failed"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Üleslaadimine ebaõnnestus"
+          }
+        }
+      }
+    },
+    "removeFileConfirmTitle %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove %@?"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eemalda fail %@?"
           }
         }
       }

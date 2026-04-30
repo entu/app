@@ -30,9 +30,15 @@ struct EntityPropertyChange: Encodable {
     /// Increment hint for counter-type properties — server resolves to
     /// the next sequence value. Webapp sends `counter: 1` on Generate.
     var counter: Int?
+    /// File metadata for upload pre-flight. The server replies with a
+    /// presigned S3 PUT in the response's `upload` block; the bytes go
+    /// up in a follow-up request. Mirrors webapp `uploadFile`.
+    var filename: String?
+    var filesize: Int?
+    var filetype: String?
 
     private enum CodingKeys: String, CodingKey {
-        case _id, type, string, number, boolean, reference, date, datetime, language, counter
+        case _id, type, string, number, boolean, reference, date, datetime, language, counter, filename, filesize, filetype
     }
 
     func encode(to encoder: Encoder) throws {
@@ -47,7 +53,18 @@ struct EntityPropertyChange: Encodable {
         try container.encodeIfPresent(datetime, forKey: .datetime)
         try container.encodeIfPresent(language, forKey: .language)
         try container.encodeIfPresent(counter, forKey: .counter)
+        try container.encodeIfPresent(filename, forKey: .filename)
+        try container.encodeIfPresent(filesize, forKey: .filesize)
+        try container.encodeIfPresent(filetype, forKey: .filetype)
     }
+}
+
+/// Presigned S3 PUT block returned alongside a newly-inserted file property.
+/// The client streams the file bytes to `url` using `method` + `headers`.
+struct UploadIntent: Decodable {
+    let method: String
+    let url: String
+    let headers: [String: String]?
 }
 
 /// Response shape from `POST /{db}/entity` and `POST /{db}/entity/{id}`.
@@ -71,4 +88,6 @@ struct UpsertedProperty: Decodable {
     let _id: String?
     let type: String?
     let language: String?
+    /// Set on file-property responses — carries the presigned PUT info.
+    let upload: UploadIntent?
 }

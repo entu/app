@@ -142,7 +142,16 @@ struct EntityTable: View {
             case "date", "datetime":
                 if let str = value?.string { Text(str) }
             case "file":
-                if let filename = value?.filename { Text(filename) }
+                if let filename = value?.filename {
+                    HStack(spacing: 6) {
+                        Text(filename)
+                        if let size = value?.filesize {
+                            Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             case "reference":
                 Text(value?.string ?? value?.reference ?? "")
             default:

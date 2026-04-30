@@ -5,9 +5,9 @@ import SwiftUI
 
 /// Sidebar with menu groups and the current user bar.
 struct SidebarView: View {
-    @Environment(MenuModel.self) private var menu
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
+    @Environment(MenuModel.self) private var menu
 
     @Binding var selectedMenuId: String?
     let openPinnedEntity: (String) -> Void

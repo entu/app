@@ -34,16 +34,16 @@ struct PropertyRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var previewURL: URL?
 
-    // Filter to the user's preferred language for multilingual properties.
+    /// Filter multilingual values to the user's preferred language.
+    /// Priority matches `PropertyValue.best`: in-app language → no language
+    /// → first available. Reads from `AppLanguage.resolvedLanguageCode` so
+    /// the in-app toggle is honoured (not just system locale).
     private var displayValues: [PropertyValue] {
-        let locale = Locale.preferredLanguages.first?.prefix(2).lowercased() ?? "en"
-
-        let localized = values.filter { $0.language == locale }
+        let language = AppLanguage.resolvedLanguageCode
+        let localized = values.filter { $0.language == language }
         if !localized.isEmpty { return localized }
-
         let untagged = values.filter { $0.language == nil }
         if !untagged.isEmpty { return untagged }
-
         return values
     }
 
@@ -160,7 +160,7 @@ struct PropertyRow: View {
     // MARK: - Date and datetime
 
     /// Render a date — parsed from the API's ISO 8601 string, formatted
-    /// client-side against the env locale (matches webapp's
+    /// client-side against the env locale (mirrors webapp's
     /// `d(value.date, 'date')`).
     @ViewBuilder
     private func dateValue(_ value: PropertyValue) -> some View {
@@ -208,17 +208,13 @@ struct PropertyRow: View {
 
     // MARK: - File (QuickLook preview)
 
-    // API response from GET /{db}/property/{propId} — contains a pre-signed S3 URL (60s expiry).
-    private struct FilePropertyResponse: Codable {
-        let url: String?
-    }
-
-    /// Render a file property as a tappable row that downloads and previews via QuickLook.
+    /// File property — tap to download (signed URL via `GET /property/{id}`)
+    /// and preview via QuickLook.
     @ViewBuilder
     private func fileValue(_ value: PropertyValue) -> some View {
         if let propId = value._id {
             Button {
-                Task { await downloadAndPreview(propId: propId, filename: value.filename) }
+                Task { previewURL = await api.downloadFileForPreview(propertyId: propId, filename: value.filename) }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "doc").foregroundStyle(.secondary)
@@ -233,17 +229,5 @@ struct PropertyRow: View {
             }
             .buttonStyle(.plain)
         }
-    }
-
-    // Fetch signed URL from API, download to temp file, show in QuickLook.
-    private func downloadAndPreview(propId: String, filename: String?) async {
-        guard let response: FilePropertyResponse = try? await api.get("property/\(propId)"),
-              let urlString = response.url,
-              let url = URL(string: urlString),
-              let (data, _) = try? await URLSession.shared.data(from: url),
-              let _ = try? data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent(filename ?? propId))
-        else { return }
-
-        previewURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename ?? propId)
     }
 }

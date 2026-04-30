@@ -32,7 +32,7 @@ struct PropertyDefinition: Identifiable {
 
     /// Reference filter — API query string scoping which entities are
     /// valid targets when `type == "reference"`. Set on the property
-    /// definition entity as `reference_query` (matches webapp's
+    /// definition entity as `reference_query` (mirrors webapp's
     /// `entity-type.js` `referenceQuery: getValue(p.reference_query)`).
     let query: String?
 

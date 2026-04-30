@@ -156,7 +156,7 @@ final class MenuModel {
             }
         }
 
-        // Stable alphabetical order per parent — matches webapp's sort.
+        // Stable alphabetical order per parent — mirrors webapp's sort.
         for key in map.keys {
             map[key]?.sort { $0.label.localizedCompare($1.label) == .orderedAscending }
         }

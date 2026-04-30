@@ -1,9 +1,25 @@
 // Type-aware editor row for `EntityEditView`. Each control fires
 // `onCommit` when the user finishes with it (blur for text, value-change
 // for toggles/pickers); the parent maps that to the right API call —
-// see `EntityEditView.commit`. Files render read-only until Phase 7.
+// see `EntityEditView.commit`.
 
 import SwiftUI
+import QuickLook
+#if os(iOS)
+import PhotosUI
+#endif
+import UniformTypeIdentifiers
+
+/// One file picked by the user, ready to be staged on an `EditableValue`
+/// and pushed through the upload commit branch. `url` points to a file the
+/// editor owns — typically a temp copy — so the upload can stream straight
+/// from disk; the parent removes it after the PUT settles.
+struct PickedFile {
+    let filename: String
+    let mimetype: String
+    let url: URL
+    let size: Int
+}
 
 /// Mutable backing store for one editable property value.
 @Observable
@@ -24,6 +40,26 @@ final class EditableValue: Identifiable {
     var referenceId: String?
     var referenceLabel: String?
 
+    /// File staged for upload. The picker writes the bytes to a temp file
+    /// and stores its URL here so the upload can stream from disk via
+    /// `URLSession.upload(for:fromFile:)` without loading the whole file
+    /// into RAM (multi-GB-safe). Cleared after a successful PUT.
+    var pendingFileURL: URL?
+    var pendingFilename: String?
+    var pendingFilesize: Int?
+    var pendingFiletype: String?
+
+    /// `filesize` on a saved file row — drives the byte-count label.
+    var filesize: Int?
+
+    /// Set during the metadata POST + S3 PUT so the editor can render
+    /// a row spinner (indeterminate) or progress bar (determinate).
+    var isUploading: Bool = false
+
+    /// 0…1 fraction during the S3 PUT. Negative while metadata POST is
+    /// in flight (no bytes-sent telemetry available yet).
+    var uploadProgress: Double = -1
+
     init(_id: String? = nil, language: String? = nil) {
         self._id = _id
         self.language = language
@@ -32,6 +68,8 @@ final class EditableValue: Identifiable {
 
 /// Editor row for a single value of a property.
 struct PropertyEditor: View {
+    @Environment(APIClient.self) private var api
+
     let definition: PropertyDefinition
 
     @Bindable var value: EditableValue
@@ -47,8 +85,25 @@ struct PropertyEditor: View {
     /// Fires when the user finishes with this row; parent runs autosave.
     var onCommit: () async -> Void = {}
 
+    /// File-property only — fires after the user picks one or more files.
+    /// Parent appends rows / starts uploads. The editor itself never owns
+    /// the picker dispatch logic.
+    var onFilesPicked: ([PickedFile]) -> Void = { _ in }
+
+    /// File-property only — fires when the trash button on a saved file
+    /// is tapped. Parent runs the `DELETE /property/{id}` call.
+    var onDelete: () async -> Void = {}
+
     @FocusState private var isFocused: Bool
     @State private var showingDescription = false
+
+    /// Local file URL the QuickLook preview displays. Populated lazily
+    /// when the user taps a saved file row.
+    @State private var previewURL: URL?
+
+    /// Drives the confirmation dialog presented when the user taps the
+    /// trash button on a saved file row.
+    @State private var showingDeleteFileConfirm = false
 
     /// Red when mandatory + empty (mirrors webapp's `text-red-700`).
     private var labelColor: Color {
@@ -164,7 +219,7 @@ struct PropertyEditor: View {
         case "date":    dateEditor(showsTime: false)
         case "datetime": dateEditor(showsTime: true)
         case "reference": referenceEditor
-        case "file":    fileSummary
+        case "file":    fileEditor
         case "counter": counterEditor
         default:        stringEditor
         }
@@ -323,21 +378,223 @@ struct PropertyEditor: View {
         }
     }
 
-    // MARK: - Read-only summaries
+    // MARK: - File
 
-    /// Read-only until Phase 7 ships uploads. Empty rows render nothing
-    /// (seedValues skips file properties without an existing value).
+    /// Saved → name + size + delete; uploading → progress bar + name + size;
+    /// empty → upload button.
     @ViewBuilder
-    private var fileSummary: some View {
-        if !value.stringValue.isEmpty {
-            HStack {
-                Image(systemName: "doc")
-                    .foregroundStyle(.secondary)
-                Text(verbatim: value.stringValue)
-                    .foregroundStyle(.secondary)
-            }
+    private var fileEditor: some View {
+        if value._id != nil {
+            savedFileRow
+        } else if value.isUploading {
+            uploadingFileRow
+        } else {
+            uploadButton
         }
     }
+
+    @ViewBuilder
+    private var savedFileRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await downloadAndPreview() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc")
+                        .foregroundStyle(.secondary)
+                    Text(verbatim: value.stringValue)
+                        .foregroundStyle(.tint)
+                    if let size = value.filesize {
+                        Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                showingDeleteFileConfirm = true
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("removeValue")
+        }
+        .quickLookPreview($previewURL)
+        .confirmationDialog(
+            Text("removeFileConfirmTitle \(value.stringValue)"),
+            isPresented: $showingDeleteFileConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("delete", role: .destructive) {
+                Task { await onDelete() }
+            }
+            Button("cancel", role: .cancel) {}
+        }
+    }
+
+    /// Fetch the signed URL via `APIClient.downloadFileForPreview` and
+    /// hand the temp file to QuickLook.
+    private func downloadAndPreview() async {
+        guard let propId = value._id else { return }
+        let filename = value.stringValue.isEmpty ? nil : value.stringValue
+        previewURL = await api.downloadFileForPreview(propertyId: propId, filename: filename)
+    }
+
+    @ViewBuilder
+    private var uploadingFileRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: value.pendingFilename ?? "")
+                    .foregroundStyle(.secondary)
+                if value.uploadProgress >= 0 {
+                    ProgressView(value: value.uploadProgress)
+                        .progressViewStyle(.linear)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                }
+            }
+            if let size = value.pendingFilesize {
+                Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    @State private var showingFileImporter = false
+    #if os(iOS)
+    @State private var photosPickerItems: [PhotosPickerItem] = []
+    @State private var showingPickerChoice = false
+    #endif
+
+    private var uploadButton: some View {
+        uploadButtonContent
+            .dropDestination(for: URL.self) { urls, _ in
+                let accepted = definition.list ? urls : Array(urls.prefix(1))
+                let picks = accepted.compactMap { stageFile(at: $0) }
+                guard !picks.isEmpty else { return false }
+                onFilesPicked(picks)
+                return true
+            }
+    }
+
+    @ViewBuilder
+    private var uploadButtonContent: some View {
+        #if os(iOS)
+        // iOS — choice between Photos and Files. Multi-select when list.
+        Menu {
+            Button {
+                photosPickerItems = []
+                showingPickerChoice = true
+            } label: {
+                Label("chooseFromPhotos", systemImage: "photo")
+            }
+            Button {
+                showingFileImporter = true
+            } label: {
+                Label("chooseFromFiles", systemImage: "folder")
+            }
+        } label: {
+            Label(definition.list ? "uploadFiles" : "uploadFile", systemImage: "arrow.up.circle")
+        }
+        .photosPicker(
+            isPresented: $showingPickerChoice,
+            selection: $photosPickerItems,
+            maxSelectionCount: definition.list ? 0 : 1,
+            matching: .any(of: [.images, .videos])
+        )
+        .onChange(of: photosPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { await loadPhotosPickerItems(items) }
+        }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: definition.list
+        ) { result in
+            handleFileImporter(result)
+        }
+        #else
+        // macOS — only fileImporter; Photos picker isn't available here.
+        Button {
+            showingFileImporter = true
+        } label: {
+            Label(definition.list ? "uploadFiles" : "uploadFile", systemImage: "arrow.up.circle")
+        }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: definition.list
+        ) { result in
+            handleFileImporter(result)
+        }
+        #endif
+    }
+
+    /// Copy each picked URL into the app's temp dir so it survives the
+    /// security-scoped lifetime + lets the upload stream from disk.
+    private func handleFileImporter(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else { return }
+        let picks = urls.compactMap { stageFile(at: $0) }
+        if !picks.isEmpty { onFilesPicked(picks) }
+    }
+
+    /// Copy a security-scoped picker URL into temp and return a `PickedFile`.
+    private func stageFile(at source: URL) -> PickedFile? {
+        let needsAccess = source.startAccessingSecurityScopedResource()
+        defer { if needsAccess { source.stopAccessingSecurityScopedResource() } }
+
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(source.pathExtension)
+        do {
+            try FileManager.default.copyItem(at: source, to: dest)
+        } catch {
+            return nil
+        }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: dest.path)
+        let size = (attrs?[.size] as? Int) ?? 0
+        return PickedFile(
+            filename: source.lastPathComponent,
+            mimetype: source.mimeType(),
+            url: dest,
+            size: size
+        )
+    }
+
+    #if os(iOS)
+    /// Stream PhotosPicker items to temp files (we can't ask Photos for a
+    /// URL, but `loadTransferable` can read in chunks via Data — write each
+    /// chunk straight out so we don't keep the whole file in RAM).
+    private func loadPhotosPickerItems(_ items: [PhotosPickerItem]) async {
+        var picks: [PickedFile] = []
+        for (index, item) in items.enumerated() {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let type = item.supportedContentTypes.first
+            let ext = type?.preferredFilenameExtension ?? "dat"
+            let mime = type?.preferredMIMEType ?? "application/octet-stream"
+            let filename = "photo-\(Int(Date().timeIntervalSince1970))-\(index + 1).\(ext)"
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(ext)
+            do {
+                try data.write(to: dest)
+            } catch { continue }
+            picks.append(PickedFile(filename: filename, mimetype: mime, url: dest, size: data.count))
+        }
+        photosPickerItems = []
+        if !picks.isEmpty { onFilesPicked(picks) }
+    }
+    #endif
 
     /// Current sequence value (read-only) + Generate button. The commit
     /// sends `counter: 1` so the API resolves the next value server-side.
@@ -358,5 +615,17 @@ struct PropertyEditor: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
         }
+    }
+}
+
+private extension URL {
+    /// MIME type from the URL's path extension via `UTType`. Falls back
+    /// to `application/octet-stream` when the extension is unknown.
+    func mimeType() -> String {
+        guard let type = UTType(filenameExtension: pathExtension),
+              let mime = type.preferredMIMEType else {
+            return "application/octet-stream"
+        }
+        return mime
     }
 }

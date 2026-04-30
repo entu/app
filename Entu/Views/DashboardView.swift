@@ -8,8 +8,8 @@ import SwiftUI
 
 /// Dashboard showing database usage statistics with interactive progress bars.
 struct DashboardView: View {
-    @Environment(APIClient.self) private var api
     @Environment(AuthModel.self) private var auth
+    @Environment(APIClient.self) private var api
 
     @State private var stats: DatabaseStats?
     @State private var isLoading = false
