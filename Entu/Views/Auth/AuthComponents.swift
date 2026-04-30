@@ -1,13 +1,9 @@
-// Small reusable building blocks for the auth and database-picker screens.
-// Both `AuthView` and `DatabaseListView` close their scroll content with the
-// same OR divider followed by a "Browse public database" button — these
-// helpers keep that pair in lockstep.
+// Reusable building blocks for the auth and database-picker screens.
 
 import SwiftUI
 
-/// Horizontal "OR" separator: divider · localized "or" · divider.
-/// Sits inside the scroll area between sign-in / database options and the
-/// "Browse public database" button below it.
+/// Divider · localized "or" · divider, used between the auth/database
+/// options and the Browse-public button below them.
 struct OrSeparator: View {
     var body: some View {
         HStack(spacing: 12) {
@@ -20,40 +16,57 @@ struct OrSeparator: View {
     }
 }
 
-/// Provider-style button that opens the public-database entry alert.
-/// Visually identical to `AuthButton` and `SheetRow` so the three flows feel
-/// like one continuous list of options.
+/// 18×18 icon (or spinner when loading) inside a 24-wide cell so labels
+/// align consistently across rows.
+struct AuthRowIcon<Icon: View>: View {
+    let isWorking: Bool
+    @ViewBuilder let icon: () -> Icon
+
+    var body: some View {
+        Group {
+            if isWorking {
+                ProgressView()
+                    #if os(macOS)
+                    .controlSize(.small)
+                    #endif
+            } else {
+                icon()
+            }
+        }
+        .frame(width: 18, height: 18)
+        .frame(width: 24)
+    }
+}
+
+extension View {
+    /// Shared row chrome — padding, quaternary fill, 10pt rounded corners.
+    func authRowStyle() -> some View {
+        self
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.fill.quaternary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Button that opens the public-database entry alert; styled to match
+/// `AuthButton` so the two flows read as one list.
 struct BrowsePublicDatabaseButton: View {
-    /// Drives the in-button spinner while the API probe runs in the
-    /// surrounding `.publicDatabaseEntry(...)` modifier.
+    /// Drives the spinner while the surrounding modifier's API probe runs.
     var isWorking: Bool = false
 
-    /// Tapped to present the public-database entry alert (the
-    /// `.publicDatabaseEntry(isPresented:)` modifier on the parent).
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Group {
-                    if isWorking {
-                        ProgressView()
-                            #if os(macOS)
-                            .controlSize(.small)
-                            #endif
-                    } else {
-                        Image(systemName: "globe")
-                    }
+                AuthRowIcon(isWorking: isWorking) {
+                    Image(systemName: "globe")
                 }
-                .frame(width: 18, height: 18)
-                .frame(width: 24)
                 Text("browsePublicDatabase")
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.fill.quaternary)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .authRowStyle()
         }
         .buttonStyle(.plain)
     }

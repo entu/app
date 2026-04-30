@@ -263,19 +263,7 @@ struct MainView: View {
                     onNavigate: { entityHistory.append($0) },
                     onDelete: { popOrClearPinnedDetail() }
                 )
-                .navigationBarBackButtonHidden(!entityHistory.isEmpty)
-                .toolbar {
-                    if !entityHistory.isEmpty {
-                        ToolbarItem(placement: .navigation) {
-                            Button {
-                                entityHistory.removeLast()
-                            } label: {
-                                Image(systemName: "chevron.left")
-                            }
-                            .accessibilityLabel("back")
-                        }
-                    }
-                }
+                .entityHistoryBack($entityHistory)
             } else {
                 DashboardView()
             }
@@ -303,19 +291,7 @@ struct MainView: View {
                     onNavigate: { entityHistory.append($0) },
                     onDelete: { popOrClearListDetail() }
                 )
-                .navigationBarBackButtonHidden(!entityHistory.isEmpty)
-                .toolbar {
-                    if !entityHistory.isEmpty {
-                        ToolbarItem(placement: .navigation) {
-                            Button {
-                                entityHistory.removeLast()
-                            } label: {
-                                Image(systemName: "chevron.left")
-                            }
-                            .accessibilityLabel("back")
-                        }
-                    }
-                }
+                .entityHistoryBack($entityHistory)
             }
         }
         .environment(menu)
@@ -336,5 +312,35 @@ private struct MenuScopedSearchable: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+extension View {
+    /// While `history` is non-empty, replaces the system back button with
+    /// one that pops the history. When the history empties, the system
+    /// back returns so the user can dismiss the detail column normally.
+    func entityHistoryBack(_ history: Binding<[String]>) -> some View {
+        modifier(EntityHistoryBackModifier(history: history))
+    }
+}
+
+private struct EntityHistoryBackModifier: ViewModifier {
+    @Binding var history: [String]
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarBackButtonHidden(!history.isEmpty)
+            .toolbar {
+                if !history.isEmpty {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            history.removeLast()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel("back")
+                    }
+                }
+            }
     }
 }

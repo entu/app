@@ -1,50 +1,41 @@
-// System alert with a text field for adding a public database by name.
-//
-// Validates the input against the API's database-name rules
-// (lowercase letter prefix, then letters/digits/underscores), probes the API
-// without a token to confirm the database exists and is publicly readable,
-// then registers the database with `AuthModel` and selects it.
-//
-// Use via `.publicDatabaseEntry(isPresented: $flag)` modifier on any view —
-// AuthView, DatabaseListView, and UserSheet all share the same dialog.
+// Alert that adds a public database by name: validates the input,
+// probes the API to confirm it's publicly readable, then registers and
+// selects it via `AuthModel`. Used from AuthView, DatabaseListView, and
+// UserSheet via the `.publicDatabaseEntry(...)` modifier.
 
 import SwiftUI
 
 extension View {
-    /// Attach the "Browse public database" prompt + result alert to this view.
-    /// `isSubmitting`, when supplied, is driven `true` while the API probe is
-    /// in flight so the parent's button can render a spinner.
+    /// Attach the public-database entry prompt + result alert to this view.
+    /// Pass `isSubmitting` to drive a spinner on the parent's button while
+    /// the API probe runs; defaults to `.constant(false)` for callers that
+    /// don't need the state.
     func publicDatabaseEntry(
         isPresented: Binding<Bool>,
         isSubmitting: Binding<Bool> = .constant(false)
     ) -> some View {
         modifier(PublicDatabaseEntryModifier(
             isPresented: isPresented,
-            externalIsSubmitting: isSubmitting
+            isSubmitting: isSubmitting
         ))
     }
 }
 
-/// Matches `formatDatabaseName()` in api/utils/mongodb.js — must start with
-/// a lowercase letter and contain only `[a-z0-9_]`. Computed each access
-/// because `Regex` isn't `Sendable` and can't be stored in a top-level `let`
-/// under Swift 6 strict concurrency.
+/// Matches `formatDatabaseName()` in `api/utils/mongodb.js`. Computed each
+/// access because `Regex` isn't `Sendable` under Swift 6 strict concurrency.
 private var publicDatabaseNameRegex: Regex<Substring> { /^[a-z][a-z0-9_]*$/ }
 
 private struct PublicDatabaseEntryModifier: ViewModifier {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
 
-    /// Re-apply the in-app language to the alert content. Alerts present
-    /// at scene root and don't always inherit the parent's `\.locale`.
+    /// Re-apply the in-app language — system alerts don't always inherit
+    /// the parent's `\.locale`.
     @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
 
     @Binding var isPresented: Bool
-    @Binding var externalIsSubmitting: Bool
+    @Binding var isSubmitting: Bool
     @State private var input: String = ""
-    @State private var isSubmitting = false {
-        didSet { externalIsSubmitting = isSubmitting }
-    }
     @State private var error: LocalizedStringKey?
 
     func body(content: Content) -> some View {

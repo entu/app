@@ -1,41 +1,24 @@
-// Sheet that hosts the create/edit form for a single entity, with the
-// webapp's **autosave-on-blur** model — there is no Save button.
+// Create/edit sheet for a single entity using the webapp's autosave-on-blur
+// model — no Save button. Each editor commits the moment the user finishes
+// touching it; the commit branches on `currentEntityId` and the value's
+// existing `_id`:
 //
-// Each editor commits its own value the moment the user finishes typing
-// (TextField loses focus) or changes a control (Toggle / DatePicker / the
-// reference picker's onSelect). The commit decides which API call to make
-// based on `currentEntityId` and the value's existing `_id`:
+//   currentEntityId | value._id | present? | call
+//   ----------------------------------------------------------------
+//   nil             | nil       | yes      | POST /entity              (create)
+//   id              | nil       | yes      | POST /entity/{id}         (add value)
+//   id              | _id       | yes      | POST /entity/{id}         (edit value)
+//   id              | _id       | no/empty | DELETE /property/{_id}    (remove value)
 //
-//   currentEntityId | value._id    | value present? | call
-//   ------------------------------------------------------------------
-//   nil             | nil          | yes            | POST /entity        (creates the entity, response id stored)
-//   id              | nil          | yes            | POST /entity/{id}   (adds a new value)
-//   id              | _id          | yes            | POST /entity/{id}   (edits the existing value)
-//   id              | _id          | no/empty       | DELETE /property/{_id} (removes the value)
-//   anything else                                   | no-op
-//
-// Mirrors `components/property/edit.vue::updateValue` in the webapp.
-//
-// Modes:
-//   .edit(entityId)
-//     — load the entity, render values for editing.
-//   .create(parentId, typeId, typeLabel)
-//     — start blank. The very first commit promotes the form into edit
-//       mode by setting `currentEntityId` from the create response; from
-//       that point every subsequent field is an update on the new entity.
-//
-// Whole-entity delete lives in the bottom toolbar (iOS) / a Form footer
-// section (macOS) and is enabled in edit mode + owner rights only.
+// Mirrors `components/property/edit.vue::updateValue`. In create mode the
+// first commit promotes the sheet into edit mode by storing the response id.
+// Whole-entity delete sits in `.destructiveAction` (mirrors `UserSheet`).
 
 import SwiftUI
 
-/// Distinguishes the edit vs create entry points for `EntityEditView`.
-/// `Hashable + Identifiable` so it can drive `.sheet(item:)` / navigation.
-///
-/// `typeLabel` lets the sheet build a webapp-parity navigation title
-/// ("Add new person" / "Edit person" / "Add person as a new child")
-/// without re-fetching the type entity. Callers already have the label
-/// from `AddFromType.label` (create) or `EntityDetail.typeName` (edit).
+/// Edit vs create entry points for `EntityEditView`. `Hashable +
+/// Identifiable` so it can drive `.sheet(item:)`. `typeLabel` lets the
+/// sheet build the navigation title without re-fetching the type entity.
 enum EntityEditMode: Hashable, Identifiable {
     case edit(entityId: String)
     case create(parentId: String?, typeId: String, typeLabel: String)
@@ -73,15 +56,11 @@ struct EntityEditView: View {
     @State private var definitions: [PropertyDefinition] = []
     @State private var values: [String: [EditableValue]] = [:]
 
-    /// The id we're currently editing. Set up-front for edit mode; for
-    /// create mode it stays nil until the first field commits, then the
-    /// upsert response populates it. Every later commit goes through the
-    /// `addValue` / `editValue` branch.
+    /// Set up-front in edit mode; in create mode populated by the first
+    /// commit's upsert response, after which we're effectively in edit mode.
     @State private var currentEntityId: String?
 
-    /// Type id we're editing. Mirrors `currentEntityId` — set up-front for
-    /// edit mode (resolved from the loaded entity) or for create mode
-    /// (taken from the EntityEditMode payload).
+    /// Set up-front from the loaded entity (edit) or the mode payload (create).
     @State private var currentTypeId: String?
 
     @State private var isLoading = true
@@ -90,20 +69,15 @@ struct EntityEditView: View {
     @State private var commitError: String?
     @State private var showingDeleteConfirm = false
 
-    /// Serializes commit operations so two editors blurring near-
-    /// simultaneously can't both fire `createEntity` (or step on each
-    /// other's `currentEntityId` / row `_id` updates). Each `commit`
-    /// awaits the previous task before running its own work.
+    /// Serializes commits — two near-simultaneous blurs can't both fire
+    /// `createEntity` or race on `currentEntityId` updates.
     @State private var commitChain: Task<Void, Never>?
 
     var body: some View {
         Group {
             if isLoading {
-                // Reserve a tall placeholder area while the entity loads so
-                // the auto-sizing form sheet (iPad / macOS) doesn't open
-                // tiny around the spinner and then jump to full height once
-                // the form renders. iPhone already uses a `.large` detent
-                // so the height is fixed regardless.
+                // Reserve height so the auto-sizing form sheet (iPad/macOS)
+                // doesn't jump from spinner-sized to form-sized on load.
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 400)
@@ -160,11 +134,8 @@ struct EntityEditView: View {
         .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
     }
 
-    /// Sheet title — mirrors webapp's `components/entity/drawer/edit.vue`:
-    ///   parentId set       → `titleChild` "Add {type} as a new child"
-    ///   typeId only        → `titleAdd`   "Add new {type}"
-    ///   editing existing   → `titleEdit`  "Edit {type}"
-    /// `{type}` is the type entity's label, lowercased.
+    /// Sheet title — mirrors `components/entity/drawer/edit.vue`:
+    /// `titleChild` (with parent), `titleAdd` (create), `titleEdit` (edit).
     private var navigationTitle: Text {
         switch mode {
         case .edit:
@@ -183,10 +154,8 @@ struct EntityEditView: View {
 
     // MARK: - Form body
 
-    /// `.formStyle(.grouped)` — system grouped sections with rounded
-    /// backgrounds and consistent margins on every platform. The OS
-    /// handles row layout, label alignment, and content positioning;
-    /// PropertyEditor uses `LabeledContent` the way the system intends.
+    /// `.formStyle(.grouped)` — rounded grouped sections on every platform.
+    /// Each row is laid out by `PropertyEditor`.
     private var formBody: some View {
         Form {
             ForEach(orderedGroups, id: \.id) { group in
@@ -200,20 +169,17 @@ struct EntityEditView: View {
                     }
                 }
             }
-
         }
         .formStyle(.grouped)
     }
 
-    /// Show the destructive Delete affordance only when editing an existing
-    /// entity AND the active user has owner rights.
+    /// Visible only in edit mode + owner rights.
     private var showsDelete: Bool {
         guard currentEntityId != nil, let entity else { return false }
         return entity.rights(for: auth.currentUserId).owner
     }
 
-    /// Title for the Delete confirmation dialog. Matches the webapp's
-    /// "Delete entity" / "Kustuta objekt" — no entity-name interpolation.
+    /// Matches webapp's "Delete entity" / "Kustuta objekt".
     private var deleteConfirmTitle: String {
         String(localized: "deleteEntityConfirmTitle", bundle: .currentLocalized)
     }

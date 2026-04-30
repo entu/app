@@ -161,7 +161,7 @@ struct EntityListView: View {
     /// Fetch the first page of entities from the API.
     private func loadEntities() async {
         isLoading = true
-        var params = parseQuery(query)
+        var params = query.parseURLQuery()
         params["props"] = "_thumbnail,name"
         params["limit"] = String(pageSize)
         params["skip"] = "0"
@@ -177,7 +177,7 @@ struct EntityListView: View {
     /// Fetch the next page of entities (infinite scroll).
     private func loadMore() async {
         isLoadingMore = true
-        var params = parseQuery(query)
+        var params = query.parseURLQuery()
         params["props"] = "_thumbnail,name"
         params["limit"] = String(pageSize)
         params["skip"] = String(items.count)
@@ -188,17 +188,5 @@ struct EntityListView: View {
             totalCount = response.count ?? totalCount
         }
         isLoadingMore = false
-    }
-
-    // MARK: - Search + pagination
-
-    /// Convert a "key1=val1&key2=val2" URL query string to a dictionary.
-    private func parseQuery(_ query: String) -> [String: String] {
-        var params: [String: String] = [:]
-        for part in query.split(separator: "&") {
-            let kv = part.split(separator: "=", maxSplits: 1)
-            if kv.count == 2 { params[String(kv[0])] = String(kv[1]) }
-        }
-        return params
     }
 }

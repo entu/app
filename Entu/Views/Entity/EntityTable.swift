@@ -123,7 +123,7 @@ struct EntityTable: View {
     @ViewBuilder
     private func cellContent(entity: EntitySummary, column: EntityTableColumn) -> some View {
         let values = column.name == "name" ? entity.name : entity.additionalProperties?[column.name]
-        let value = localizedValue(values)
+        let value = PropertyValue.best(values)
 
         Group {
             switch column.type {
@@ -200,15 +200,6 @@ struct EntityTable: View {
     }
 
     // MARK: - Helpers
-
-    private func localizedValue(_ values: [PropertyValue]?) -> PropertyValue? {
-        guard let values, !values.isEmpty else { return nil }
-        let locale = Locale.preferredLanguages.first?.prefix(2).lowercased() ?? "en"
-
-        return values.first { $0.language == locale }
-            ?? values.first { $0.language == nil }
-            ?? values.first
-    }
 
     private func columnAlignment(_ column: EntityTableColumn) -> Alignment {
         switch column.type {

@@ -138,7 +138,7 @@ struct ReferencePickerView: View {
         // start from the property definition's `query` (when present),
         // then layer on `q`, the props projection (`_type.string` +
         // `name` only), `sort`, and `limit`.
-        var params = parseQuery(query)
+        var params = (query ?? "").parseURLQuery()
         if !searchText.isEmpty {
             params["q"] = searchText
         }
@@ -160,19 +160,5 @@ struct ReferencePickerView: View {
             )
         }
         totalCount = response.count
-    }
-
-    /// Decode a `key=value&key2=value2` query string into the params dict.
-    /// Mirrors the webapp's `queryStringToObject`.
-    private func parseQuery(_ raw: String?) -> [String: String] {
-        guard let raw, !raw.isEmpty else { return [:] }
-        var components = URLComponents()
-        components.query = raw
-        var dict: [String: String] = [:]
-        for item in components.queryItems ?? [] {
-            guard let value = item.value else { continue }
-            dict[item.name] = value
-        }
-        return dict
     }
 }

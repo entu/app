@@ -1,26 +1,16 @@
-// Rights-gated action toolbar for `EntityDetailView`.
+// Rights-gated toolbar for `EntityDetailView`. Buttons hide when the
+// active user lacks the required right (and entirely in public mode,
+// where `currentUserId` is nil and every right is false).
 //
-// Renders Edit / Add child buttons, each visible only when the active user
-// holds the required right on this entity. In a public-database session
-// there is no current user, so both buttons hide automatically via
-// `EntityRights`. Whole-entity Delete lives inside `EntityEditView`'s
-// destructive footer instead of the toolbar — keeps the destructive
-// affordance close to the form-level edit context (Apple Mail / Calendar
-// pattern).
-//
-// Edit and Add child open `EntityEditView` as a `.sheet` — the
-// canonical Apple Human Interface Guidelines presentation for a
-// self-contained data-entry task. Cancel + Save sit in the sheet's
-// navigation bar; the sheet uses the `.large` detent on iPhone and
-// auto-sizes as a form sheet on iPad / macOS.
-//
-// Phase 8 will add Duplicate / Parents / Rights / History buttons here.
+// Edit and Add child open `EntityEditView` as a sheet — the sheet
+// autosaves on blur and owns its own Delete button, so this toolbar has
+// no Delete. Phase 8 placeholders render disabled and collapse into the
+// system "..." menu on iPhone via `phase8Placement`.
 
 import SwiftUI
 
-/// Toolbar content with edit / add / delete actions for the entity detail view.
-/// Edit and Add push `EntityEditView` onto the navigation stack via the
-/// `editMode` binding; Delete fires the host's confirmation dialog.
+/// Edit / Add buttons that open `EntityEditView` via the `editMode` binding,
+/// plus disabled Phase 8 placeholders.
 private struct EntityToolbar: ToolbarContent {
     @Environment(AuthModel.self) private var auth
     @Environment(MenuModel.self) private var menu
@@ -32,10 +22,8 @@ private struct EntityToolbar: ToolbarContent {
     let menuId: String?
     @Binding var editMode: EntityEditMode?
 
-    /// Placement for the Phase 8 placeholder buttons. On compact widths
-    /// (iPhone) `.secondaryAction` collapses them into the system "..."
-    /// overflow menu; on regular widths (iPad / macOS) we keep them
-    /// inline alongside the primary actions to match the webapp toolbar.
+    /// Compact (iPhone) → `.secondaryAction` collapses into the "..." menu;
+    /// regular (iPad / macOS) → `.primaryAction` keeps them inline.
     private var phase8Placement: ToolbarItemPlacement {
         #if os(iOS)
         horizontalSizeClass == .compact ? .secondaryAction : .primaryAction
@@ -49,18 +37,15 @@ private struct EntityToolbar: ToolbarContent {
     }
 
     /// Types that can be added at the top of the active menu — same data
-    /// as the list-column toolbar's Add. Surfaced here so the menu-level
-    /// Add stays accessible while an entity is open in detail.
+    /// the list-column toolbar's Add uses, surfaced here too.
     private var menuLevelAddTypes: [AddFromType] {
         guard let menuId else { return [] }
         return menu.addFromTypes[menuId] ?? []
     }
 
     /// Types that can be added under this entity. Mirrors webapp's
-    /// `addChildOptions`: prefer `addFromTypes[entity._id]` (skip when this
-    /// entity is itself a meta-type — `entity` or `menu` — webapp's
-    /// exclusion rule), fall back to `addFromTypes[entity.typeId]`. Empty
-    /// means no add-child affordance is rendered.
+    /// `addChildOptions`: prefer `addFromTypes[entity._id]`, skipping the
+    /// `entity`/`menu` meta-types, then fall back to the type's allow-list.
     private var addChildTypes: [AddFromType] {
         let typeName = entity.typeName?.lowercased() ?? ""
         let isMetaType = typeName == "entity" || typeName == "menu"
@@ -76,16 +61,9 @@ private struct EntityToolbar: ToolbarContent {
     }
 
     var body: some ToolbarContent {
-        // Mirrors the webapp's `entity/toolbar.vue` grouping (three
-        // `n-button-group`s in the entity-actions area):
-        //   1. Menu-level Add (standalone)
-        //   2. Add child           (own group)
-        //   3. Edit, Duplicate, Parents, Rights (one group)
-        //   4. History             (own group)
-        // `ToolbarSpacer(.fixed, ...)` (iOS 26 / macOS 26) inserts the
-        // explicit gaps between groups so they don't auto-merge into a
-        // single pill on macOS. Phase 6 implements Add child + Edit;
-        // the rest render disabled until Phase 8.
+        // Order mirrors webapp's `entity/toolbar.vue`. `ToolbarSpacer(.fixed)`
+        // keeps the groups visually distinct on macOS — without it they merge
+        // into one pill.
         ToolbarItem(placement: .primaryAction) {
             menuLevelAddButton
         }
@@ -97,9 +75,6 @@ private struct EntityToolbar: ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             editButton
         }
-        // Phase 8 placeholders — placement flips between `.primaryAction`
-        // (iPad / macOS — inline) and `.secondaryAction` (iPhone — system
-        // "..." overflow menu) based on horizontal size class.
         ToolbarItemGroup(placement: phase8Placement) {
             duplicateButton
             parentsButton
@@ -108,15 +83,12 @@ private struct EntityToolbar: ToolbarContent {
         }
     }
 
-    // MARK: - Buttons (returned as opaque `some View` so each ToolbarItem
-    // contains exactly one item — empty `EmptyView` when not applicable).
+    // MARK: - Buttons
 
     @ViewBuilder
     private var menuLevelAddButton: some View {
-        // Creating a top-level entity in the active menu requires write
-        // access — gate on the authenticated user. In public-database mode
-        // `currentUserId` is nil and the API would reject the POST anyway,
-        // so hide the affordance to match webapp's `entity/toolbar.vue`.
+        // Hidden in public-database mode (currentUserId == nil) — the API
+        // would reject the POST anyway.
         if auth.currentUserId != nil && !menuLevelAddTypes.isEmpty {
             if menuLevelAddTypes.count == 1, let only = menuLevelAddTypes.first {
                 Button {
@@ -180,12 +152,7 @@ private struct EntityToolbar: ToolbarContent {
         }
     }
 
-    // MARK: - Phase 8 placeholders
-    //
-    // The four buttons below mirror webapp's `entity/toolbar.vue` order
-    // and rights checks. They're rendered but disabled until Phase 8
-    // wires them up to their drawers / endpoints. Keeping them visible
-    // matches the webapp's UI and gives a hint of upcoming features.
+    // MARK: - Phase 8 placeholders (rendered disabled until the drawers ship)
 
     @ViewBuilder
     private var duplicateButton: some View {
@@ -236,11 +203,9 @@ private struct EntityToolbar: ToolbarContent {
     }
 }
 
-/// Wrapper that owns the sheet/dialog state and applies it around the
-/// entity detail view. `EntityDetailView` adds `.entityToolbarHost(...)`.
 extension View {
-    /// Attach edit/add/delete sheets and the destructive confirmation
-    /// dialog. The `EntityToolbar` `ToolbarContent` reads the same bindings.
+    /// Attach the entity toolbar plus its edit/create sheet and confirmation
+    /// dialogs. Used by `EntityDetailView`.
     func entityToolbarHost(
         entity: EntityDetail,
         menuId: String? = nil,
@@ -269,15 +234,9 @@ private struct EntityToolbarHost: ViewModifier {
 
     @State private var editMode: EntityEditMode?
 
-    /// Tracks whether the current sheet session committed at least one
-    /// change. Reflects out to the parent via `onEdited` / `onCreated`
-    /// only when the sheet dismisses — calling them mid-session would
-    /// trigger a refetch that drops the `entityToolbarHost` modifier
-    /// (because the host's `if let entity { ... }` branch goes false
-    /// during `isLoading`), which in turn dismisses the very sheet the
-    /// user is still typing into. The local upsert response already
-    /// updates the in-sheet `entity` cache, so the parent's read view
-    /// can wait until close to refresh.
+    /// Buffered until sheet dismiss: firing `onEdited`/`onCreated` mid-session
+    /// would refetch the parent entity, drop the host modifier, and dismiss
+    /// the sheet the user is still typing into.
     @State private var pendingCreatedId: String?
     @State private var didEditExisting = false
 

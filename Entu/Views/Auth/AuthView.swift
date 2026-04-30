@@ -42,11 +42,9 @@ struct AuthView: View {
 
             // MARK: - Provider buttons + browse public
 
-            // Provider buttons grouped by type. The "Browse public database"
-            // button lives inside the same ScrollView so it stays visually
-            // tied to the provider list and doesn't get pushed to the bottom
-            // edge on compact iPhone layouts. Gradient mask fades the top/
-            // bottom edges of the scroll area.
+            // Provider list + Browse-public live in one ScrollView so they
+            // stay grouped on tight iPhone layouts; gradient mask fades the
+            // scroll edges.
             ScrollView {
                 VStack(spacing: 0) {
                     VStack(spacing: 36) {
@@ -103,17 +101,8 @@ struct AuthView: View {
             isSubmitting: $isProbingPublicDatabase
         )
         .onAppear {
-            // Clear any leftover pending session — e.g. a previous attempt
-            // where SFAuthenticationViewController deallocated without firing
-            // its completion handler. Without this, the next tap would race
-            // with the stale continuation.
+            // Reset any stuck session left over from a prior attempt.
             authService.cancelPending()
-
-            // Force the system's ASWebAuthenticationSession subsystem to warm
-            // up now, while the user is still reading the screen, instead of
-            // on the first provider tap (which otherwise stalls 10–15 s on
-            // real devices the first time per app launch).
-            authService.warmUpWebAuth()
         }
     }
 
@@ -138,9 +127,8 @@ struct AuthView: View {
     }
 }
 
-// MARK: - AuthButton
-
-// Styled button for a single auth provider row.
+/// Single auth-provider row with its own spinner state — a slow provider
+/// can't gate the others.
 private struct AuthButton: View {
     let provider: AuthProvider
     let action: () async -> Void
@@ -157,27 +145,17 @@ private struct AuthButton: View {
             }
         } label: {
             HStack(spacing: 12) {
-                Group {
-                    if isWorking {
-                        ProgressView()
-                            #if os(macOS)
-                            .controlSize(.small)
-                            #endif
-                    } else if provider.icon.hasPrefix("sf:") {
+                AuthRowIcon(isWorking: isWorking) {
+                    if provider.icon.hasPrefix("sf:") {
                         Image(systemName: String(provider.icon.dropFirst(3)))
                     } else {
                         Image(provider.icon).resizable().scaledToFit()
                     }
                 }
-                .frame(width: 18, height: 18)
-                .frame(width: 24)
                 Text(provider.label)
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.fill.quaternary)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .authRowStyle()
         }
         .buttonStyle(.plain)
     }
