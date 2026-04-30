@@ -97,10 +97,10 @@ struct ReferencePickerView: View {
         .searchable(
             text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: Text("searchPlaceholder")
+            prompt: Text("search")
         )
         #else
-        .searchable(text: $searchText, prompt: Text("searchPlaceholder"))
+        .searchable(text: $searchText, prompt: Text("search"))
         #endif
         .onChange(of: searchText) { _, _ in
             scheduleSearch()
