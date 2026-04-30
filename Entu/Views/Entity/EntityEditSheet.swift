@@ -195,7 +195,7 @@ struct EntityEditView: View {
             PropertyEditor(
                 definition: def,
                 value: row,
-                showsLabel: !def.list || index == 0,
+                showsLabel: !(def.list || def.multilingual) || index == 0,
                 valueCount: rows.filter { $0._id != nil }.count,
                 onCommit: { await commit(propertyName: def.name, value: row) },
                 onFilesPicked: { picks in handleFilesPicked(propertyName: def.name, hostRow: row, picks: picks) },
@@ -294,6 +294,10 @@ struct EntityEditView: View {
         for def in definitions where !def.hidden && def.formula == nil && !def.readonly {
             if case .edit = mode, let existing = entity?.properties[def.name], !existing.isEmpty {
                 seeded[def.name] = existing.map { rowFromExisting($0, definition: def) }
+            } else if def.multilingual {
+                // Multilingual: leave empty so `manageEmptyFields` adds one
+                // empty row per language (with the language pre-tagged).
+                seeded[def.name] = []
             } else {
                 seeded[def.name] = [defaultRow(for: def)]
             }
@@ -327,8 +331,8 @@ struct EntityEditView: View {
         return row
     }
 
-    private func defaultRow(for definition: PropertyDefinition) -> EditableValue {
-        let row = EditableValue()
+    private func defaultRow(for definition: PropertyDefinition, language: String? = nil) -> EditableValue {
+        let row = EditableValue(language: language)
         if let raw = definition.default, !raw.isEmpty {
             switch definition.type {
             case "boolean": row.boolValue = raw == "true" || raw == "1"
@@ -338,6 +342,10 @@ struct EntityEditView: View {
         }
         return row
     }
+
+    /// Languages supported for multilingual properties. Keep in sync with
+    /// the webapp's `languageOptions` in `components/property/edit.vue`.
+    private static let multilingualLanguages = ["en", "et"]
 
     // MARK: - Per-value commit (autosave)
 
@@ -371,13 +379,18 @@ struct EntityEditView: View {
 
         let isEmpty = isEditableValueEmpty(value, definition: def)
 
-        // No-op when there's nothing to send and no existing value to delete.
-        if isEmpty && value._id == nil { return }
+        // Empty unsaved row: nothing to send, but rebalance trailing empties
+        // so a language flip on a multilingual empty row redraws correctly.
+        if isEmpty && value._id == nil {
+            manageEmptyFields(for: def)
+            return
+        }
 
         // No-op when an existing value was edited but didn't actually change.
         if let _id = value._id,
            let existing = entity?.properties[propertyName]?.first(where: { $0._id == _id }),
-           valueMatchesExisting(value, existing: existing, type: def.type) {
+           valueMatchesExisting(value, existing: existing, type: def.type),
+           value.language == existing.language {
             return
         }
 
@@ -826,8 +839,9 @@ struct EntityEditView: View {
     /// pressing a "+" button each time.
     ///   non-list, non-multilingual : one empty row only when no values
     ///   list                       : two empty rows trailing
-    ///   multilingual               : per-language tracking — TODO once
-    ///                                multilingual editing lands
+    ///   multilingual               : one empty row per language;
+    ///                                non-list also drops the empty when
+    ///                                a saved value exists for that language
     private func manageEmptyFields(for def: PropertyDefinition) {
         guard !def.readonly, def.formula == nil else { return }
         var rows = values[def.name] ?? []
@@ -843,6 +857,43 @@ struct EntityEditView: View {
                 rows = occupied
             }
             values[def.name] = rows
+            return
+        }
+
+        // Multilingual: per-language tracking. For each language, decide
+        // whether to add/keep/drop a single trailing empty row. Saved values
+        // without a language tag (legacy data on a now-multilingual property)
+        // are folded into the first language so they don't double up with
+        // an extra empty row for that language.
+        if def.multilingual {
+            let firstLang = Self.multilingualLanguages.first ?? "en"
+            let untaggedSaved = rows.filter {
+                $0._id != nil && !Self.multilingualLanguages.contains($0.language ?? "")
+            }
+            var rebuilt: [EditableValue] = []
+            for lang in Self.multilingualLanguages {
+                var saved = rows.filter { $0._id != nil && $0.language == lang }
+                if lang == firstLang { saved.append(contentsOf: untaggedSaved) }
+                let nonEmptyUnsaved = rows.filter {
+                    $0._id == nil && $0.language == lang && !isEditableValueEmpty($0, definition: def)
+                }
+                let empty = rows.filter {
+                    $0._id == nil && $0.language == lang && isEditableValueEmpty($0, definition: def)
+                }
+
+                rebuilt.append(contentsOf: saved)
+                rebuilt.append(contentsOf: nonEmptyUnsaved)
+
+                let needsEmpty = def.list ? true : saved.isEmpty
+                if needsEmpty {
+                    if let first = empty.first {
+                        rebuilt.append(first)
+                    } else {
+                        rebuilt.append(defaultRow(for: def, language: lang))
+                    }
+                }
+            }
+            values[def.name] = rebuilt
             return
         }
 

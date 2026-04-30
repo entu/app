@@ -61,10 +61,47 @@ struct EntityPropertyChange: Encodable {
 
 /// Presigned S3 PUT block returned alongside a newly-inserted file property.
 /// The client streams the file bytes to `url` using `method` + `headers`.
+///
+/// Header values are coerced from JSON `String` *or* `Number` — the API
+/// sends `Content-Length` as a number, but URLRequest header values must
+/// be strings, so we stringify any numeric values on decode.
 struct UploadIntent: Decodable {
     let method: String
     let url: String
     let headers: [String: String]?
+
+    private enum CodingKeys: String, CodingKey {
+        case method, url, headers
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        method = try container.decode(String.self, forKey: .method)
+        url = try container.decode(String.self, forKey: .url)
+        if let headersContainer = try? container.nestedContainer(keyedBy: HeaderKey.self, forKey: .headers) {
+            var dict: [String: String] = [:]
+            for key in headersContainer.allKeys {
+                if let s = try? headersContainer.decode(String.self, forKey: key) {
+                    dict[key.stringValue] = s
+                } else if let i = try? headersContainer.decode(Int.self, forKey: key) {
+                    dict[key.stringValue] = String(i)
+                } else if let d = try? headersContainer.decode(Double.self, forKey: key) {
+                    dict[key.stringValue] = String(d)
+                }
+            }
+            headers = dict
+        } else {
+            headers = nil
+        }
+    }
+
+    /// Dynamic-key container for the header dictionary.
+    private struct HeaderKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
 }
 
 /// Response shape from `POST /{db}/entity` and `POST /{db}/entity/{id}`.

@@ -150,11 +150,21 @@ struct PropertyEditor: View {
         let isTallContent = definition.type == "text" || definition.type == "file"
         let rowAlignment: VerticalAlignment = isTallContent ? .top : .center
         HStack(alignment: rowAlignment, spacing: 12) {
-            Group {
-                if showsLabel {
-                    labelView
-                } else {
-                    Color.clear
+            // 160pt left column. For multilingual rows the language picker
+            // shares this column with the label so the value column starts
+            // at the same leading edge across all rows in the form.
+            HStack(spacing: 8) {
+                Group {
+                    if showsLabel {
+                        labelView
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: isTallContent ? .topLeading : .leading)
+
+                if definition.multilingual {
+                    languagePicker
                 }
             }
             .frame(width: 160, alignment: isTallContent ? .topLeading : .leading)
@@ -163,6 +173,28 @@ struct PropertyEditor: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .disabled(definition.readonly || definition.formula != nil)
+    }
+
+    /// Per-row EN/ET selector for multilingual properties. Mirrors webapp's
+    /// `<n-select v-if="isMultilingual">` in `property/edit.vue`. Changing
+    /// the language fires `onCommit` — for saved rows that re-saves with
+    /// the new tag; for empty unsaved rows the parent's `manageEmptyFields`
+    /// rebalances per-language empty rows.
+    private var languagePicker: some View {
+        Picker("", selection: Binding(
+            get: { value.language ?? "en" },
+            set: { newLang in
+                guard newLang != value.language else { return }
+                value.language = newLang
+                Task { await onCommit() }
+            }
+        )) {
+            Text(verbatim: "EN").tag("en")
+            Text(verbatim: "ET").tag("et")
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: 60)
     }
 
     /// Bold property label + info-icon popover when a description exists.

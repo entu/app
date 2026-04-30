@@ -275,6 +275,11 @@ private struct EntityToolbarHost: ViewModifier {
                             onDelete?()
                         }
                     )
+                    // Form sheet auto-sizes to content; pin a wider minimum
+                    // on iPad / macOS so two-column property rows don't
+                    // squeeze. iPhone uses `.large` detent (full width)
+                    // and the frame is harmless there.
+                    .frame(minWidth: 640, minHeight: 600)
                 }
                 .presentationDetents([.large])
             }
