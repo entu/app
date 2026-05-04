@@ -63,6 +63,11 @@ struct EntityEditView: View {
     /// Set up-front from the loaded entity (edit) or the mode payload (create).
     @State private var currentTypeId: String?
 
+    /// Type entity's `description` property, localized to the active language.
+    /// Rendered as markdown above the form (mirrors webapp's
+    /// `entity.type.description` block in `entity/drawer/edit.vue`).
+    @State private var typeDescription: String?
+
     @State private var isLoading = true
     @State private var isDeleting = false
     @State private var loadError: String?
@@ -154,23 +159,40 @@ struct EntityEditView: View {
 
     // MARK: - Form body
 
-    /// `.formStyle(.grouped)` — rounded grouped sections on every platform.
-    /// Each row is laid out by `PropertyEditor`.
+    /// Type description renders as plain markdown above the form (mirrors
+    /// webapp's `text-gray-500` paragraph). Form rows below use the system
+    /// grouped style for rounded sections per group.
     private var formBody: some View {
-        Form {
-            ForEach(orderedGroups, id: \.id) { group in
-                Section {
-                    ForEach(group.definitions, id: \._id) { def in
-                        propertyRows(for: def)
+        VStack(alignment: .leading, spacing: 0) {
+            if let typeDescription, !typeDescription.isEmpty {
+                Group {
+                    if let attributed = try? AttributedString(markdown: typeDescription) {
+                        Text(attributed)
+                    } else {
+                        Text(verbatim: typeDescription)
                     }
-                } header: {
-                    if let name = group.name {
-                        Text(verbatim: name)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+            }
+
+            Form {
+                ForEach(orderedGroups, id: \.id) { group in
+                    Section {
+                        ForEach(group.definitions, id: \._id) { def in
+                            propertyRows(for: def)
+                        }
+                    } header: {
+                        if let name = group.name {
+                            Text(verbatim: name)
+                        }
                     }
                 }
             }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
     }
 
     /// Visible only in edit mode + owner rights.
@@ -268,10 +290,23 @@ struct EntityEditView: View {
 
         if let typeId {
             definitions = await fetchDefinitions(typeId: typeId)
+            typeDescription = await fetchTypeDescription(typeId: typeId)
         }
 
         seedValues()
         isLoading = false
+    }
+
+    /// Fetch the type entity's `description` property and localize it.
+    /// Returns nil when the type has no description.
+    private func fetchTypeDescription(typeId: String) async -> String? {
+        let params = ["props": "description"]
+        guard let response: EntityDetailResponse = try? await api.get("entity/\(typeId)", params: params),
+              let descriptions = response.entity?.properties["description"] else {
+            return nil
+        }
+        let text = PropertyValue.localized(descriptions)
+        return (text?.isEmpty == false) ? text : nil
     }
 
     /// Fetch property definitions for the entity type — same query as
