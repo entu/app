@@ -130,9 +130,10 @@ struct EntityTable: View {
             switch column.type {
             case "number":
                 if let num = value?.number {
-                    let format: FloatingPointFormatStyle<Double> = column.decimals
-                        .map { .number.precision(.fractionLength($0)) } ?? .number
-                    Text(num, format: format.locale(locale))
+                    let format: FloatingPointFormatStyle<Double> = .number
+                        .precision(.fractionLength(column.decimals ?? 0))
+                        .locale(locale)
+                    Text(num, format: format)
                 }
             case "boolean":
                 if value?.boolean == true {

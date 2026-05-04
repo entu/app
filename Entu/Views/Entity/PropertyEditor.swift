@@ -34,7 +34,7 @@ final class EditableValue: Identifiable {
 
     /// Type-specific mutable state. Only one is meaningful per definition.type.
     var stringValue: String = ""
-    var numberValue: String = ""
+    var numberValue: Double?
     var boolValue: Bool = false
     var dateValue: Date?
     var referenceId: String?
@@ -69,6 +69,7 @@ final class EditableValue: Identifiable {
 /// Editor row for a single value of a property.
 struct PropertyEditor: View {
     @Environment(APIClient.self) private var api
+    @Environment(\.locale) private var locale
 
     let definition: PropertyDefinition
 
@@ -135,7 +136,7 @@ struct PropertyEditor: View {
     private var isEmpty: Bool {
         switch definition.type {
         case "boolean": return false  // toggle always has a state
-        case "number": return value.numberValue.trimmingCharacters(in: .whitespaces).isEmpty
+        case "number": return value.numberValue == nil
         case "date", "datetime": return value.dateValue == nil
         case "reference": return value.referenceId == nil
         case "file": return value.stringValue.isEmpty
@@ -302,8 +303,19 @@ struct PropertyEditor: View {
 
     // MARK: - Number / boolean
 
+    /// Number field with locale-aware display and parsing. The format
+    /// uses the in-app `\.locale` (so EN groups with `,` and `.`, ET with
+    /// thin space and `,`) and pins fraction-length to the type
+    /// definition's `decimals` when present. SwiftUI's `TextField(value:
+    /// format:)` keeps the typed-text buffer separate from the bound
+    /// `Double?`, so partial input ("12.", "-") doesn't fight the parser.
     private var numberEditor: some View {
-        TextField("", text: $value.numberValue)
+        // `decimals` defaults to 0 when the type definition omits it —
+        // matches webapp parity (a missing precision means whole numbers).
+        let format: FloatingPointFormatStyle<Double> = .number
+            .precision(.fractionLength(definition.decimals ?? 0))
+            .locale(locale)
+        return TextField("", value: $value.numberValue, format: format)
             .multilineTextAlignment(.leading)
             .labelsHidden()
             #if os(iOS)

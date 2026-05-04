@@ -24,6 +24,7 @@ import SwiftUI
 /// Single property row — label left, type-specific value(s) right.
 struct PropertyRow: View {
     @Environment(APIClient.self) private var api
+    @Environment(\.locale) private var locale
 
     let definition: PropertyDefinition
     let values: [PropertyValue]
@@ -138,14 +139,15 @@ struct PropertyRow: View {
     // MARK: - Number and boolean
 
     /// Render a number value, respecting the definition's decimal precision.
+    /// `decimals` defaults to 0 (whole-number display) when not declared.
     @ViewBuilder
     private func numberValue(_ value: PropertyValue) -> some View {
         if let num = value.number {
-            if let decimals = definition.decimals {
-                Text(num, format: .number.precision(.fractionLength(decimals))).monospacedDigit()
-            } else {
-                Text(num, format: .number).monospacedDigit()
-            }
+            let format: FloatingPointFormatStyle<Double> = .number
+                .precision(.fractionLength(definition.decimals ?? 0))
+                .locale(locale)
+            Text(num, format: format)
+                .monospacedDigit()
         }
     }
 

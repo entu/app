@@ -328,7 +328,9 @@ struct EntityEditView: View {
         var seeded: [String: [EditableValue]] = [:]
         for def in definitions where !def.hidden && def.formula == nil && !def.readonly {
             if case .edit = mode, let existing = entity?.properties[def.name], !existing.isEmpty {
-                seeded[def.name] = existing.map { rowFromExisting($0, definition: def) }
+                seeded[def.name] = existing
+                    .sorted(by: propertyValueOrder)
+                    .map { rowFromExisting($0, definition: def) }
             } else if def.multilingual {
                 // Multilingual: leave empty so `manageEmptyFields` adds one
                 // empty row per language (with the language pre-tagged).
@@ -343,11 +345,40 @@ struct EntityEditView: View {
         }
     }
 
+    /// Stable per-property value order — mirrors webapp's
+    /// `propertyValuesSorter` (utils/api.js): language ascending (untagged
+    /// first), then ordinal ascending (no-ordinal first), then `_id`
+    /// ascending (no-id first).
+    private func propertyValueOrder(_ a: PropertyValue, _ b: PropertyValue) -> Bool {
+        if a.language != b.language {
+            switch (a.language, b.language) {
+            case (nil, _): return true
+            case (_, nil): return false
+            case (let l?, let r?): return l < r
+            default: return false
+            }
+        }
+        if a.ordinal != b.ordinal {
+            switch (a.ordinal, b.ordinal) {
+            case (nil, _): return true
+            case (_, nil): return false
+            case (let l?, let r?): return l < r
+            default: return false
+            }
+        }
+        switch (a._id, b._id) {
+        case (nil, _): return true
+        case (_, nil): return false
+        case (let l?, let r?): return l < r
+        default: return false
+        }
+    }
+
     private func rowFromExisting(_ existing: PropertyValue, definition: PropertyDefinition) -> EditableValue {
         let row = EditableValue(_id: existing._id, language: existing.language)
         switch definition.type {
         case "boolean": row.boolValue = existing.boolean ?? false
-        case "number":  row.numberValue = existing.number.map { String($0) } ?? ""
+        case "number":  row.numberValue = existing.number
         case "date", "datetime":
             if let iso = existing.date ?? existing.datetime {
                 row.dateValue = ISO8601DateFormatter.parse(iso)
@@ -371,7 +402,7 @@ struct EntityEditView: View {
         if let raw = definition.default, !raw.isEmpty {
             switch definition.type {
             case "boolean": row.boolValue = raw == "true" || raw == "1"
-            case "number":  row.numberValue = raw
+            case "number":  row.numberValue = Double(raw)
             default:        row.stringValue = raw
             }
         }
@@ -667,10 +698,7 @@ struct EntityEditView: View {
                 return trimmed.isEmpty ? nil : trimmed
             }
         }()
-        let numberValue: Double? = {
-            guard def.type == "number" else { return nil }
-            return Double(value.numberValue.replacingOccurrences(of: ",", with: "."))
-        }()
+        let numberValue: Double? = (def.type == "number") ? value.numberValue : nil
         let dateIso: String? = {
             guard let date = value.dateValue else { return nil }
             switch def.type {
@@ -728,7 +756,7 @@ struct EntityEditView: View {
             // `isEditableValueEmpty` already routed it to the delete path.
             change.boolean = true
         case "number":
-            guard let num = Double(value.numberValue.replacingOccurrences(of: ",", with: ".")) else { return nil }
+            guard let num = value.numberValue else { return nil }
             let rounded = def.decimals.map { decimals in
                 (num * pow(10.0, Double(decimals))).rounded() / pow(10.0, Double(decimals))
             } ?? num
@@ -773,7 +801,7 @@ struct EntityEditView: View {
             // saved) or a no-op (when unsaved) — both are "empty" here.
             return !value.boolValue
         case "number":
-            return value.numberValue.trimmingCharacters(in: .whitespaces).isEmpty
+            return value.numberValue == nil
         case "date", "datetime":
             return value.dateValue == nil
         case "reference":
@@ -795,7 +823,7 @@ struct EntityEditView: View {
     private func valueMatchesExisting(_ row: EditableValue, existing: PropertyValue, type: String) -> Bool {
         switch type {
         case "boolean": return row.boolValue == (existing.boolean ?? false)
-        case "number":  return Double(row.numberValue.replacingOccurrences(of: ",", with: ".")) == existing.number
+        case "number":  return row.numberValue == existing.number
         case "date", "datetime":
             let serverIso = existing.date ?? existing.datetime
             let serverDate = serverIso.flatMap { ISO8601DateFormatter.parse($0) }
