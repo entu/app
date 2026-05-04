@@ -173,6 +173,13 @@ struct PropertyEditor: View {
             editor
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Tapping the gap between label and editor (or anywhere not on a
+        // child control) routes through `activate()` — same behaviour as
+        // tapping the label. Child controls (TextField, Toggle, Picker,
+        // DatePicker) consume their own taps first, so this only fires
+        // for the inert background area.
+        .contentShape(Rectangle())
+        .onTapGesture { activate() }
         .disabled(definition.readonly || definition.formula != nil)
     }
 
@@ -310,16 +317,22 @@ struct PropertyEditor: View {
     /// format:)` keeps the typed-text buffer separate from the bound
     /// `Double?`, so partial input ("12.", "-") doesn't fight the parser.
     private var numberEditor: some View {
-        // `decimals` defaults to 0 when the type definition omits it —
-        // matches webapp parity (a missing precision means whole numbers).
+        // `decimals` defaults to 0 when the type definition omits it.
+        // Locale comes from the SwiftUI environment (in-app language /
+        // system fallback) — SwiftUI's parser handles digit grouping and
+        // decimal separator per that locale, so users type with their
+        // own conventions ("," for ET, "." for EN).
+        let decimals = definition.decimals ?? 0
         let format: FloatingPointFormatStyle<Double> = .number
-            .precision(.fractionLength(definition.decimals ?? 0))
+            .precision(.fractionLength(decimals))
             .locale(locale)
         return TextField("", value: $value.numberValue, format: format)
             .multilineTextAlignment(.leading)
             .labelsHidden()
             #if os(iOS)
-            .keyboardType(.decimalPad)
+            // Whole-number fields hide the `.`/`,` key so users can't enter
+            // a decimal separator that the formatter would just strip.
+            .keyboardType(decimals == 0 ? .numberPad : .decimalPad)
             #endif
             .focused($isFocused)
             .onChange(of: isFocused) { _, focused in
@@ -683,3 +696,4 @@ private extension URL {
         return mime
     }
 }
+
