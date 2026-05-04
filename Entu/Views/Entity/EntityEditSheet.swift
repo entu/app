@@ -724,7 +724,9 @@ struct EntityEditView: View {
 
         switch def.type {
         case "boolean":
-            change.boolean = value.boolValue
+            // Entu only stores `true`. False is unreachable here because
+            // `isEditableValueEmpty` already routed it to the delete path.
+            change.boolean = true
         case "number":
             guard let num = Double(value.numberValue.replacingOccurrences(of: ",", with: ".")) else { return nil }
             let rounded = def.decimals.map { decimals in
@@ -767,10 +769,9 @@ struct EntityEditView: View {
             // commit chain skips it.
             return value._id == nil && value.pendingFileURL == nil
         case "boolean":
-            // Booleans are never empty per se — the toggle always has a
-            // state. Treat false-on-an-unsaved-row as no-content so we
-            // don't fire create-entity from a freshly-rendered Toggle.
-            return value._id == nil && value.boolValue == false
+            // Entu only stores `true`. Toggling off is a delete (when
+            // saved) or a no-op (when unsaved) — both are "empty" here.
+            return !value.boolValue
         case "number":
             return value.numberValue.trimmingCharacters(in: .whitespaces).isEmpty
         case "date", "datetime":
