@@ -628,24 +628,34 @@ struct PropertyEditor: View {
     }
     #endif
 
-    /// Current sequence value (read-only) + Generate button. The commit
-    /// sends `counter: 1` so the API resolves the next value server-side.
+    /// New counter row (no `_id`) shows a Generate button — commit sends
+    /// `counter: 1` and the server resolves the next sequence value.
+    /// Saved rows (with `_id`) show an editable TextField so the user can
+    /// override the generated value; blur commits the new string. Mirrors
+    /// webapp's `property/edit.vue` two-state counter handling.
+    @ViewBuilder
     private var counterEditor: some View {
-        HStack(spacing: 12) {
-            if !value.stringValue.isEmpty {
-                Text(verbatim: value.stringValue)
-                    .foregroundStyle(.secondary)
-            } else {
-                Spacer()
+        if value._id == nil {
+            HStack(spacing: 12) {
+                Spacer(minLength: 0)
+                Button {
+                    Task { await onCommit() }
+                } label: {
+                    Label("counter", systemImage: "wand.and.stars")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
-            Button {
-                Task { await onCommit() }
-            } label: {
-                Label("counter", systemImage: "wand.and.stars")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+        } else {
+            TextField("", text: $value.stringValue)
+                .multilineTextAlignment(.leading)
+                .labelsHidden()
+                .focused($isFocused)
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { Task { await onCommit() } }
+                }
+                .onSubmit { Task { await onCommit() } }
         }
     }
 }

@@ -743,11 +743,12 @@ struct EntityEditView: View {
         case "reference":
             return value.referenceId == nil
         case "counter":
-            // Counter Generate always commits — server resolves the
-            // next sequence value even when the row's `stringValue`
-            // is empty. Reporting "empty" here would short-circuit
-            // the first Generate.
-            return false
+            // New row (no `_id`): never empty so the Generate button
+            // always commits and the server resolves the next sequence.
+            // Saved row: treat blank text as empty so clearing the field
+            // routes to the DELETE branch (matches webapp).
+            if value._id == nil { return false }
+            return value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         default:
             return value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
