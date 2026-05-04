@@ -10,6 +10,7 @@ struct EntityAvatar: View {
 
     let name: String
     let thumbnail: String?
+    var size: CGFloat = 28
 
     @State private var image: Image?
 
@@ -21,7 +22,7 @@ struct EntityAvatar: View {
                 letterCircle
             }
         }
-        .frame(width: 28, height: 28)
+        .frame(width: size, height: size)
         .clipShape(Circle())
         .task(id: thumbnail) {
             guard let thumbnail, let url = URL(string: thumbnail) else { return }

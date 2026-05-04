@@ -1,9 +1,14 @@
-// Paginated, sortable table for displaying a list of entities.
-// Used inside ChildEntitiesSection for both child and referencing entity groups.
+// Paginated, sortable list of entities for a single child/reference type.
+// Used inside ChildEntitiesSection — fetches column definitions from the
+// entity type (properties with the `table` flag) and loads entities with
+// those properties projected.
 //
-// Fetches column definitions from the entity type (properties with "table" flag set),
-// then loads entities with those properties. Falls back to showing just the name column
-// if no table columns are defined for the type.
+// Layout uses SwiftUI's `Grid` because it composes cleanly with the
+// surrounding ScrollView and reports an honest intrinsic height (one
+// row's worth per row, no estimation). SwiftUI's `Table` would nest a
+// scroll view inside the parent's ScrollView and gives no API for either
+// per-row height control or intrinsic sizing — Apple's recommendation
+// for table-like content inside scroll views is `Grid`/`LazyVGrid`.
 
 import SwiftUI
 
@@ -17,9 +22,10 @@ struct EntityTableColumn: Identifiable {
     var id: String { name }
 }
 
-/// Paginated, sortable table for child/referencing entity lists.
+/// Paginated, sortable list for child/referencing entity groups.
 struct EntityTable: View {
     @Environment(APIClient.self) private var api
+    @Environment(\.locale) private var locale
 
     let entityId: String
     let typeId: String
@@ -44,9 +50,7 @@ struct EntityTable: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             } else {
-                tableHeader
-                Divider()
-                tableRows
+                grid
                 pagination
             }
         }
@@ -56,12 +60,34 @@ struct EntityTable: View {
         }
     }
 
-    // MARK: - Table header
+    // MARK: - Grid
 
-    private var tableHeader: some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: 36)
+    private var grid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 0) {
+            headerRow
+            Divider().gridCellUnsizedAxes(.horizontal)
+            ForEach(entities) { entity in
+                GridRow {
+                    EntityAvatar(name: entity.displayName, thumbnail: entity._thumbnail, size: 18)
+                    ForEach(columns) { column in
+                        cellContent(entity: entity, column: column)
+                    }
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .onTapGesture { onNavigate?(entity._id) }
 
+                Divider().gridCellUnsizedAxes(.horizontal)
+            }
+        }
+    }
+
+    /// Header row — empty cell aligned to the avatar column, then a sort
+    /// button per data column. Tapping a column toggles direction or
+    /// switches the active column; the change refetches server-side.
+    private var headerRow: some View {
+        GridRow {
+            Color.clear.frame(width: 18, height: 1)
             ForEach(columns) { column in
                 Button {
                     if sortColumn == column.name {
@@ -75,51 +101,26 @@ struct EntityTable: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(column.label.isEmpty ? column.name : column.label)
-
                         if sortColumn == column.name {
                             Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
                                 .font(.caption2)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: columnAlignment(column))
-                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, alignment: cellAlignment(for: column.type))
                 }
                 .buttonStyle(.plain)
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
             }
         }
-        .font(.caption)
-        .fontWeight(.bold)
-        .foregroundStyle(.secondary)
         .padding(.vertical, 4)
-    }
-
-    // MARK: - Table rows
-
-    private var tableRows: some View {
-        ForEach(entities) { entity in
-            Button {
-                onNavigate?(entity._id)
-            } label: {
-                HStack(spacing: 0) {
-                    EntityAvatar(name: entity.displayName, thumbnail: entity._thumbnail)
-                        .frame(width: 36)
-
-                    ForEach(columns) { column in
-                        cellContent(entity: entity, column: column)
-                    }
-                }
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Divider()
-        }
     }
 
     // MARK: - Cell content (type-specific rendering)
 
-    /// Renders a single table cell, formatting the value based on the column's declared type.
+    /// Render a single grid cell, formatting by the column's declared type.
+    /// Numbers right-align, booleans + dates centre, everything else leads.
     @ViewBuilder
     private func cellContent(entity: EntitySummary, column: EntityTableColumn) -> some View {
         let values = column.name == "name" ? entity.name : entity.additionalProperties?[column.name]
@@ -129,18 +130,26 @@ struct EntityTable: View {
             switch column.type {
             case "number":
                 if let num = value?.number {
-                    if let decimals = column.decimals {
-                        Text(num, format: .number.precision(.fractionLength(decimals))).monospacedDigit()
-                    } else {
-                        Text(num, format: .number).monospacedDigit()
-                    }
+                    let format: FloatingPointFormatStyle<Double> = column.decimals
+                        .map { .number.precision(.fractionLength($0)) } ?? .number
+                    Text(num, format: format.locale(locale))
                 }
             case "boolean":
                 if value?.boolean == true {
                     Image(systemName: "checkmark").foregroundStyle(.green)
                 }
-            case "date", "datetime":
-                if let str = value?.string { Text(str) }
+            case "date":
+                if let iso = value?.date, let date = ISO8601DateFormatter.parse(iso) {
+                    Text(date, format: Date.FormatStyle(date: .numeric, time: .omitted, locale: locale))
+                } else if let str = value?.string {
+                    Text(str)
+                }
+            case "datetime":
+                if let iso = value?.datetime, let date = ISO8601DateFormatter.parse(iso) {
+                    Text(date, format: Date.FormatStyle(date: .numeric, time: .shortened, locale: locale))
+                } else if let str = value?.string {
+                    Text(str)
+                }
             case "file":
                 if let filename = value?.filename {
                     HStack(spacing: 6) {
@@ -159,8 +168,17 @@ struct EntityTable: View {
             }
         }
         .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: columnAlignment(column))
-        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: cellAlignment(for: column.type))
+    }
+
+    /// Cell-content alignment by property type — numbers trailing,
+    /// booleans + dates centre, everything else leading.
+    private func cellAlignment(for type: String) -> Alignment {
+        switch type {
+        case "number": return .trailing
+        case "boolean", "date", "datetime": return .center
+        default: return .leading
+        }
     }
 
     // MARK: - Pagination
@@ -208,20 +226,10 @@ struct EntityTable: View {
         }
     }
 
-    // MARK: - Helpers
-
-    private func columnAlignment(_ column: EntityTableColumn) -> Alignment {
-        switch column.type {
-        case "number": return .trailing
-        case "boolean": return .center
-        default: return .leading
-        }
-    }
-
     // MARK: - Data loading
 
-    /// Fetch column definitions — properties with "table" flag set, sorted by ordinal.
-    /// Falls back to a single "name" column when the type defines none.
+    /// Fetch column definitions — properties with `table` flag set, sorted by ordinal.
+    /// Falls back to a single `name` column when the type defines none.
     private func loadColumns() async {
         let tableParams: [String: String] = [
             "_parent.reference": typeId,
