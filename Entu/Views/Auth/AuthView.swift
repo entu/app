@@ -87,6 +87,7 @@ struct AuthView: View {
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
                     .padding(.top, 16)
+                    .padding(.bottom, 16)
                     .padding(.horizontal, 32)
                     .multilineTextAlignment(.center)
             }

@@ -89,7 +89,10 @@ struct EntuApp: App {
         }
         .defaultSize(width: 1280, height: 850)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            // Note: `.newItem` is intentionally left at its default (giving
+            // macOS the standard "File > New Entu" / Cmd-N command) so the
+            // user can reopen the main window after closing it. App Review
+            // flagged the previous empty replacement as a missing affordance.
 
             // Entu menu — Sign In (with providers submenu) when nothing is
             // remembered, otherwise Sign Out (which wipes both authenticated
