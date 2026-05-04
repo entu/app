@@ -975,9 +975,10 @@ struct EntityEditView: View {
             let saved = rows.filter { $0._id != nil }
             let trailingEmpty = rows.filter { $0._id == nil && isEditableValueEmpty($0, definition: def) }
             if !saved.isEmpty {
-                rows = saved + trailingEmpty.prefix(0).map { $0 } // drop empty trailing rows
+                // Drop trailing empty rows once any value is saved.
+                rows = saved
             } else {
-                rows = saved + Array(trailingEmpty.prefix(1))
+                rows = Array(trailingEmpty.prefix(1))
                 if rows.isEmpty {
                     rows = [defaultRow(for: def)]
                 }

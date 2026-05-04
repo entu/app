@@ -122,11 +122,6 @@ final class APIClient {
             request.setValue(value, forHTTPHeaderField: header)
         }
 
-        #if DEBUG
-        print("[Upload] \(intent.method) \(url.absoluteString)")
-        for (h, v) in request.allHTTPHeaderFields ?? [:] { print("[Upload]   \(h): \(v)") }
-        #endif
-
         let delegate = onProgress.map { UploadProgressDelegate(callback: $0) }
         let (data, response) = try await URLSession.shared.upload(
             for: request,
@@ -139,11 +134,8 @@ final class APIClient {
         if http.statusCode >= 400 {
             // S3 returns its actual reason in the response body (XML), e.g.
             // "SignatureDoesNotMatch", "AccessDenied". Surface it so the
-            // user sees more than a generic "Upload failed" toast.
+            // commit-error toast carries more than a generic "Upload failed".
             let body = String(data: data, encoding: .utf8) ?? ""
-            #if DEBUG
-            print("[Upload] HTTP \(http.statusCode) — \(body)")
-            #endif
             throw APIError.serverError(http.statusCode, body.isEmpty ? "Upload failed" : body)
         }
     }

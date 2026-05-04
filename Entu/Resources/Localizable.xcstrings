@@ -1,7 +1,6 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "": {},
     "·": {
       "comment": "A separator between parent breadcrumbs.",
       "extractionState": "manual",
