@@ -73,7 +73,7 @@ struct EntityTable: View {
                         cellContent(entity: entity, column: column)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 8)
                 .contentShape(Rectangle())
                 .onTapGesture { onNavigate?(entity._id) }
 
