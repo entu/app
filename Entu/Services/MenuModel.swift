@@ -21,6 +21,7 @@ private struct CachedMenu {
     let groups: [MenuGroup]
     let queryById: [String: String]
     let addFromTypes: [String: [AddFromType]]
+    let parentTypesByChild: [String: [String]]
 }
 
 /// Fetches menu entities from the API, groups and sorts them for the sidebar.
@@ -40,6 +41,11 @@ final class MenuModel {
     /// and per-entity child add (`addChildOptions`) — same data source as
     /// webapp's `addFromEntities` in `stores/menu.js`.
     var addFromTypes: [String: [AddFromType]] = [:]
+
+    /// Inverse of `addFromTypes` — child type ID → list of parent type IDs
+    /// that allow it via their `add_from`. Drives the Parents drawer's
+    /// candidate filter (mirrors webapp's `parentQuery` narrowing).
+    var parentTypesByChild: [String: [String]] = [:]
 
     private let api: APIClient
 
@@ -67,6 +73,7 @@ final class MenuModel {
             groups = cached.groups
             queryById = cached.queryById
             addFromTypes = cached.addFromTypes
+            parentTypesByChild = cached.parentTypesByChild
             return
         }
 
@@ -116,23 +123,33 @@ final class MenuModel {
 
             // Fetch all entity-type entities that declare an `add_from`,
             // then group them by which menu/type they can be added under.
-            let addFromMap = await fetchAddFromTypes()
+            let (addFromMap, parentMap) = await fetchAddFromTypes()
 
             queryById = newQueryById
             groups = newGroups
             addFromTypes = addFromMap
-            Self.cache[key] = CachedMenu(groups: newGroups, queryById: newQueryById, addFromTypes: addFromMap)
+            parentTypesByChild = parentMap
+            Self.cache[key] = CachedMenu(
+                groups: newGroups,
+                queryById: newQueryById,
+                addFromTypes: addFromMap,
+                parentTypesByChild: parentMap
+            )
         } catch {
             groups = []
             queryById = [:]
             addFromTypes = [:]
+            parentTypesByChild = [:]
         }
     }
 
-    /// Look up all entity types that declare `add_from`, then build a map
-    /// from each `add_from` reference (a menu id or type id) to the list
-    /// of types that can be created under it.
-    private func fetchAddFromTypes() async -> [String: [AddFromType]] {
+    /// Look up all entity types that declare `add_from`, then build two
+    /// inverse maps from the same response:
+    ///   - parent → list of child types that can be added under it (drives
+    ///     toolbar Add and Add child).
+    ///   - child type → list of parent type IDs that allow it (drives the
+    ///     Parents drawer's candidate filter).
+    private func fetchAddFromTypes() async -> (addFrom: [String: [AddFromType]], parents: [String: [String]]) {
         let response: EntityListResponse?
         do {
             response = try await api.get("entity", params: [
@@ -141,10 +158,11 @@ final class MenuModel {
                 "props": "name,label,add_from.reference"
             ])
         } catch {
-            return [:]
+            return ([:], [:])
         }
 
-        var map: [String: [AddFromType]] = [:]
+        var addFromMap: [String: [AddFromType]] = [:]
+        var parentMap: [String: [String]] = [:]
         for type in response?.entities ?? [] {
             let label = PropertyValue.localized(type.additionalProperties?["label"]) ??
                         PropertyValue.localized(type.name) ?? type._id
@@ -152,15 +170,16 @@ final class MenuModel {
 
             for parent in type.additionalProperties?["add_from"] ?? [] {
                 guard let parentId = parent.reference else { continue }
-                map[parentId, default: []].append(entry)
+                addFromMap[parentId, default: []].append(entry)
+                parentMap[type._id, default: []].append(parentId)
             }
         }
 
         // Stable alphabetical order per parent — mirrors webapp's sort.
-        for key in map.keys {
-            map[key]?.sort { $0.label.localizedCompare($1.label) == .orderedAscending }
+        for key in addFromMap.keys {
+            addFromMap[key]?.sort { $0.label.localizedCompare($1.label) == .orderedAscending }
         }
-        return map
+        return (addFromMap, parentMap)
     }
 
     /// Cache key combining the active in-app language with the database id.

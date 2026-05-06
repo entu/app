@@ -22,6 +22,7 @@ private struct EntityToolbar: ToolbarContent {
     let menuId: String?
     @Binding var editMode: EntityEditMode?
     @Binding var showingRights: Bool
+    @Binding var showingParents: Bool
 
     /// Compact (iPhone) → `.secondaryAction` collapses into the "..." menu;
     /// regular (iPad / macOS) → `.primaryAction` keeps them inline.
@@ -171,11 +172,10 @@ private struct EntityToolbar: ToolbarContent {
     private var parentsButton: some View {
         if rights.editor {
             Button {
-                // Phase 8 — parents drawer
+                showingParents = true
             } label: {
                 Label("parents", systemImage: "arrow.triangle.branch")
             }
-            .disabled(true)
         }
     }
 
@@ -241,6 +241,8 @@ private struct EntityToolbarHost: ViewModifier {
     @State private var didEditExisting = false
     @State private var showingRights = false
     @State private var didChangeRights = false
+    @State private var showingParents = false
+    @State private var didChangeParents = false
 
     func body(content: Content) -> some View {
         content
@@ -249,7 +251,8 @@ private struct EntityToolbarHost: ViewModifier {
                     entity: entity,
                     menuId: menuId,
                     editMode: $editMode,
-                    showingRights: $showingRights
+                    showingRights: $showingRights,
+                    showingParents: $showingParents
                 )
             }
             // `onChanged` only flips a flag — calling `onEdited` mid-session
@@ -265,6 +268,20 @@ private struct EntityToolbarHost: ViewModifier {
                 NavigationStack {
                     RightsSheet(entityId: entity._id, onChanged: { didChangeRights = true })
                         .sheetMinSize(width: 560, height: 600)
+                }
+                .presentationDetents([.large])
+            }
+            // Same buffered-onChanged pattern as the rights sheet — fire
+            // `onEdited` only on dismiss to avoid mid-session refetch races.
+            .sheet(isPresented: $showingParents, onDismiss: {
+                if didChangeParents {
+                    onEdited?()
+                    didChangeParents = false
+                }
+            }) {
+                NavigationStack {
+                    ParentsSheet(entityId: entity._id, onChanged: { didChangeParents = true })
+                        .sheetMinSize(width: 500, height: 500)
                 }
                 .presentationDetents([.large])
             }
