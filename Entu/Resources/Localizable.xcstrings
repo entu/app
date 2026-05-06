@@ -1879,6 +1879,38 @@
           }
         }
       }
+    },
+    "historyTitle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entity History"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Objekti ajalugu"
+          }
+        }
+      }
+    },
+    "historyEmpty": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No history found"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajalugu puudub"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

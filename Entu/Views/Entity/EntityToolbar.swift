@@ -24,6 +24,7 @@ private struct EntityToolbar: ToolbarContent {
     @Binding var showingRights: Bool
     @Binding var showingParents: Bool
     @Binding var showingDuplicate: Bool
+    @Binding var showingHistory: Bool
 
     /// Compact (iPhone) → `.secondaryAction` collapses into the "..." menu;
     /// regular (iPad / macOS) → `.primaryAction` keeps them inline.
@@ -194,11 +195,10 @@ private struct EntityToolbar: ToolbarContent {
     private var historyButton: some View {
         if rights.editor {
             Button {
-                // Phase 8 — GET /entity/{id}/history
+                showingHistory = true
             } label: {
                 Label("history", systemImage: "clock.arrow.circlepath")
             }
-            .disabled(true)
         }
     }
 }
@@ -248,6 +248,7 @@ private struct EntityToolbarHost: ViewModifier {
     @State private var didChangeParents = false
     @State private var showingDuplicate = false
     @State private var didDuplicate = false
+    @State private var showingHistory = false
 
     func body(content: Content) -> some View {
         content
@@ -258,7 +259,8 @@ private struct EntityToolbarHost: ViewModifier {
                     editMode: $editMode,
                     showingRights: $showingRights,
                     showingParents: $showingParents,
-                    showingDuplicate: $showingDuplicate
+                    showingDuplicate: $showingDuplicate,
+                    showingHistory: $showingHistory
                 )
             }
             // `onChanged` only flips a flag — calling `onEdited` mid-session
@@ -303,6 +305,14 @@ private struct EntityToolbarHost: ViewModifier {
                 NavigationStack {
                     DuplicateSheet(entityId: entity._id, onDuplicated: { didDuplicate = true })
                         .sheetMinSize(width: 500, height: 600)
+                }
+                .presentationDetents([.large])
+            }
+            // History is read-only — no onDismiss callback needed.
+            .sheet(isPresented: $showingHistory) {
+                NavigationStack {
+                    HistorySheet(entityId: entity._id, typeId: entity.typeId)
+                        .sheetMinSize(width: 600, height: 600)
                 }
                 .presentationDetents([.large])
             }
