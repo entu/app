@@ -21,6 +21,10 @@ struct EntityDetailView: View {
     /// Called after the entity is deleted — parent pops navigation.
     var onDelete: (() -> Void)?
 
+    /// Called after a child / sibling list-affecting change (duplicate
+    /// today; later: bulk operations) — parent refreshes the entity list.
+    var onListChanged: (() -> Void)?
+
     @State private var model: EntityDetailModel?
 
     var body: some View {
@@ -46,7 +50,8 @@ struct EntityDetailView: View {
                         onDelete: {
                             EntityDetailModel.clearCache()
                             onDelete?()
-                        }
+                        },
+                        onListChanged: { onListChanged?() }
                     )
                 } else if let message = model.errorMessage {
                     VStack(spacing: 12) {

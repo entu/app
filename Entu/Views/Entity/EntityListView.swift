@@ -20,6 +20,12 @@ struct EntityListView: View {
     // Selection binding — drives the detail column in NavigationSplitView.
     @Binding var selectedEntityId: String?
 
+    /// Bumped from outside to force a list refetch — used after duplicate
+    /// (and other operations that change the visible row set without
+    /// changing `query`). Plumbed through `MainView` → `EntityDetailView` →
+    /// `EntityToolbarHost`'s `onListChanged`.
+    var refreshToken: Int = 0
+
     @State private var items: [EntityListItem] = []
     @State private var totalCount = 0
     @State private var isLoading = false
@@ -81,6 +87,12 @@ struct EntityListView: View {
             items = []
             totalCount = 0
             await loadEntities()
+        }
+        .onChange(of: refreshToken) {
+            // Outside-driven refresh (e.g. after duplicate) — keep the
+            // existing rows visible while reloading so the user doesn't
+            // see a flash to empty.
+            Task { await loadEntities() }
         }
         .onChange(of: search.text) {
             searchDebounceTask?.cancel()

@@ -24,6 +24,10 @@ struct MainView: View {
     @State private var entityHistory: [String] = []
     @State private var pinnedEntityId: String?
 
+    /// Bumped by detail-side operations (currently: duplicate) to force
+    /// `EntityListView` to refetch its rows even when `query` is unchanged.
+    @State private var listRefreshToken: Int = 0
+
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = 220
     @AppStorage("ui.contentWidth") private var contentWidth: Double = 320
 
@@ -261,7 +265,8 @@ struct MainView: View {
                     entityId: shownId,
                     menuId: selectedMenuId,
                     onNavigate: { entityHistory.append($0) },
-                    onDelete: { popOrClearPinnedDetail() }
+                    onDelete: { popOrClearPinnedDetail() },
+                    onListChanged: { listRefreshToken &+= 1 }
                 )
                 .entityHistoryBack($entityHistory)
             } else {
@@ -280,7 +285,12 @@ struct MainView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
         } content: {
-            EntityListView(query: activeQuery, menuId: selectedMenuId, selectedEntityId: $selectedEntityId)
+            EntityListView(
+                query: activeQuery,
+                menuId: selectedMenuId,
+                selectedEntityId: $selectedEntityId,
+                refreshToken: listRefreshToken
+            )
                 .navigationSplitViewColumnWidth(min: 240, ideal: contentWidth, max: 600)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { contentWidth = $0 }
         } detail: {
@@ -289,7 +299,8 @@ struct MainView: View {
                     entityId: currentEntityId,
                     menuId: selectedMenuId,
                     onNavigate: { entityHistory.append($0) },
-                    onDelete: { popOrClearListDetail() }
+                    onDelete: { popOrClearListDetail() },
+                    onListChanged: { listRefreshToken &+= 1 }
                 )
                 .entityHistoryBack($entityHistory)
             }

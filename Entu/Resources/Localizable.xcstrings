@@ -1783,6 +1783,102 @@
           }
         }
       }
+    },
+    "duplicateTitle %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duplicate — %@"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dubleeri — %@"
+          }
+        }
+      }
+    },
+    "numberOfCopies": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Number of duplicates"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koopiate arv"
+          }
+        }
+      }
+    },
+    "propertiesToInclude": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Properties to include"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parameetrid, mis lisada"
+          }
+        }
+      }
+    },
+    "createDuplicate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create duplicate"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loo koopia"
+          }
+        }
+      }
+    },
+    "createDuplicates %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create %lld duplicates"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loo %lld koopiat"
+          }
+        }
+      }
+    },
+    "more %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%lld more"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%lld veel"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

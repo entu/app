@@ -23,6 +23,7 @@ private struct EntityToolbar: ToolbarContent {
     @Binding var editMode: EntityEditMode?
     @Binding var showingRights: Bool
     @Binding var showingParents: Bool
+    @Binding var showingDuplicate: Bool
 
     /// Compact (iPhone) → `.secondaryAction` collapses into the "..." menu;
     /// regular (iPad / macOS) → `.primaryAction` keeps them inline.
@@ -160,11 +161,10 @@ private struct EntityToolbar: ToolbarContent {
     private var duplicateButton: some View {
         if rights.owner {
             Button {
-                // Phase 8 — POST /entity/{id}/duplicate
+                showingDuplicate = true
             } label: {
                 Label("duplicate", systemImage: "doc.on.doc")
             }
-            .disabled(true)
         }
     }
 
@@ -211,14 +211,16 @@ extension View {
         menuId: String? = nil,
         onEdited: (() -> Void)? = nil,
         onCreated: ((String) -> Void)? = nil,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        onListChanged: (() -> Void)? = nil
     ) -> some View {
         modifier(EntityToolbarHost(
             entity: entity,
             menuId: menuId,
             onEdited: onEdited,
             onCreated: onCreated,
-            onDelete: onDelete
+            onDelete: onDelete,
+            onListChanged: onListChanged
         ))
     }
 }
@@ -231,6 +233,7 @@ private struct EntityToolbarHost: ViewModifier {
     let onEdited: (() -> Void)?
     let onCreated: ((String) -> Void)?
     let onDelete: (() -> Void)?
+    let onListChanged: (() -> Void)?
 
     @State private var editMode: EntityEditMode?
 
@@ -243,6 +246,8 @@ private struct EntityToolbarHost: ViewModifier {
     @State private var didChangeRights = false
     @State private var showingParents = false
     @State private var didChangeParents = false
+    @State private var showingDuplicate = false
+    @State private var didDuplicate = false
 
     func body(content: Content) -> some View {
         content
@@ -252,7 +257,8 @@ private struct EntityToolbarHost: ViewModifier {
                     menuId: menuId,
                     editMode: $editMode,
                     showingRights: $showingRights,
-                    showingParents: $showingParents
+                    showingParents: $showingParents,
+                    showingDuplicate: $showingDuplicate
                 )
             }
             // `onChanged` only flips a flag — calling `onEdited` mid-session
@@ -282,6 +288,21 @@ private struct EntityToolbarHost: ViewModifier {
                 NavigationStack {
                     ParentsSheet(entityId: entity._id, onChanged: { didChangeParents = true })
                         .sheetMinSize(width: 500, height: 500)
+                }
+                .presentationDetents([.large])
+            }
+            // Duplicate creates *new* sibling entities — the current detail
+            // view is unchanged but the surrounding list (middle column /
+            // children section) needs to refetch to show the new copies.
+            .sheet(isPresented: $showingDuplicate, onDismiss: {
+                if didDuplicate {
+                    onListChanged?()
+                    didDuplicate = false
+                }
+            }) {
+                NavigationStack {
+                    DuplicateSheet(entityId: entity._id, onDuplicated: { didDuplicate = true })
+                        .sheetMinSize(width: 500, height: 600)
                 }
                 .presentationDetents([.large])
             }
