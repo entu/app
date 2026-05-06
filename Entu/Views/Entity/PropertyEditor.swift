@@ -70,6 +70,9 @@ final class EditableValue: Identifiable {
 struct PropertyEditor: View {
     @Environment(APIClient.self) private var api
     @Environment(\.locale) private var locale
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     let definition: PropertyDefinition
 
@@ -145,12 +148,40 @@ struct PropertyEditor: View {
     }
 
     var body: some View {
-        // Fixed-width label column — `LabeledContent` collapses to vertical
-        // for long values, which we don't want. Tall types anchor the label
-        // to the first line; single-line controls centre it.
+        Group {
+            if isCompact {
+                compactBody
+            } else {
+                wideBody
+            }
+        }
+        // Tapping the gap between label and editor (or anywhere not on a
+        // child control) routes through `activate()` — same behaviour as
+        // tapping the label. Child controls (TextField, Toggle, Picker,
+        // DatePicker) consume their own taps first, so this only fires
+        // for the inert background area.
+        .contentShape(Rectangle())
+        .onTapGesture { activate() }
+        .disabled(definition.readonly || definition.formula != nil)
+    }
+
+    /// True on iPhone (compact horizontal size class) — narrow rows can't
+    /// fit a 160pt label column + value column without clipping.
+    private var isCompact: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+
+    /// Wide layout (iPad / macOS / regular size class) — fixed-width label
+    /// column on the left, editor on the right. Tall types (`text`, `file`)
+    /// anchor the label to the first line; single-line controls centre it.
+    private var wideBody: some View {
         let isTallContent = definition.type == "text" || definition.type == "file"
         let rowAlignment: VerticalAlignment = isTallContent ? .top : .center
-        HStack(alignment: rowAlignment, spacing: 12) {
+        return HStack(alignment: rowAlignment, spacing: 12) {
             // 160pt left column. For multilingual rows the language picker
             // shares this column with the label so the value column starts
             // at the same leading edge across all rows in the form.
@@ -173,14 +204,22 @@ struct PropertyEditor: View {
             editor
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // Tapping the gap between label and editor (or anywhere not on a
-        // child control) routes through `activate()` — same behaviour as
-        // tapping the label. Child controls (TextField, Toggle, Picker,
-        // DatePicker) consume their own taps first, so this only fires
-        // for the inert background area.
-        .contentShape(Rectangle())
-        .onTapGesture { activate() }
-        .disabled(definition.readonly || definition.formula != nil)
+    }
+
+    /// Compact layout (iPhone) — label on top, editor below, full row width.
+    /// Multilingual language picker sits next to the label; for hidden-label
+    /// rows in a list, the picker still shows (so EN/ET stays user-changeable).
+    private var compactBody: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if showsLabel || definition.multilingual {
+                HStack(spacing: 8) {
+                    if showsLabel { labelView }
+                    if definition.multilingual { languagePicker }
+                }
+            }
+            editor
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     /// Per-row EN/ET selector for multilingual properties. Mirrors webapp's

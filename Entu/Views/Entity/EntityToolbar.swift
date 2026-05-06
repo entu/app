@@ -21,6 +21,7 @@ private struct EntityToolbar: ToolbarContent {
     let entity: EntityDetail
     let menuId: String?
     @Binding var editMode: EntityEditMode?
+    @Binding var showingRights: Bool
 
     /// Compact (iPhone) → `.secondaryAction` collapses into the "..." menu;
     /// regular (iPad / macOS) → `.primaryAction` keeps them inline.
@@ -182,11 +183,10 @@ private struct EntityToolbar: ToolbarContent {
     private var rightsButton: some View {
         if rights.owner {
             Button {
-                // Phase 8 — rights drawer
+                showingRights = true
             } label: {
                 Label("rights", systemImage: "person.2")
             }
-            .disabled(true)
         }
     }
 
@@ -239,11 +239,34 @@ private struct EntityToolbarHost: ViewModifier {
     /// the sheet the user is still typing into.
     @State private var pendingCreatedId: String?
     @State private var didEditExisting = false
+    @State private var showingRights = false
+    @State private var didChangeRights = false
 
     func body(content: Content) -> some View {
         content
             .toolbar {
-                EntityToolbar(entity: entity, menuId: menuId, editMode: $editMode)
+                EntityToolbar(
+                    entity: entity,
+                    menuId: menuId,
+                    editMode: $editMode,
+                    showingRights: $showingRights
+                )
+            }
+            // `onChanged` only flips a flag — calling `onEdited` mid-session
+            // would refetch the parent entity, drop this host modifier, and
+            // dismiss the sheet the user is actively interacting with.
+            // Same pattern as the edit sheet's `pendingCreatedId` buffer.
+            .sheet(isPresented: $showingRights, onDismiss: {
+                if didChangeRights {
+                    onEdited?()
+                    didChangeRights = false
+                }
+            }) {
+                NavigationStack {
+                    RightsSheet(entityId: entity._id, onChanged: { didChangeRights = true })
+                        .sheetMinSize(width: 560, height: 600)
+                }
+                .presentationDetents([.large])
             }
             .sheet(
                 item: $editMode,
@@ -277,11 +300,40 @@ private struct EntityToolbarHost: ViewModifier {
                     )
                     // Form sheet auto-sizes to content; pin a wider minimum
                     // on iPad / macOS so two-column property rows don't
-                    // squeeze. iPhone uses `.large` detent (full width)
-                    // and the frame is harmless there.
-                    .frame(minWidth: 640, minHeight: 600)
+                    // squeeze. iPhone (compact) skips the min so the sheet
+                    // matches the screen width and rows don't clip.
+                    .sheetMinSize(width: 640, height: 600)
                 }
                 .presentationDetents([.large])
             }
+    }
+}
+
+/// Apply `.frame(minWidth:minHeight:)` only on regular size class
+/// (iPad / macOS) so iPhone sheets don't force a width wider than the
+/// screen — which would horizontally clip the form rows.
+private struct SheetMinSize: ViewModifier {
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+    let width: CGFloat
+    let height: CGFloat
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            content
+        } else {
+            content.frame(minWidth: width, minHeight: height)
+        }
+        #else
+        content.frame(minWidth: width, minHeight: height)
+        #endif
+    }
+}
+
+extension View {
+    fileprivate func sheetMinSize(width: CGFloat, height: CGFloat) -> some View {
+        modifier(SheetMinSize(width: width, height: height))
     }
 }
