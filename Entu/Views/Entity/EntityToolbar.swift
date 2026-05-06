@@ -4,13 +4,15 @@
 //
 // Edit and Add child open `EntityEditView` as a sheet — the sheet
 // autosaves on blur and owns its own Delete button, so this toolbar has
-// no Delete. Phase 8 placeholders render disabled and collapse into the
-// system "..." menu on iPhone via `phase8Placement`.
+// no Delete. Duplicate / parents / rights / history are also functional
+// sheets; on iPhone (compact width) they collapse into the system "..."
+// overflow menu via `secondaryPlacement`.
 
 import SwiftUI
 
-/// Edit / Add buttons that open `EntityEditView` via the `editMode` binding,
-/// plus disabled Phase 8 placeholders.
+/// Edit / Add / Duplicate / Parents / Rights / History buttons. Each
+/// opens a feature sheet via its corresponding `@Binding` flag, set
+/// from `EntityToolbarHost`.
 private struct EntityToolbar: ToolbarContent {
     @Environment(AuthModel.self) private var auth
     @Environment(MenuModel.self) private var menu
@@ -28,7 +30,7 @@ private struct EntityToolbar: ToolbarContent {
 
     /// Compact (iPhone) → `.secondaryAction` collapses into the "..." menu;
     /// regular (iPad / macOS) → `.primaryAction` keeps them inline.
-    private var phase8Placement: ToolbarItemPlacement {
+    private var secondaryPlacement: ToolbarItemPlacement {
         #if os(iOS)
         horizontalSizeClass == .compact ? .secondaryAction : .primaryAction
         #else
@@ -79,7 +81,7 @@ private struct EntityToolbar: ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             editButton
         }
-        ToolbarItemGroup(placement: phase8Placement) {
+        ToolbarItemGroup(placement: secondaryPlacement) {
             duplicateButton
             parentsButton
             rightsButton
@@ -156,7 +158,7 @@ private struct EntityToolbar: ToolbarContent {
         }
     }
 
-    // MARK: - Phase 8 placeholders (rendered disabled until the drawers ship)
+    // MARK: - Secondary actions (collapse into "..." on iPhone)
 
     @ViewBuilder
     private var duplicateButton: some View {
@@ -263,58 +265,46 @@ private struct EntityToolbarHost: ViewModifier {
                     showingHistory: $showingHistory
                 )
             }
-            // `onChanged` only flips a flag — calling `onEdited` mid-session
-            // would refetch the parent entity, drop this host modifier, and
-            // dismiss the sheet the user is actively interacting with.
-            // Same pattern as the edit sheet's `pendingCreatedId` buffer.
-            .sheet(isPresented: $showingRights, onDismiss: {
-                if didChangeRights {
-                    onEdited?()
-                    didChangeRights = false
-                }
-            }) {
-                NavigationStack {
-                    RightsSheet(entityId: entity._id, onChanged: { didChangeRights = true })
-                        .sheetMinSize(width: 560, height: 600)
-                }
-                .presentationDetents([.large])
+            // Sheet hosts use `entitySheet(...)` so each one gets the same
+            // chrome (NavigationStack + sheetMinSize + .large detent) and
+            // the same buffered-onChanged → fire-on-dismiss callback path.
+            // The buffer prevents mid-session refetches from dropping this
+            // host modifier and dismissing the sheet the user is editing.
+            // History is read-only — no didChange flag, no callback.
+            .entitySheet(
+                isPresented: $showingRights,
+                didChange: $didChangeRights,
+                onChange: onEdited,
+                width: 560, height: 600
+            ) {
+                RightsSheet(entityId: entity._id, onChanged: { didChangeRights = true })
             }
-            // Same buffered-onChanged pattern as the rights sheet — fire
-            // `onEdited` only on dismiss to avoid mid-session refetch races.
-            .sheet(isPresented: $showingParents, onDismiss: {
-                if didChangeParents {
-                    onEdited?()
-                    didChangeParents = false
-                }
-            }) {
-                NavigationStack {
-                    ParentsSheet(entityId: entity._id, onChanged: { didChangeParents = true })
-                        .sheetMinSize(width: 500, height: 500)
-                }
-                .presentationDetents([.large])
+            .entitySheet(
+                isPresented: $showingParents,
+                didChange: $didChangeParents,
+                onChange: onEdited,
+                width: 500, height: 500
+            ) {
+                ParentsSheet(entityId: entity._id, onChanged: { didChangeParents = true })
             }
             // Duplicate creates *new* sibling entities — the current detail
             // view is unchanged but the surrounding list (middle column /
-            // children section) needs to refetch to show the new copies.
-            .sheet(isPresented: $showingDuplicate, onDismiss: {
-                if didDuplicate {
-                    onListChanged?()
-                    didDuplicate = false
-                }
-            }) {
-                NavigationStack {
-                    DuplicateSheet(entityId: entity._id, onDuplicated: { didDuplicate = true })
-                        .sheetMinSize(width: 500, height: 600)
-                }
-                .presentationDetents([.large])
+            // children section) refetches via `onListChanged` to show them.
+            .entitySheet(
+                isPresented: $showingDuplicate,
+                didChange: $didDuplicate,
+                onChange: onListChanged,
+                width: 500, height: 600
+            ) {
+                DuplicateSheet(entityId: entity._id, onDuplicated: { didDuplicate = true })
             }
-            // History is read-only — no onDismiss callback needed.
-            .sheet(isPresented: $showingHistory) {
-                NavigationStack {
-                    HistorySheet(entityId: entity._id, typeId: entity.typeId)
-                        .sheetMinSize(width: 600, height: 600)
-                }
-                .presentationDetents([.large])
+            .entitySheet(
+                isPresented: $showingHistory,
+                didChange: .constant(false),
+                onChange: nil,
+                width: 600, height: 600
+            ) {
+                HistorySheet(entityId: entity._id, typeId: entity.typeId)
             }
             .sheet(
                 item: $editMode,
@@ -383,5 +373,33 @@ private struct SheetMinSize: ViewModifier {
 extension View {
     fileprivate func sheetMinSize(width: CGFloat, height: CGFloat) -> some View {
         modifier(SheetMinSize(width: width, height: height))
+    }
+
+    /// Standard chrome for an entity-feature sheet: NavigationStack +
+    /// `sheetMinSize` + `.large` detent. The buffered `didChange` flag
+    /// fires `onChange` only on dismiss — calling the parent's refresh
+    /// callback mid-session would refetch the entity, drop this host
+    /// modifier, and dismiss the sheet the user is editing. History-style
+    /// read-only sheets pass `didChange: .constant(false)` and `onChange: nil`.
+    fileprivate func entitySheet<Content: View>(
+        isPresented: Binding<Bool>,
+        didChange: Binding<Bool>,
+        onChange: (() -> Void)?,
+        width: CGFloat,
+        height: CGFloat,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        sheet(isPresented: isPresented, onDismiss: {
+            if didChange.wrappedValue {
+                onChange?()
+                didChange.wrappedValue = false
+            }
+        }) {
+            NavigationStack {
+                content()
+                    .sheetMinSize(width: width, height: height)
+            }
+            .presentationDetents([.large])
+        }
     }
 }

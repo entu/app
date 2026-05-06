@@ -45,11 +45,22 @@ struct EntityDetailView: View {
                     .entityToolbarHost(
                         entity: entity,
                         menuId: menuId,
-                        onEdited: { Task { await model.load(entityId: entityId) } },
-                        onCreated: { newId in onNavigate?(newId) },
+                        onEdited: {
+                            Task { await model.load(entityId: entityId) }
+                            // Edited values can change the row's display name
+                            // or thumbnail in the surrounding list.
+                            onListChanged?()
+                        },
+                        onCreated: { newId in
+                            onNavigate?(newId)
+                            // New child appears in the parent's list view.
+                            onListChanged?()
+                        },
                         onDelete: {
                             EntityDetailModel.clearCache()
                             onDelete?()
+                            // Deleted entity disappears from the list.
+                            onListChanged?()
                         },
                         onListChanged: { onListChanged?() }
                     )

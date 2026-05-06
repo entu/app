@@ -244,7 +244,6 @@ struct RightsSheet: View {
     private var entityRights: [RightUser] {
         guard let entity else { return [] }
         return resolveRights(prefix: "", from: entity)
-            .filter { $0.type != "owner" || true }  // keep all
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
