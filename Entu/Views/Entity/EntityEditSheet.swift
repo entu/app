@@ -81,29 +81,42 @@ struct EntityEditView: View {
     @State var commitChain: Task<Void, Never>?
 
     var body: some View {
-        Group {
-            if isLoading {
-                // Reserve height so the auto-sizing form sheet (iPad/macOS)
-                // doesn't jump from spinner-sized to form-sized on load.
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 400)
-            } else if let loadError {
-                ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 400)
-            } else {
-                formBody
+        VStack(spacing: 0) {
+            #if os(macOS)
+            // macOS sheets don't render the NavigationStack toolbar's
+            // principal slot, and `.navigationTitle()` on the sheet content
+            // leaks to the parent NavigationSplitView's window title. Render
+            // the title in-content so it lives inside the sheet's locale
+            // override and stays scoped to the sheet.
+            sheetHeader
+            #endif
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let loadError {
+                    ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    formBody
+                }
             }
         }
-        .navigationTitle(navigationTitle)
+        .frame(maxHeight: .infinity, alignment: .top)
         #if os(iOS)
+        .navigationTitle(headerTitle)
+        .navigationSubtitle(headerSubtitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
+                #if os(macOS)
+                Button("close", role: .close) { dismiss() }
+                    .disabled(isDeleting)
+                #else
                 Button(role: .close) { dismiss() }
                     .disabled(isDeleting)
+                #endif
             }
             if showsDelete {
                 ToolbarItem(placement: .destructiveAction) {
@@ -141,23 +154,56 @@ struct EntityEditView: View {
         .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
     }
 
-    /// Sheet title — mirrors `components/entity/drawer/edit.vue`:
-    /// `titleChild` (with parent), `titleAdd` (create), `titleEdit` (edit).
-    private var navigationTitle: Text {
+    /// Sheet title split into action + subtitle so the entity name / type
+    /// renders one line below in a secondary style. Mirrors
+    /// `components/entity/drawer/edit.vue` (`titleAdd` / `titleChild` /
+    /// `titleEdit`).
+    private var headerTitle: LocalizedStringKey {
         switch mode {
         case .edit:
-            guard let typeName = entity?.typeName, !typeName.isEmpty else {
-                return Text("edit")
-            }
-            return Text("titleEdit \(typeName.lowercased())")
-        case .create(let parentId, _, let typeLabel):
-            let label = typeLabel.lowercased()
-            if parentId != nil {
-                return Text("titleChild \(label)")
-            }
-            return Text("titleAdd \(label)")
+            return "edit"
+        case .create(let parentId, _, _):
+            return parentId == nil ? "titleAddBare" : "titleChildBare"
         }
     }
+
+    /// Subtitle: entity name when editing an existing entity, otherwise the
+    /// type label. nil only when neither is available (very early in load).
+    private var headerSubtitle: String? {
+        switch mode {
+        case .edit:
+            if let name = entity.map(\.displayName), !name.isEmpty {
+                return name
+            }
+            return entity?.typeName
+        case .create(_, _, let typeLabel):
+            return typeLabel
+        }
+    }
+
+    // MARK: - macOS header
+
+    #if os(macOS)
+    /// In-content title bar for macOS sheets. macOS sheets don't render the
+    /// NavigationStack's principal toolbar slot, and `.navigationTitle()` on
+    /// the sheet content leaks to the parent window — so the title lives
+    /// here, inside the sheet's content tree (and thus its locale override).
+    private var sheetHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(headerTitle)
+                .font(.headline)
+            if let headerSubtitle, !headerSubtitle.isEmpty {
+                Text(verbatim: headerSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+    #endif
 
     // MARK: - Form body
 
@@ -214,6 +260,7 @@ struct EntityEditView: View {
     @ViewBuilder
     private func propertyRows(for def: PropertyDefinition) -> some View {
         let rows = values[def.name] ?? []
+        let isFirstFocusable = def._id == firstFocusableDefinitionId
 
         ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
             PropertyEditor(
@@ -227,7 +274,8 @@ struct EntityEditView: View {
                     if let _id = row._id {
                         await deleteValue(propertyName: def.name, value: row, propertyId: _id)
                     }
-                }
+                },
+                autoFocusOnAppear: isFirstFocusable && index == 0
             )
             .swipeActions {
                 // Files use the inline trash button on `savedFileRow`; only
@@ -262,6 +310,26 @@ struct EntityEditView: View {
         return byGroup
             .map { EditorGroup(name: $0.key.isEmpty ? nil : $0.key, definitions: $0.value.sorted { $0.ordinal < $1.ordinal }) }
             .sorted { ($0.name ?? "") < ($1.name ?? "") }
+    }
+
+    /// `_id` of the first text-input definition in the form. Used to
+    /// auto-focus the first input when the sheet appears (mirrors webapp's
+    /// `inputRef.focus()` on drawer open). Returns nil when no definition
+    /// has a focusable input — boolean-only forms etc. just don't focus.
+    private var firstFocusableDefinitionId: String? {
+        for group in orderedGroups {
+            for def in group.definitions {
+                switch def.type {
+                case "text", "number":
+                    return def._id
+                case "string" where def.set.isEmpty:
+                    return def._id
+                default:
+                    continue
+                }
+            }
+        }
+        return nil
     }
 
     // Per-value commit, file upload, delete and `manageEmptyFields`

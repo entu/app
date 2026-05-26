@@ -1,10 +1,3 @@
-// Entity list API response and the summary model used in list views.
-//
-// The API returns entities with dynamic property keys — known fields (_id, _thumbnail, name)
-// are typed directly, while all other properties go into a flexible dictionary.
-// This allows the same model to handle any entity type (person, document, etc.)
-// without knowing the schema at compile time.
-
 import Foundation
 
 /// API response from GET /entity — list of entities with total count.
@@ -19,25 +12,23 @@ struct EntitySummary: Codable, Identifiable {
     let _thumbnail: String?
     let name: [PropertyValue]?
 
-    // Returned by grouped queries (e.g. group=_type.reference) — count of entities in this group.
+    /// Returned by grouped queries (e.g. `group=_type.reference`) — count of entities in this group.
     let _count: Int?
 
-    // Extra properties beyond the known keys above.
-    // Keys are property names (e.g. "query", "ordinal"), values are property arrays.
+    /// Extra properties beyond the known keys above. Keys are property
+    /// names (e.g. `query`, `ordinal`); values are property arrays.
     let additionalProperties: [String: [PropertyValue]]?
 
     var id: String { _id }
 
-    // Returns the display name in the user's preferred language.
+    /// Display name in the user's preferred language.
     var displayName: String {
         PropertyValue.localized(name) ?? _id
     }
 
     // MARK: - Custom JSON decoding
 
-    // Known keys are decoded by name; everything else is collected into additionalProperties.
-    // This is needed because the API returns dynamic keys that vary by entity type.
-
+    /// Known keys decoded by name; everything else collected into `additionalProperties`.
     enum CodingKeys: String, CodingKey {
         case _id, _thumbnail, name, _count
     }

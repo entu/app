@@ -20,9 +20,24 @@ struct HistorySheet: View {
     let entityId: String
     let typeId: String?
 
+    /// Subtitle inputs — entity's display name (preferred) and type label
+    /// (fallback). Passed by the caller so we don't need to fetch the entity
+    /// just to render the header.
+    let entityName: String?
+    let typeLabel: String?
+
     /// Re-apply the in-app language inside the sheet so a switch in
     /// Settings re-resolves every `LocalizedStringKey` here.
     @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
+
+    /// Memberwise init with default-nil header inputs so existing call sites
+    /// without the new arguments still compile.
+    init(entityId: String, typeId: String?, entityName: String? = nil, typeLabel: String? = nil) {
+        self.entityId = entityId
+        self.typeId = typeId
+        self.entityName = entityName
+        self.typeLabel = typeLabel
+    }
 
     @State private var rawChanges: [HistoryChange.Raw] = []
     @State private var editorNames: [String: String] = [:]
@@ -37,31 +52,67 @@ struct HistorySheet: View {
     private var hasMore: Bool { rawChanges.count < totalCount }
 
     var body: some View {
-        Group {
-            if isLoading && groups.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let loadError {
-                ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
-            } else if groups.isEmpty {
-                ContentUnavailableView("historyEmpty", systemImage: "clock.arrow.circlepath")
-            } else {
-                listBody
+        VStack(spacing: 0) {
+            #if os(macOS)
+            sheetHeader
+            #endif
+            Group {
+                if isLoading && groups.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let loadError {
+                    ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
+                } else if groups.isEmpty {
+                    ContentUnavailableView("historyEmpty", systemImage: "clock.arrow.circlepath")
+                } else {
+                    listBody
+                }
             }
         }
-        .navigationTitle("historyTitle")
         #if os(iOS)
+        .navigationTitle(Text("history"))
+        .navigationSubtitle(headerSubtitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
+                #if os(macOS)
+                Button("close", role: .close) { dismiss() }
+                #else
                 Button(role: .close) { dismiss() }
+                #endif
             }
         }
         .task { await load() }
         .id(appLanguage)
         .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
     }
+
+    /// Subtitle: entity name (preferred), fall back to type label.
+    private var headerSubtitle: String? {
+        if let entityName, !entityName.isEmpty { return entityName }
+        return typeLabel
+    }
+
+    #if os(macOS)
+    /// In-content title bar for macOS sheets. See EntityEditSheet.swift —
+    /// macOS sheets don't render the toolbar's principal slot.
+    private var sheetHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("history")
+                .font(.headline)
+            if let headerSubtitle, !headerSubtitle.isEmpty {
+                Text(verbatim: headerSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+    #endif
 
     /// `List` (not `Form`) so rows render lazily — the last row's
     /// `.onAppear` fires only when scrolled into view, which is what the

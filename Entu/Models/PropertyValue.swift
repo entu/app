@@ -1,10 +1,3 @@
-// A single value within an entity's property array.
-//
-// In Entu, every property (e.g. "name", "email") holds an array of these values.
-// The active field determines the type — only one of string/number/boolean/reference/etc.
-// is non-nil per value. Multilingual properties have multiple values with different
-// "language" fields (e.g. "en", "et").
-
 import Foundation
 
 /// A single value within an entity property array.

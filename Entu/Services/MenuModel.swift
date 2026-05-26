@@ -1,10 +1,3 @@
-// Fetches menu entities from the API and groups them for the sidebar.
-// Menu items define which entity types appear in the navigation
-// (e.g. "People", "Documents") and carry query strings to filter the list.
-//
-// @Observable = SwiftUI views automatically update when "groups" or "isLoading" change.
-// @MainActor = runs on the main thread for safe UI updates.
-
 import Foundation
 
 /// Type entity that can be added under a menu (or under another type).

@@ -1,10 +1,3 @@
-// Global authentication state — tracks whether the user is signed in,
-// which authenticated databases they can access, which public databases
-// they have added for guest browsing, and who they are.
-//
-// @Observable = SwiftUI automatically re-renders views when these properties change.
-// @MainActor = all mutations happen on the main thread (safe for UI updates).
-
 import Foundation
 
 /// Global authentication state — token, databases, current user.

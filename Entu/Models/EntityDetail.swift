@@ -1,10 +1,3 @@
-// Full entity returned by GET /{db}/entity/{_id}.
-// Unlike EntitySummary (used in lists), this contains ALL properties.
-//
-// The API response has mixed types: _id and _thumbnail are plain strings,
-// but every other key is an array of PropertyValue objects. The custom
-// decoder handles this by separating known scalar fields from dynamic ones.
-
 import Foundation
 
 /// API response wrapper from GET /entity/{id}.
@@ -17,8 +10,8 @@ struct EntityDetail: Codable, Identifiable {
     let _id: String
     let _thumbnail: String?
 
-    // All properties keyed by name (e.g. "name", "_type", "_parent", "email").
-    // Each value is an array of PropertyValue since properties can be multi-valued.
+    /// All properties keyed by name (e.g. `name`, `_type`, `_parent`, `email`).
+    /// Each value is an array of `PropertyValue` since properties can be multi-valued.
     let properties: [String: [PropertyValue]]
 
     var id: String { _id }
@@ -47,9 +40,7 @@ struct EntityDetail: Codable, Identifiable {
 
     // MARK: - Custom JSON decoding
 
-    // Decodes _id and _thumbnail as plain strings, collects everything else
-    // as [String: [PropertyValue]] into the properties dictionary.
-
+    /// `_id` / `_thumbnail` decoded as plain strings; everything else goes into `properties`.
     enum CodingKeys: String, CodingKey {
         case _id, _thumbnail
     }

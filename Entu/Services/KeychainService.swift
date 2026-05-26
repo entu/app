@@ -1,10 +1,3 @@
-// Secure storage for sensitive data (JWT token, database list) using the system keychain.
-// Uses the data protection keychain (kSecUseDataProtectionKeychain) which works
-// across iOS, iPadOS, and macOS without triggering password prompts.
-//
-// Declared as an "enum" with no cases — a Swift pattern for a namespace
-// that cannot be accidentally instantiated (similar to a static class).
-
 import Foundation
 import Security
 
@@ -57,7 +50,7 @@ enum KeychainService {
 
     // MARK: - Database list (JSON-encoded)
 
-    // Note: keychain key stays as "accounts" to avoid invalidating existing stored data.
+    /// Keychain key stays as `"accounts"` to avoid invalidating existing stored data.
     private static let databasesKey = "accounts"
 
     private static var databasesQuery: [String: Any] {

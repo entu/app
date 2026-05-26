@@ -25,6 +25,11 @@ struct ReferencePickerView: View {
     /// the kinds of entities this reference can point at. nil ⇒ unscoped.
     let query: String?
 
+    /// Subtitle shown under the sheet title — typically the property label
+    /// or referenced type label, whichever is contextually useful. nil hides
+    /// the subtitle row entirely.
+    var subtitle: String?
+
     /// Called with the picked entity's id and display name.
     let onSelect: (String, String) -> Void
 
@@ -106,13 +111,38 @@ struct ReferencePickerView: View {
             scheduleSearch()
         }
         .task { await runSearch() }
-        .navigationTitle("selectReference")
         #if os(iOS)
+        .navigationTitle(Text("selectReference"))
+        .navigationSubtitle(subtitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        #else
+        // macOS sheets don't render the NavigationStack's principal toolbar
+        // slot, and `.navigationTitle()` on sheet content leaks to the parent
+        // window. Pin the title above the list via `.safeAreaInset` so it
+        // lives inside the sheet's locale override and stays scoped here.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("selectReference")
+                    .font(.headline)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(verbatim: subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+        }
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
+                #if os(macOS)
+                Button("close", role: .close) { dismiss() }
+                #else
                 Button(role: .close) { dismiss() }
+                #endif
             }
         }
         .frame(minWidth: 480, minHeight: 500)

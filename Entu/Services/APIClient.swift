@@ -1,18 +1,13 @@
-// HTTP client for the Entu REST API.
-// Handles URL building, authentication headers, JSON encoding/decoding,
-// and auto-logout on 401 responses (skipped while browsing a public database).
-//
-// Multi-tenant: when databaseId is set, all requests are scoped to that database
-// (e.g. /api/{databaseId}/entity). Auth routes skip the database prefix.
-// `suppressToken` lets a signed-in user browse a public database as a guest
-// by omitting the Authorization header on every request without losing the
-// stored token. `probePublicDatabase` runs alongside this for the
-// "Browse public database" entry flow — it builds the URL by hand so the
-// candidate id never lands in `databaseId` before it's been confirmed
-// readable without a token.
-//
-// @Observable = SwiftUI views update when databaseId, token, or suppressToken change.
-// @MainActor = properties are read/written on the main thread.
+// HTTP client for the Entu REST API. Multi-tenant: when `databaseId` is
+// set, all requests are scoped to that database (e.g.
+// `/api/{databaseId}/entity`); auth routes skip the database prefix.
+// `suppressToken` lets a signed-in user browse a public database as a
+// guest by omitting the Authorization header on every request without
+// losing the stored token. `probePublicDatabase` complements this for
+// the "Browse public database" entry flow — it builds the URL by hand
+// so the candidate id never lands in `databaseId` before it's confirmed
+// readable without a token. Auto-logout on 401 is skipped while
+// browsing a public database.
 
 import Foundation
 
@@ -35,7 +30,11 @@ enum APIError: LocalizedError {
         case .unauthorized: return "Unauthorized"
         case .serverError(let code, let message): return "Error \(code): \(message)"
         case .invalidResponse: return "Invalid response"
-        case .noAccessibleDatabases: return "No accessible databases for this account"
+        case .noAccessibleDatabases:
+            // Surface admin-invitation guidance per App Review (May 2026):
+            // a B2B Entu account must be invited into a database before
+            // sign-in produces anything usable.
+            return String(localized: "noAccessibleDatabases", bundle: .currentLocalized)
         }
     }
 }

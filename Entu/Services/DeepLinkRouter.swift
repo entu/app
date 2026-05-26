@@ -1,10 +1,9 @@
-// Parses universal links of the form `https://entu.app/{databaseId}/{entityId}?{query}`
-// into pending state that MainView consumes once the user is authenticated and
-// the menu has loaded.
-//
-// Auth callbacks (`/auth/...`) are deliberately ignored here — AuthService
-// handles those separately. `handle(url:)` returns a Bool so EntuApp can
-// fall through to AuthService when the URL isn't an entity link.
+// Parses `https://entu.app/{databaseId}/{entityId}?{query}` links into
+// pending state that `MainView` consumes once the user is authenticated
+// and the menu has loaded. Auth callbacks (`/auth/...`) are deliberately
+// ignored here — `AuthService` handles those separately. `handle(url:)`
+// returns a Bool so `EntuApp` can fall through to `AuthService` when the
+// URL isn't an entity link.
 
 import Foundation
 

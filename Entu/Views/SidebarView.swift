@@ -1,9 +1,7 @@
-// Left sidebar — shows menu groups as expandable sections.
-// Bottom bar shows the current user on all platforms; tapping it opens UserSheet.
-
 import SwiftUI
 
-/// Sidebar with menu groups and the current user bar.
+/// Sidebar with menu groups as expandable sections and a bottom user
+/// bar that opens `UserSheet` on tap.
 struct SidebarView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api

@@ -1,7 +1,3 @@
-// A database returned by the auth API.
-// In Entu's multi-tenant model, each database is a separate MongoDB instance.
-// The _id is the database name (e.g. "roots") used in API URL paths.
-
 import Foundation
 
 /// A database (tenant) returned by the auth API.

@@ -1,7 +1,3 @@
-// Container view for entity detail — manages loading state and data fetching.
-// Displays a loading spinner, error message, or the entity content.
-// Uses .task(id:) to refetch when a different entity is selected.
-
 import SwiftUI
 
 /// Container for entity detail — manages loading, error states, and data fetching.

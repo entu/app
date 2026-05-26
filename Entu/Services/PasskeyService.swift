@@ -1,10 +1,7 @@
-// Handles passkey sign-in via the AuthenticationServices framework.
-// Fetches WebAuthn options from the API, prompts the system passkey UI,
-// then posts the assertion back to the API to receive a JWT.
-//
-// Passkeys are bound to the entu.app domain via the Associated Domains
-// entitlement and the apple-app-site-association file served there, so the
-// same passkey registered in the web app can be used here and vice versa.
+// Passkeys are bound to the `entu.app` domain via the Associated
+// Domains entitlement and the apple-app-site-association file served
+// there, so the same passkey registered in the web app can be used
+// here and vice versa.
 
 import AuthenticationServices
 import Foundation

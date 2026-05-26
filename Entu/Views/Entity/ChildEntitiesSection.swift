@@ -13,7 +13,7 @@ struct ChildEntitiesSection: View {
 
     let entityId: String
 
-    // Called when user taps a child entity — navigates to that entity.
+    /// Called when user taps a child entity — navigates to that entity.
     var onNavigate: ((String) -> Void)?
 
     @State private var groups: [ChildGroup] = []

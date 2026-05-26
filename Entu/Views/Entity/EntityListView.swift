@@ -1,7 +1,3 @@
-// Scrollable entity list with search and infinite scroll.
-// Receives a query string from the selected menu item and fetches
-// matching entities from the API, converting them to EntityListItem.
-
 import SwiftUI
 
 /// Scrollable entity list with search, infinite scroll, and pull-to-refresh.
@@ -17,7 +13,7 @@ struct EntityListView: View {
     /// list is showing a global search result rather than a menu.
     let menuId: String?
 
-    // Selection binding — drives the detail column in NavigationSplitView.
+    /// Selection binding — drives the detail column in `NavigationSplitView`.
     @Binding var selectedEntityId: String?
 
     /// Bumped from outside to force a list refetch — used after duplicate
@@ -33,6 +29,12 @@ struct EntityListView: View {
     @State private var pageSize = 50
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var pendingCreate: EntityEditMode?
+
+    /// Hardware keyboard arrow-key navigation. SwiftUI's `List(selection:)`
+    /// moves selection on Up/Down once it has focus — we just need to
+    /// surrender focus to it on appear. Mirrors webapp's `onKeyStroke`
+    /// in `layout/entity-list.vue`.
+    @FocusState private var isListFocused: Bool
 
     /// Captured during a create-mode commit, surfaced after the sheet
     /// dismisses — same deferred-close pattern as `EntityToolbarHost`.
@@ -71,6 +73,7 @@ struct EntityListView: View {
         }
         .listStyle(.plain)
         .clipped()
+        .focused($isListFocused)
         .refreshable { await loadEntities() }
         .overlay {
             if isLoading && items.isEmpty {
@@ -87,6 +90,10 @@ struct EntityListView: View {
             items = []
             totalCount = 0
             await loadEntities()
+            // Hand focus to the list so arrow keys move selection without
+            // requiring a click first. Harmless when no hardware keyboard
+            // is attached — focused state on a List is invisible on touch.
+            isListFocused = true
         }
         .onChange(of: refreshToken) {
             // Outside-driven refresh (e.g. after duplicate) — keep the

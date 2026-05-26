@@ -1,8 +1,3 @@
-// Type-aware editor row for `EntityEditView`. Each control fires
-// `onCommit` when the user finishes with it (blur for text, value-change
-// for toggles/pickers); the parent maps that to the right API call —
-// see `EntityEditView.commit`.
-
 import SwiftUI
 import QuickLook
 #if os(iOS)
@@ -10,7 +5,10 @@ import PhotosUI
 #endif
 import UniformTypeIdentifiers
 
-/// Editor row for a single value of a property.
+/// Type-aware editor row for a single property value in `EntityEditView`.
+/// Each control fires `onCommit` when the user finishes with it (blur for
+/// text, value-change for toggles/pickers); the parent maps that to the
+/// right API call — see `EntityEditView.commit`.
 struct PropertyEditor: View {
     @Environment(APIClient.self) private var api
     @Environment(\.locale) private var locale
@@ -41,6 +39,13 @@ struct PropertyEditor: View {
     /// File-property only — fires when the trash button on a saved file
     /// is tapped. Parent runs the `DELETE /property/{id}` call.
     var onDelete: () async -> Void = {}
+
+    /// When true, focus the input (text/number/text-area) on first appear.
+    /// Used by `EntityEditView` to focus the first text field in the form,
+    /// matching webapp's auto-focus-first-input behaviour. No-op for
+    /// non-input editors (boolean, date, file, reference, picker, counter
+    /// without `_id`) since focus has nothing to land on.
+    var autoFocusOnAppear: Bool = false
 
     @FocusState private var isFocused: Bool
     @State private var showingDescription = false
@@ -107,6 +112,34 @@ struct PropertyEditor: View {
         .contentShape(Rectangle())
         .onTapGesture { activate() }
         .disabled(definition.readonly || definition.formula != nil)
+        .task {
+            // Slight delay so the sheet's present animation finishes before
+            // the keyboard slides up — without it, iOS sometimes drops the
+            // focus mid-animation and the field stays blurred.
+            guard autoFocusOnAppear, supportsAutoFocus else { return }
+            try? await Task.sleep(for: .milliseconds(300))
+            isFocused = true
+        }
+    }
+
+    /// Editor types whose underlying control accepts focus. Pickers,
+    /// toggles, date pickers, file buttons, reference pickers and the
+    /// "Generate" counter button have no focusable input to land on.
+    private var supportsAutoFocus: Bool {
+        switch definition.type {
+        case "text", "number":
+            return true
+        case "string":
+            // Set-backed string is a Picker (no text field to focus).
+            return definition.set.isEmpty
+        case "counter":
+            // Generate button until the value exists; once saved it shows
+            // a TextField — but auto-focus only runs on first appear, so
+            // a freshly-saved counter row won't trip this anyway.
+            return value._id != nil
+        default:
+            return false
+        }
     }
 
     /// True on iPhone (compact horizontal size class) — narrow rows can't
@@ -408,7 +441,7 @@ struct PropertyEditor: View {
         .buttonStyle(.plain)
         .sheet(isPresented: $showingPicker) {
             NavigationStack {
-                ReferencePickerView(query: definition.query) { id, label in
+                ReferencePickerView(query: definition.query, subtitle: definition.label ?? definition.name) { id, label in
                     value.referenceId = id
                     value.referenceLabel = label
                     showingPicker = false

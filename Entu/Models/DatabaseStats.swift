@@ -1,6 +1,3 @@
-// Usage statistics for a database, returned by the API root endpoint.
-// Each stat tracks current usage, the plan limit, and soft-deleted count.
-
 import Foundation
 
 /// Usage statistics for a database.

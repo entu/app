@@ -1,8 +1,3 @@
-// View modifier that fades the top and bottom edges of a scrollable region
-// so the first/last items dissolve into the surrounding chrome instead of
-// hard-clipping. Used by AuthView, DatabaseListView, and UserSheet — all
-// scroll containers wrapped in the same outer hero layout.
-
 import SwiftUI
 
 extension View {

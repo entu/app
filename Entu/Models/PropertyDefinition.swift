@@ -1,7 +1,3 @@
-// Metadata for a single property within an entity type definition.
-// Describes how to display, label, group, and sort a property.
-// Converted from raw API EntitySummary at the service layer.
-
 import Foundation
 
 /// Property metadata — label, type, group, ordinal, display rules. Converted from API.

@@ -1,7 +1,3 @@
-// Circular avatar used in list rows — shows a thumbnail image if available,
-// otherwise falls back to a colored circle with the first letter of the name.
-// The color is deterministic (same name always gets the same color).
-
 import SwiftUI
 
 /// Circular avatar — thumbnail image or colored letter fallback.
@@ -40,7 +36,7 @@ struct EntityAvatar: View {
             }
     }
 
-    // Pick a consistent color from name — same name always produces the same color.
+    /// Deterministic colour from `name` — same name always produces the same colour.
     private var avatarColor: Color {
         let colors: [Color] = [.red, .orange, .yellow, .green, .mint, .teal, .cyan, .blue, .indigo, .purple, .pink]
         let hash = name.unicodeScalars.reduce(0) { $0 + Int($1.value) }

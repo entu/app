@@ -304,7 +304,12 @@ private struct EntityToolbarHost: ViewModifier {
                 onChange: nil,
                 width: 600, height: 600
             ) {
-                HistorySheet(entityId: entity._id, typeId: entity.typeId)
+                HistorySheet(
+                    entityId: entity._id,
+                    typeId: entity.typeId,
+                    entityName: entity.displayName,
+                    typeLabel: entity.typeName
+                )
             }
             .sheet(
                 item: $editMode,

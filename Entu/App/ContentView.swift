@@ -1,11 +1,9 @@
-// Root view — decides which screen to show based on auth + public-db state:
-//   1. A database is active                  → MainView
-//   2. At least one database known           → DatabaseListView (or auto-select if only one)
-//   3. Nothing known and not signed in       → AuthView
-
 import SwiftUI
 
-/// Root router — shows auth, database picker, or main view based on state.
+/// Root router — picks between auth, database picker, or main view based on state.
+/// 1. A database is active → `MainView`.
+/// 2. At least one database known → `DatabaseListView` (or auto-select if only one).
+/// 3. Nothing known and not signed in → `AuthView`.
 struct ContentView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api

@@ -111,11 +111,10 @@ struct DashboardView: View {
 
 // MARK: - StatsRow
 
-// Single stat row matching the webapp's stats-bar component:
-// Top: label (left) + "limit" text (right, red if over)
-// Bar: usage (solid) + deleted (lighter), red limit marker if over
-// Bottom: total value (left) + limit value (right)
-// Popover: grid with color squares and values
+/// Single stat row matching the webapp's stats-bar component:
+/// top label + over-limit indicator; usage + deleted bar with a red
+/// over-limit marker; total / limit values below; popover with a
+/// colour-keyed value grid.
 private struct StatsRow: View {
     let label: LocalizedStringKey
     let usage: Int

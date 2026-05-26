@@ -1,27 +1,9 @@
-// Renders a single property as a row: label on the left, value(s) on the right.
-// Handles type-specific formatting: string, number, boolean, reference, date, datetime, file.
-// Parses ISO 8601 strings tolerating both fractional-seconds
-// (`2026-04-29T15:30:45.123Z`) and plain (`2026-04-29T15:30:45Z`)
-// formats — which is what the API can send back depending on the
-// underlying value's precision.
-extension ISO8601DateFormatter {
-    static func parse(_ string: String) -> Date? {
-        let withFractional = ISO8601DateFormatter()
-        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = withFractional.date(from: string) { return d }
-
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: string)
-    }
-}
-
-// File properties use QuickLook for native preview on all platforms.
-
 import QuickLook
 import SwiftUI
 
 /// Single property row — label left, type-specific value(s) right.
+/// Handles type-specific formatting: string, number, boolean, reference,
+/// date, datetime, file. File properties use QuickLook for native preview.
 struct PropertyRow: View {
     @Environment(APIClient.self) private var api
     @Environment(\.locale) private var locale
@@ -29,7 +11,7 @@ struct PropertyRow: View {
     let definition: PropertyDefinition
     let values: [PropertyValue]
 
-    // Called when user taps a reference — navigates to that entity.
+    /// Called when user taps a reference — navigates to that entity.
     var onNavigate: ((String) -> Void)?
 
     @Environment(\.horizontalSizeClass) private var sizeClass

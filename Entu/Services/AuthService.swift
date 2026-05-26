@@ -1,8 +1,3 @@
-// Handles OAuth sign-in via an in-app browser sheet.
-// Opens the Entu API auth URL, waits for the OAuth callback (either inside
-// the ASWebAuthenticationSession or delivered externally via Universal Link),
-// then exchanges the returned key for a JWT token.
-
 import AuthenticationServices
 import Foundation
 #if os(iOS)

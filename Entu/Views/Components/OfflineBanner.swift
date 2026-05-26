@@ -1,11 +1,8 @@
-// Slim banner indicating no network connectivity.
-// Caller is responsible for placement and visibility — the view itself
-// always renders; visibility is controlled by the parent so SwiftUI can
-// drive transitions on the parent's conditional inclusion.
-
 import SwiftUI
 
-/// Compact pill that signals offline state to the user.
+/// Compact pill that signals offline state to the user. The view itself
+/// always renders; the parent controls visibility so SwiftUI can drive
+/// transitions on the parent's conditional inclusion.
 struct OfflineBanner: View {
     var body: some View {
         HStack(spacing: 6) {

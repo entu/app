@@ -1,10 +1,8 @@
-// Tracks reachability of any network interface using NWPathMonitor.
-// Publishes `isOnline` on the main actor so SwiftUI views can react.
-//
-// NWPathMonitor invokes its update handler on a private background queue,
-// so the closure is marked `@Sendable` and hops to MainActor before
-// touching state — without that, Swift 6's runtime isolation check
-// crashes when the closure tries to mutate @Observable state from off-main.
+// NWPathMonitor invokes its update handler on a private background
+// queue, so the closure is marked `@Sendable` and hops to MainActor
+// before touching state — without that, Swift 6's runtime isolation
+// check crashes when the closure tries to mutate `@Observable` state
+// from off-main.
 
 import Foundation
 import Network

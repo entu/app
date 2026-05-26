@@ -1,9 +1,3 @@
-// Fetches a single entity and its type definition, then provides
-// properties organized by group for display in the detail view.
-//
-// Type definitions are cached by typeId so browsing entities of the
-// same type doesn't re-fetch property metadata on every navigation.
-
 import Foundation
 
 /// A group of properties sharing the same group label, sorted by ordinal.
@@ -30,10 +24,10 @@ final class EntityDetailModel {
     private let api: APIClient
     private var definitions: [PropertyDefinition] = []
 
-    // Shared across navigations — avoids refetching type metadata for the
-    // same entity type. Keyed by `"<lang>:<typeId>"` so entries for different
-    // languages coexist; switching language hits the other language's cache
-    // without a refetch.
+    /// Shared across navigations — avoids refetching type metadata for
+    /// the same entity type. Keyed by `"<lang>:<typeId>"` so entries for
+    /// different languages coexist; switching language hits the other
+    /// language's cache without a refetch.
     private static var typeCache: [String: [PropertyDefinition]] = [:]
 
     /// Clears the type definition cache — call on database change.

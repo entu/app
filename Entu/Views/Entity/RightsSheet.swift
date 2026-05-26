@@ -39,7 +39,7 @@ struct RightsSheet: View {
     /// flag, all five right buckets, and parent's inherited rights for
     /// read-only display.
     private static let rightsProps = [
-        "name",
+        "name", "_type",
         "_sharing", "_inheritrights",
         "_noaccess", "_viewer", "_expander", "_editor", "_owner",
         "_parent_viewer", "_parent_expander", "_parent_editor", "_parent_owner"
@@ -53,24 +53,35 @@ struct RightsSheet: View {
     private static let inheritedRightTypes = ["viewer", "expander", "editor", "owner"]
 
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let loadError {
-                ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
-            } else {
-                formBody
+        VStack(spacing: 0) {
+            #if os(macOS)
+            sheetHeader
+            #endif
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let loadError {
+                    ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
+                } else {
+                    formBody
+                }
             }
         }
-        .navigationTitle(navigationTitle)
         #if os(iOS)
+        .navigationTitle(Text("rights"))
+        .navigationSubtitle(headerSubtitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
+                #if os(macOS)
+                Button("close", role: .close) { dismiss() }
+                    .disabled(isUpdating)
+                #else
                 Button(role: .close) { dismiss() }
                     .disabled(isUpdating)
+                #endif
             }
         }
         .task { await load() }
@@ -78,13 +89,34 @@ struct RightsSheet: View {
         .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
     }
 
+    #if os(macOS)
+    /// In-content title bar for macOS sheets. See EntityEditSheet.swift —
+    /// macOS sheets don't render the toolbar's principal slot.
+    private var sheetHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("rights")
+                .font(.headline)
+            if let headerSubtitle, !headerSubtitle.isEmpty {
+                Text(verbatim: headerSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+    #endif
+
     // MARK: - Title
 
-    private var navigationTitle: Text {
-        guard let entity, let name = PropertyValue.localized(entity.properties["name"]) else {
-            return Text("rights")
+    /// Subtitle: entity name (preferred), fall back to type label.
+    private var headerSubtitle: String? {
+        if let name = PropertyValue.localized(entity?.properties["name"]), !name.isEmpty {
+            return name
         }
-        return Text("rightsTitle \(name)")
+        return entity?.typeName
     }
 
     // MARK: - Form
@@ -187,7 +219,10 @@ struct RightsSheet: View {
             .disabled(isUpdating)
             .sheet(isPresented: $showingPicker) {
                 NavigationStack {
-                    ReferencePickerView(query: "_type.string=person") { id, _ in
+                    ReferencePickerView(
+                        query: "_type.string=person",
+                        subtitle: String(localized: "rights", bundle: .currentLocalized)
+                    ) { id, _ in
                         showingPicker = false
                         Task { await addRight(userId: id) }
                     }

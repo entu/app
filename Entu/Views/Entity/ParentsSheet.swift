@@ -46,24 +46,35 @@ struct ParentsSheet: View {
     }
 
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let loadError {
-                ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
-            } else {
-                formBody
+        VStack(spacing: 0) {
+            #if os(macOS)
+            sheetHeader
+            #endif
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let loadError {
+                    ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
+                } else {
+                    formBody
+                }
             }
         }
-        .navigationTitle(navigationTitle)
         #if os(iOS)
+        .navigationTitle(Text("parents"))
+        .navigationSubtitle(headerSubtitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
+                #if os(macOS)
+                Button("close", role: .close) { dismiss() }
+                    .disabled(isUpdating)
+                #else
                 Button(role: .close) { dismiss() }
                     .disabled(isUpdating)
+                #endif
             }
         }
         .task { await load() }
@@ -71,9 +82,30 @@ struct ParentsSheet: View {
         .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
     }
 
-    private var navigationTitle: Text {
-        guard let name = entityName else { return Text("parents") }
-        return Text("parentsTitle \(name)")
+    #if os(macOS)
+    /// In-content title bar for macOS sheets. See EntityEditSheet.swift —
+    /// macOS sheets don't render the toolbar's principal slot.
+    private var sheetHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("parents")
+                .font(.headline)
+            if let headerSubtitle, !headerSubtitle.isEmpty {
+                Text(verbatim: headerSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+    #endif
+
+    /// Subtitle: entity name (preferred), fall back to type label.
+    private var headerSubtitle: String? {
+        if let entityName, !entityName.isEmpty { return entityName }
+        return entity?.typeName
     }
 
     // MARK: - Form
@@ -99,7 +131,10 @@ struct ParentsSheet: View {
                 .disabled(isUpdating)
                 .sheet(isPresented: $showingPicker) {
                     NavigationStack {
-                        ReferencePickerView(query: parentQuery) { id, _ in
+                        ReferencePickerView(
+                            query: parentQuery,
+                            subtitle: String(localized: "parents", bundle: .currentLocalized)
+                        ) { id, _ in
                             showingPicker = false
                             Task { await addParent(reference: id) }
                         }

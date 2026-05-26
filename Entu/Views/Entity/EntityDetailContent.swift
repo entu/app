@@ -20,7 +20,7 @@ struct EntityDetailContent: View {
     let entity: EntityDetail
     let groupedProperties: [PropertyGroup]
 
-    // Called when user taps a reference or child entity — navigates to it.
+    /// Called when user taps a reference or child entity — navigates to it.
     var onNavigate: ((String) -> Void)?
 
     /// Measured width of the view. Used to fold to the compact layout when

@@ -1,7 +1,3 @@
-// App entry point — creates the shared API client and auth state,
-// then injects them into the view hierarchy via .environment().
-// All child views access these shared objects through @Environment.
-
 import SwiftUI
 
 /// App entry point — creates shared state and injects via environment.

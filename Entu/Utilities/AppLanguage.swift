@@ -1,17 +1,14 @@
-// In-app language preference and the helpers everything else reads to honour it.
-//
-// SwiftUI views handle their own localization via `\.environment(\.locale, ...)`
-// at app root — `Text("key")`, `Button("key")`, `.alert("key", …)` etc. all
-// observe the env locale. This file covers the few places that need the
-// preference outside that path:
-//   - `Bundle.currentLocalized` — for the handful of pure-Swift `String`
-//     contexts (`String(format:)` titles, model-side error strings).
-//   - `PropertyValue.localized(...)` — for server-supplied multilingual
+// SwiftUI views handle their own localization via
+// `\.environment(\.locale, ...)` at app root. This file covers the few
+// places that need the preference outside that path:
+//   - `Bundle.currentLocalized` — pure-Swift `String` contexts
+//     (`String(format:)` titles, model-side error strings).
+//   - `PropertyValue.localized(...)` — server-supplied multilingual
 //     values where the API returns one entry per language.
-//   - `EntityDetailModel.typeCache` / `MenuModel.cache` — for keying entries
+//   - `EntityDetailModel.typeCache` / `MenuModel.cache` — keying entries
 //     by language so switching back is instant.
 //
-// One UserDefaults key (`ui.appLanguage`) drives everything.
+// One `UserDefaults` key (`ui.appLanguage`) drives everything.
 
 import SwiftUI
 

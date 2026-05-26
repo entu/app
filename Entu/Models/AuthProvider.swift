@@ -1,6 +1,3 @@
-// Available sign-in methods and their visual grouping on the auth screen.
-// Each provider maps to an API endpoint (e.g. /auth/apple, /auth/smart-id).
-
 import SwiftUI
 
 /// Available sign-in methods (Apple, Google, email, Estonian ID).
@@ -27,8 +24,8 @@ enum AuthProvider: String, CaseIterable {
         }
     }
 
-    // Icon name — "sf:" prefix means SF Symbols (Apple's built-in icons),
-    // otherwise it's a custom image from the asset catalog.
+    /// Icon name — `sf:` prefix means SF Symbols (Apple's built-in icons),
+    /// otherwise it's a custom image from the asset catalog.
     var icon: String {
         switch self {
         case .passkey: return "sf:person.badge.key.fill"

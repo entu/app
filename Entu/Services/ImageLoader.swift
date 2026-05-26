@@ -1,8 +1,5 @@
-// Shared image loading utility with in-memory cache and auth support.
-// Used by EntityAvatar (list thumbnails) and ThumbnailView (detail thumbnails).
-//
-// Handles 303 redirects that AsyncImage can't follow, and caches loaded
-// images in memory so scrolling back doesn't re-fetch.
+// Handles 303 redirects that `AsyncImage` can't follow, and caches
+// loaded images in memory so scrolling back doesn't re-fetch.
 
 import SwiftUI
 
