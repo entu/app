@@ -27,6 +27,15 @@ final class AuthModel {
     /// Currently signed-in user, or nil when logged out.
     var user: AuthUser?
 
+    /// Expiry of the stored JWT, parsed from the API's ISO 8601 `expires` field.
+    private(set) var tokenExpiresAt: Date?
+
+    /// Refresh the token when less than this many seconds remain before expiry.
+    private let refreshThreshold: TimeInterval = 60 * 60
+
+    /// In-flight refresh, so a burst of concurrent requests triggers one refresh.
+    private var refreshTask: Task<Void, Never>?
+
     /// True when a valid JWT is stored on the API client.
     var isAuthenticated: Bool { api.token != nil }
 
@@ -55,6 +64,10 @@ final class AuthModel {
            !saved.isEmpty {
             self.databases = saved
             self.api.token = KeychainService.loadToken()
+
+            if let expires = KeychainService.loadTokenExpiry() {
+                self.tokenExpiresAt = ISO8601DateFormatter.parse(expires)
+            }
         }
 
         // Restore the saved public-database list (no secrets — just ids).
@@ -81,6 +94,61 @@ final class AuthModel {
         self.api.onUnauthorized = { [weak self] in
             self?.logOut()
         }
+
+        // Refresh a near-expiry token before each authenticated request
+        self.api.refreshIfNeeded = { [weak self] in
+            await self?.refreshTokenIfNeeded()
+        }
+    }
+
+    /// Persist a freshly issued token and its expiry (keychain + in-memory).
+    func storeToken(_ token: String, expires: String?) {
+        KeychainService.saveToken(token)
+        api.token = token
+
+        if let expires {
+            KeychainService.saveTokenExpiry(expires)
+            tokenExpiresAt = ISO8601DateFormatter.parse(expires)
+        }
+    }
+
+    /// Exchange the current token for a fresh one via `GET /auth/refresh`.
+    /// The API refuses tokens older than 14 days, returning 401 → auto-logout.
+    func refreshToken() async throws {
+        let response: AuthResponse = try await api.requestSkippingRefresh("auth/refresh")
+
+        if let newDatabases = response.accounts, !newDatabases.isEmpty {
+            databases = newDatabases
+        }
+
+        if let newToken = response.token {
+            storeToken(newToken, expires: response.expires)
+        }
+
+        if let newUser = response.user {
+            user = newUser
+        }
+    }
+
+    /// Refresh the token if it is close to expiry. Deduplicates concurrent
+    /// callers so a burst of requests triggers a single refresh.
+    func refreshTokenIfNeeded() async {
+        guard api.token != nil, !api.suppressToken,
+              let expiresAt = tokenExpiresAt,
+              expiresAt.timeIntervalSinceNow < refreshThreshold else { return }
+
+        let task: Task<Void, Never>
+        if let existing = refreshTask {
+            task = existing
+        } else {
+            task = Task { [weak self] in
+                try? await self?.refreshToken()
+                self?.refreshTask = nil
+            }
+            refreshTask = task
+        }
+
+        await task.value
     }
 
     /// Exchange a temporary auth key for a permanent JWT token and database list.
@@ -100,8 +168,7 @@ final class AuthModel {
         databases = newDatabases
 
         if let newToken = response.token {
-            KeychainService.saveToken(newToken)
-            api.token = newToken
+            storeToken(newToken, expires: response.expires)
         }
 
         user = response.user
@@ -133,10 +200,12 @@ final class AuthModel {
     /// list, and the active database. Returns the user to `AuthView`.
     func logOut() {
         KeychainService.deleteToken()
+        KeychainService.deleteTokenExpiry()
         KeychainService.deleteDatabases()
         api.token = nil
         api.suppressToken = false
         api.databaseId = nil
+        tokenExpiresAt = nil
         databases = []
         publicDatabases = []
         user = nil

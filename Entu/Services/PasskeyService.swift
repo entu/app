@@ -82,8 +82,7 @@ final class PasskeyService: NSObject {
         }
 
         if let newToken = response.token {
-            KeychainService.saveToken(newToken)
-            auth.api.token = newToken
+            auth.storeToken(newToken, expires: response.expires)
         }
 
         auth.user = response.user

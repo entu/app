@@ -61,6 +61,10 @@ final class APIClient {
     /// Fires on 401 responses — set by AuthModel to trigger automatic logout.
     var onUnauthorized: (() -> Void)?
 
+    /// Awaited before each authenticated request — set by AuthModel to refresh
+    /// the token when it is close to expiry, so the request uses a fresh token.
+    var refreshIfNeeded: (@Sendable () async -> Void)?
+
     /// GET a decoded JSON response from the given path with optional query params.
     func get<T: Decodable>(_ path: String, params: [String: String] = [:]) async throws -> T {
         try await performRequest(path, method: "GET", params: params)
@@ -144,6 +148,12 @@ final class APIClient {
         try await performRequest(path, method: "GET", params: params, tokenOverride: bearerToken)
     }
 
+    /// GET that bypasses the pre-request refresh check — used by the refresh
+    /// flow itself to avoid recursion.
+    func requestSkippingRefresh<T: Decodable>(_ path: String) async throws -> T {
+        try await performRequest(path, method: "GET", skipRefresh: true)
+    }
+
     /// Probe whether `{databaseId}` exists and is publicly accessible, without
     /// touching the active session state. Builds the URL by hand instead of
     /// going through `buildURL` so the candidate id never lands in `databaseId`.
@@ -186,11 +196,20 @@ final class APIClient {
         method: String,
         params: [String: String] = [:],
         bodyData: Data? = nil,
-        tokenOverride: String? = nil
+        tokenOverride: String? = nil,
+        skipRefresh: Bool = false
     ) async throws -> T {
         let url = await buildURL(path: path, params: method == "GET" ? params : [:])
-        let currentToken = await token
         let suppress = await suppressToken
+
+        // Refresh a near-expiry token before sending, so the request goes out
+        // with a fresh token. Skipped for token overrides (callback flow),
+        // guest browsing, and the refresh request itself (avoids recursion).
+        if !skipRefresh, tokenOverride == nil, !suppress, let refreshIfNeeded = await refreshIfNeeded {
+            await refreshIfNeeded()
+        }
+
+        let currentToken = await token
         let bearerToken = tokenOverride ?? (suppress ? nil : currentToken)
 
         #if DEBUG

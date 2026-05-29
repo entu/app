@@ -5,6 +5,8 @@ struct AuthResponse: Codable {
     let token: String?
     let accounts: [Database]?
     let user: AuthUser?
+    /// Token expiry as an ISO 8601 datetime string.
+    let expires: String?
 }
 
 /// Basic user info returned by the auth API.
