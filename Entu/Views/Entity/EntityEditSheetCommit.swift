@@ -329,7 +329,6 @@ extension EntityEditView {
     private func mergedEntity(_ entity: EntityDetail, propertiesOverride: [String: [PropertyValue]]) -> EntityDetail {
         var json: [String: Any] = [:]
         json["_id"] = entity._id
-        if let thumb = entity._thumbnail { json["_thumbnail"] = thumb }
         for (key, values) in propertiesOverride {
             if let data = try? JSONEncoder().encode(values),
                let any = try? JSONSerialization.jsonObject(with: data) {

@@ -74,19 +74,19 @@ struct SidebarView: View {
         }
     }
 
-    /// Fetches the active database user's `_thumbnail` for the bottom bar
+    /// Resolves the active database user's thumbnail for the bottom bar
     /// avatar. Cleared before fetching so a stale thumbnail never bleeds across
     /// database switches.
     private func loadUserThumbnail() async {
         userThumbnail = nil
         guard let userId = currentDatabase?.user?._id else { return }
 
-        if let response: EntityDetailResponse = try? await api.get(
+        guard let response: EntityDetailResponse = try? await api.get(
             "entity/\(userId)",
-            params: ["props": "_thumbnail"]
-        ) {
-            userThumbnail = response.entity?._thumbnail
-        }
+            params: ["props": "photo"]
+        ), response.entity?.hasPhoto == true else { return }
+
+        userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 200)?.absoluteString
     }
 
     // MARK: - Expansion seed + binding

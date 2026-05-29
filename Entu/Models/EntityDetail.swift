@@ -8,13 +8,18 @@ struct EntityDetailResponse: Codable {
 /// Full entity with all properties as a dynamic dictionary.
 struct EntityDetail: Codable, Identifiable {
     let _id: String
-    let _thumbnail: String?
 
     /// All properties keyed by name (e.g. `name`, `_type`, `_parent`, `email`).
     /// Each value is an array of `PropertyValue` since properties can be multi-valued.
     let properties: [String: [PropertyValue]]
 
     var id: String { _id }
+
+    /// Whether the entity has a `photo` file property — used to decide
+    /// whether to request a thumbnail. Requires `photo` in the query `props`.
+    var hasPhoto: Bool {
+        !(properties["photo"]?.isEmpty ?? true)
+    }
 
     // MARK: - Convenience accessors
 
@@ -40,9 +45,9 @@ struct EntityDetail: Codable, Identifiable {
 
     // MARK: - Custom JSON decoding
 
-    /// `_id` / `_thumbnail` decoded as plain strings; everything else goes into `properties`.
+    /// `_id` decoded as a plain string; everything else goes into `properties`.
     enum CodingKeys: String, CodingKey {
-        case _id, _thumbnail
+        case _id
     }
 
     struct DynamicCodingKeys: CodingKey {
@@ -55,10 +60,9 @@ struct EntityDetail: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         _id = try container.decode(String.self, forKey: ._id)
-        _thumbnail = try container.decodeIfPresent(String.self, forKey: ._thumbnail)
 
         let dynamicContainer = try decoder.container(keyedBy: DynamicCodingKeys.self)
-        let scalarKeys: Set<String> = ["_id", "_thumbnail"]
+        let scalarKeys: Set<String> = ["_id"]
         var props: [String: [PropertyValue]] = [:]
 
         for key in dynamicContainer.allKeys where !scalarKeys.contains(key.stringValue) {
@@ -73,6 +77,5 @@ struct EntityDetail: Codable, Identifiable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(_id, forKey: ._id)
-        try container.encodeIfPresent(_thumbnail, forKey: ._thumbnail)
     }
 }

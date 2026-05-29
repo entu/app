@@ -7,9 +7,7 @@ import SwiftUI
 
 /// User avatar — round thumbnail with white border, or Entu logo fallback.
 struct UserAvatar: View {
-    @Environment(APIClient.self) private var api
-
-    /// URL string for the user entity's `_thumbnail`, or nil to show the logo.
+    /// Signed thumbnail URL string for the user entity, or nil to show the logo.
     let thumbnail: String?
 
     /// Width and height in points. The border scales as `max(1, size / 32)`.
@@ -37,7 +35,7 @@ struct UserAvatar: View {
             image = nil
             guard let thumbnail, let url = URL(string: thumbnail) else { return }
 
-            image = await loadImage(from: url, token: api.token)
+            image = await loadImage(from: url)
         }
     }
 }

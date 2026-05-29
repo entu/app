@@ -30,7 +30,7 @@ struct UserSheet: View {
     /// Persisted language preference. Empty = follow system.
     @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
 
-    /// Caches the user entity's `_thumbnail` URL for the active database.
+    /// Caches the user entity's signed thumbnail URL for the active database.
     @State private var userThumbnail: String?
 
     /// Caches the localized label of the user entity's `_type` (e.g. "Person").
@@ -299,7 +299,7 @@ struct UserSheet: View {
 
     /// Fetches the user entity's thumbnail URL and the localized label of its
     /// type entity. Two sequential calls: first the user entity (for
-    /// `_thumbnail` and `_type`), then the type entity (for `label` and `name`).
+    /// `photo` and `_type`), then the type entity (for `label` and `name`).
     ///
     /// Resolution order for `userTypeLabel`:
     ///   1. type entity's `label` (preferred, localized human label)
@@ -316,10 +316,12 @@ struct UserSheet: View {
 
         guard let userResponse: EntityDetailResponse = try? await api.get(
             "entity/\(userId)",
-            params: ["props": "_thumbnail,_type"]
+            params: ["props": "photo,_type"]
         ) else { return }
 
-        userThumbnail = userResponse.entity?._thumbnail
+        if userResponse.entity?.hasPhoto == true {
+            userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 200)?.absoluteString
+        }
         // Apply the inlined fallback first — any later failure leaves it in place.
         userTypeLabel = userResponse.entity?.typeName
 

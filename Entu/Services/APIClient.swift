@@ -104,6 +104,21 @@ final class APIClient {
         return dest
     }
 
+    /// Resolve an entity's thumbnail to a signed S3 URL via
+    /// `GET /entity/{id}/thumbnail?size=N`, which returns `{ url }`. The
+    /// URL is presigned (60 s) so it loads without an auth header. Returns
+    /// `nil` when the entity has no thumbnailable photo or the request fails.
+    func entityThumbnailURL(entityId: String, size: Int = 200) async -> URL? {
+        struct ThumbnailResponse: Decodable { let url: String? }
+        guard let response: ThumbnailResponse = try? await get(
+            "entity/\(entityId)/thumbnail",
+            params: ["size": String(size)]
+        ), let urlString = response.url else {
+            return nil
+        }
+        return URL(string: urlString)
+    }
+
     /// Stream a file from disk to an S3 presigned URL described by an
     /// `UploadIntent`. `Content-Length` is stripped — URLSession derives
     /// it from the file's size, and S3 rejects a duplicate. `onProgress`

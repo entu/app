@@ -14,7 +14,6 @@ import SwiftUI
 
 /// Scrollable entity detail layout — name, parents, properties, meta sidebar, children.
 struct EntityDetailContent: View {
-    @Environment(APIClient.self) private var api
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     let entity: EntityDetail
@@ -117,8 +116,8 @@ struct EntityDetailContent: View {
     /// Thumbnail image, when the entity has one.
     @ViewBuilder
     private var thumbnailView: some View {
-        if let thumbnail = entity._thumbnail, let url = URL(string: thumbnail) {
-            ThumbnailView(url: url, token: api.token)
+        if entity.hasPhoto {
+            ThumbnailView(entityId: entity._id)
         }
     }
 
@@ -233,10 +232,11 @@ struct EntityDetailContent: View {
 
 // MARK: - Thumbnail image view
 
-// Square 160pt thumbnail loaded with the auth token.
+// Square 160pt thumbnail resolved via the thumbnail endpoint.
 private struct ThumbnailView: View {
-    let url: URL
-    let token: String?
+    @Environment(APIClient.self) private var api
+
+    let entityId: String
 
     @State private var image: Image?
 
@@ -254,8 +254,10 @@ private struct ThumbnailView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(.gray.opacity(0.3), lineWidth: 1)
         }
-        .task {
-            image = await loadImage(from: url, token: token)
+        .task(id: entityId) {
+            image = nil
+            guard let url = await api.entityThumbnailURL(entityId: entityId, size: 800) else { return }
+            image = await loadImage(from: url)
         }
     }
 }

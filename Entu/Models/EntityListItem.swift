@@ -1,10 +1,11 @@
 import Foundation
 
-/// Clean UI type for entity list rows — just id, name, and optional thumbnail.
+/// Clean UI type for entity list rows — id, name, and whether a thumbnail
+/// should be loaded (resolved lazily from the thumbnail endpoint).
 struct EntityListItem: Identifiable, Hashable {
     let _id: String
     let name: String
-    let thumbnail: String?
+    let hasPhoto: Bool
 
     var id: String { _id }
 
@@ -12,6 +13,6 @@ struct EntityListItem: Identifiable, Hashable {
     init(from entity: EntitySummary) {
         _id = entity._id
         name = entity.displayName
-        thumbnail = entity._thumbnail
+        hasPhoto = entity.hasPhoto
     }
 }

@@ -5,7 +5,8 @@ struct EntityAvatar: View {
     @Environment(APIClient.self) private var api
 
     let name: String
-    let thumbnail: String?
+    let entityId: String
+    var hasPhoto: Bool = false
     var size: CGFloat = 28
 
     @State private var image: Image?
@@ -20,9 +21,11 @@ struct EntityAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: thumbnail) {
-            guard let thumbnail, let url = URL(string: thumbnail) else { return }
-            image = await loadImage(from: url, token: api.token)
+        .task(id: entityId) {
+            image = nil
+            guard hasPhoto,
+                  let url = await api.entityThumbnailURL(entityId: entityId, size: 200) else { return }
+            image = await loadImage(from: url)
         }
     }
 

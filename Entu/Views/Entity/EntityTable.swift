@@ -68,7 +68,7 @@ struct EntityTable: View {
             Divider().gridCellUnsizedAxes(.horizontal)
             ForEach(entities) { entity in
                 GridRow {
-                    EntityAvatar(name: entity.displayName, thumbnail: entity._thumbnail, size: 18)
+                    EntityAvatar(name: entity.displayName, entityId: entity._id, hasPhoto: entity.hasPhoto, size: 18)
                     ForEach(columns) { column in
                         cellContent(entity: entity, column: column)
                     }
@@ -268,7 +268,7 @@ struct EntityTable: View {
         let params: [String: String] = [
             referenceField: entityId,
             "_type.reference": typeId,
-            "props": "_thumbnail,_sharing,name,\(propNames)",
+            "props": "photo,_sharing,name,\(propNames)",
             "sort": "\(sortPrefix)\(sortColumn).\(sortFieldType)",
             "limit": String(pageSize),
             "skip": String(pageSize * (page - 1))

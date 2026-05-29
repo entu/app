@@ -49,7 +49,7 @@ struct EntityListView: View {
         List(selection: $selectedEntityId) {
             ForEach(items) { item in
                 HStack(spacing: 12) {
-                    EntityAvatar(name: item.name, thumbnail: item.thumbnail)
+                    EntityAvatar(name: item.name, entityId: item._id, hasPhoto: item.hasPhoto)
                     Text(item.name).lineLimit(1)
                 }
                 .tag(item._id)
@@ -181,7 +181,7 @@ struct EntityListView: View {
     private func loadEntities() async {
         isLoading = true
         var params = query.parseURLQuery()
-        params["props"] = "_thumbnail,name"
+        params["props"] = "photo,name"
         params["limit"] = String(pageSize)
         params["skip"] = "0"
         if !search.text.isEmpty { params["q"] = search.text }
@@ -197,7 +197,7 @@ struct EntityListView: View {
     private func loadMore() async {
         isLoadingMore = true
         var params = query.parseURLQuery()
-        params["props"] = "_thumbnail,name"
+        params["props"] = "photo,name"
         params["limit"] = String(pageSize)
         params["skip"] = String(items.count)
         if !search.text.isEmpty { params["q"] = search.text }
