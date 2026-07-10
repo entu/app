@@ -14,6 +14,7 @@ struct MainView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
+    @Environment(AIChatModel.self) private var chat
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
@@ -51,9 +52,11 @@ struct MainView: View {
         return nil
     }
 
-    /// The query passed to EntityListView — from menu selection or empty for global search.
+    /// The query passed to EntityListView — an applied advanced search
+    /// replaces the menu query (mirroring the webapp's full route-query
+    /// replace), otherwise menu selection or empty for global search.
     private var activeQuery: String {
-        selectedQuery ?? ""
+        search.advancedQuery ?? selectedQuery ?? ""
     }
 
     /// The entity shown in detail — from list selection or history stack navigation.
@@ -61,9 +64,10 @@ struct MainView: View {
         entityHistory.last ?? selectedEntityId
     }
 
-    /// Dashboard is shown when no menu item is selected and the search field is empty.
+    /// Dashboard is shown when no menu item is selected and no search
+    /// (text or advanced) is active.
     private var showDashboard: Bool {
-        selectedMenuId == nil && search.text.isEmpty
+        selectedMenuId == nil && !search.isActive
     }
 
     /// Hide the search field on compact-size sidebar (iPhone, iPad split) when no menu is selected.
@@ -79,6 +83,7 @@ struct MainView: View {
             get: { selectedMenuId },
             set: { newValue in
                 search.text = ""
+                search.advancedQuery = nil
                 selectedEntityId = nil
                 entityHistory = []
                 if newValue != nil {
@@ -132,6 +137,7 @@ struct MainView: View {
     /// Apply the pending search/menu/entity state and clear the router.
     private func consumePendingDeepLink() {
         search.text = ""
+        search.advancedQuery = nil
         selectedEntityId = nil
         entityHistory = []
         pinnedEntityId = nil
@@ -146,11 +152,37 @@ struct MainView: View {
         }
 
         if let entityId = router.pendingEntityId {
-            entityHistory.append(entityId)
+            if selectedMenuId == nil {
+                // No menu context (e.g. a plugin redirect with no `menu`
+                // param) — the two-column layout shows the dashboard unless an
+                // entity is *pinned*, so pin it to surface the detail.
+                pinnedEntityId = entityId
+            } else {
+                entityHistory.append(entityId)
+            }
             preferredColumn = .detail
         }
 
         router.clear()
+    }
+
+    /// Applies an advanced-search query — replaces the menu query and search
+    /// text, mirroring the webapp's full route-query replace in
+    /// `layout/toolbar.vue` `handleAdvancedSearch`. `q` is split off into
+    /// `search.text` so the toolbar search field shows and edits it.
+    private func applyAdvancedSearch(_ query: [(String, String)]) {
+        var query = query
+        let q = query.first { $0.0 == "q" }?.1 ?? ""
+        query.removeAll { $0.0 == "q" }
+
+        search.text = q
+        search.advancedQuery = query.buildURLQuery()
+        selectedMenuId = nil
+        selectedEntityId = nil
+        entityHistory = []
+        pinnedEntityId = nil
+        // Guarantees a refetch even when the serialized query is unchanged.
+        listRefreshToken &+= 1
     }
 
     /// Pop the entity history when an entity is deleted while pinned via the
@@ -199,45 +231,9 @@ struct MainView: View {
     }
 
     var body: some View {
-        @Bindable var search = search
-
         Group {
             if let menu {
-                Group {
-                    if showDashboard {
-                        twoColumnView(menu: menu)
-                    } else {
-                        threeColumnView(menu: menu)
-                    }
-                }
-                .modifier(MenuScopedSearchable(text: $search.text, enabled: showSearchField))
-                #if os(macOS)
-                .navigationTitle("Entu")
-                .navigationSubtitle(currentDatabase?.name ?? "")
-                #endif
-                .onChange(of: selectedEntityId) {
-                    entityHistory = []
-                }
-                .onChange(of: search.text) {
-                    if !search.text.isEmpty {
-                        pinnedEntityId = nil
-                    }
-                }
-                .onChange(of: api.databaseId) {
-                    selectedMenuId = nil
-                    selectedEntityId = nil
-                    entityHistory = []
-                    pinnedEntityId = nil
-                    search.text = ""
-                    EntityDetailModel.clearCache()
-                    Task { await menu.load() }
-                }
-                .onChange(of: router.pendingDatabaseId) {
-                    applyPendingDeepLink()
-                }
-                .onChange(of: auth.isAuthenticated) {
-                    applyPendingDeepLink()
-                }
+                mainContent(menu: menu)
             } else {
                 ProgressView()
             }
@@ -249,6 +245,105 @@ struct MainView: View {
             applyPendingDeepLink()
         }
     }
+
+    /// The two/three-column layout with all cross-cutting modifiers —
+    /// extracted from `body` to keep the expression type-checkable.
+    private func mainContent(menu: MenuModel) -> some View {
+        @Bindable var search = search
+
+        return Group {
+            if showDashboard {
+                twoColumnView(menu: menu)
+            } else {
+                threeColumnView(menu: menu)
+            }
+        }
+        .modifier(MenuScopedSearchable(text: $search.text, enabled: showSearchField))
+        .sheet(isPresented: $search.showAdvanced) { advancedSearchSheet }
+        #if os(macOS)
+        .navigationTitle("Entu")
+        .navigationSubtitle(currentDatabase?.name ?? "")
+        #endif
+        .onChange(of: selectedEntityId) {
+            entityHistory = []
+        }
+        .onChange(of: search.text) {
+            if !search.text.isEmpty {
+                pinnedEntityId = nil
+            }
+        }
+        .onChange(of: api.databaseId) {
+            selectedMenuId = nil
+            selectedEntityId = nil
+            entityHistory = []
+            pinnedEntityId = nil
+            search.text = ""
+            search.advancedQuery = nil
+            // AI conversation is account-scoped — clear it and close the sheet
+            // on database switch, mirroring the webapp.
+            chat.reset()
+            chat.isOpen = false
+            EntityDetailModel.clearCache()
+            Task { await menu.load() }
+        }
+        // An applied AI proposal may have created entity types / entities —
+        // reload the menu and force the entity list to refetch.
+        .onChange(of: chat.appliedToken) {
+            listRefreshToken &+= 1
+            Task { await menu.load() }
+        }
+        .onChange(of: router.pendingDatabaseId) {
+            applyPendingDeepLink()
+        }
+        .onChange(of: auth.isAuthenticated) {
+            applyPendingDeepLink()
+        }
+    }
+
+    // MARK: - Advanced search
+
+    private var advancedSearchSheet: some View {
+        NavigationStack {
+            SearchSheet(
+                currentQuery: activeQuery.parseURLQueryItems(),
+                currentText: search.text,
+                onSearch: applyAdvancedSearch
+            )
+        }
+        .presentationDetents([.large])
+        #if os(macOS)
+        // macOS sheets size to content — pin a frame so pushing the
+        // entity-type picker (NavigationLink) doesn't collapse the sheet.
+        .frame(minWidth: 560, minHeight: 620)
+        #endif
+    }
+
+    #if os(macOS)
+    /// Advanced-search button for detail columns WITHOUT an open entity —
+    /// when an entity is open, `EntityToolbar` renders the same button as
+    /// its last item so it stays next to the search field. The leading
+    /// spacer keeps it visually ungrouped from other buttons. Webapp gates
+    /// the whole search UI on a signed-in user, so hide it in
+    /// public-database mode.
+    @ToolbarContentBuilder
+    private var advancedSearchToolbarContent: some ToolbarContent {
+        if SearchModel.showAdvancedButton, auth.currentUserId != nil {
+            ToolbarSpacer(.fixed)
+            ToolbarItem {
+                Button {
+                    search.showAdvanced = true
+                } label: {
+                    Label(
+                        "advancedSearch",
+                        systemImage: search.advancedQuery != nil
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle"
+                    )
+                }
+            }
+        }
+    }
+    #endif
 
     // MARK: - Two-column: sidebar + dashboard (no menu selected, empty search)
 
@@ -271,6 +366,9 @@ struct MainView: View {
                 .entityHistoryBack($entityHistory)
             } else {
                 DashboardView()
+                    #if os(macOS)
+                    .toolbar { advancedSearchToolbarContent }
+                    #endif
             }
         }
         .environment(menu)
@@ -289,7 +387,8 @@ struct MainView: View {
                 query: activeQuery,
                 menuId: selectedMenuId,
                 selectedEntityId: $selectedEntityId,
-                refreshToken: listRefreshToken
+                refreshToken: listRefreshToken,
+                onOpenAdvancedSearch: { search.showAdvanced = true }
             )
                 .navigationSplitViewColumnWidth(min: 240, ideal: contentWidth, max: 600)
                 .onGeometryChange(for: Double.self) { $0.size.width } action: { contentWidth = $0 }
@@ -303,6 +402,13 @@ struct MainView: View {
                     onListChanged: { listRefreshToken &+= 1 }
                 )
                 .entityHistoryBack($entityHistory)
+            } else {
+                // Keeps the detail column (and its toolbar contribution)
+                // alive when no entity is selected.
+                Color.clear
+                    #if os(macOS)
+                    .toolbar { advancedSearchToolbarContent }
+                    #endif
             }
         }
         .environment(menu)

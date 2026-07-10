@@ -22,11 +22,6 @@ struct RightsSheet: View {
     let entityId: String
     var onChanged: (() -> Void)?
 
-    /// Re-apply the in-app language inside the sheet so a switch in
-    /// Settings re-resolves every `LocalizedStringKey` here. Sheets present
-    /// at scene root and don't always inherit the parent's `\.locale`.
-    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
-
     @State private var entity: EntityDetail?
     @State private var sharing: String = "private"
     @State private var inheritRights: Bool = false
@@ -85,8 +80,7 @@ struct RightsSheet: View {
             }
         }
         .task { await load() }
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        .appLanguageScoped()
     }
 
     #if os(macOS)

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// App entry point — creates shared state and injects via environment.
 @main
@@ -7,6 +10,7 @@ struct EntuApp: App {
     @State private var auth: AuthModel
     @State private var authService: AuthService
     @State private var passkeyService: PasskeyService
+    @State private var chat: AIChatModel
     @State private var search = SearchModel()
     @State private var network = NetworkMonitor()
     @State private var router = DeepLinkRouter()
@@ -22,6 +26,9 @@ struct EntuApp: App {
     @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
 
     init() {
+        #if os(macOS)
+        NSWindow.allowsAutomaticWindowTabbing = false
+        #endif
         Self.migrateLegacyDefaults()
 
         let api = APIClient()
@@ -30,6 +37,7 @@ struct EntuApp: App {
         _auth = State(initialValue: auth)
         _authService = State(initialValue: AuthService(auth: auth))
         _passkeyService = State(initialValue: PasskeyService(auth: auth))
+        _chat = State(initialValue: AIChatModel(api: api))
     }
 
     /// One-time rename of legacy UserDefaults keys to the namespaced scheme (`auth.*`, `ui.*`).
@@ -56,6 +64,7 @@ struct EntuApp: App {
                 .environment(search)
                 .environment(authService)
                 .environment(passkeyService)
+                .environment(chat)
                 .environment(network)
                 .environment(router)
                 .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
@@ -98,7 +107,7 @@ struct EntuApp: App {
                     Button {
                         auth.logOut()
                     } label: {
-                        Label("signOut", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(String(localized: "signOut", bundle: .currentLocalized), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } else {
                     Menu {
@@ -124,7 +133,7 @@ struct EntuApp: App {
                             }
                         }
                     } label: {
-                        Label("signIn", systemImage: "rectangle.portrait.and.arrow.forward")
+                        Label(String(localized: "signIn", bundle: .currentLocalized), systemImage: "rectangle.portrait.and.arrow.forward")
                     }
                 }
             }
@@ -132,9 +141,9 @@ struct EntuApp: App {
             // Database menu — authenticated databases first, then public,
             // then a Browse-public entry. Always shown so the user can add a
             // public database from the menu bar even before signing in.
-            CommandMenu("database") {
+            CommandMenu(String(localized: "database", bundle: .currentLocalized)) {
                 if !auth.databases.isEmpty {
-                    Section("myDatabases") {
+                    Section(String(localized: "myDatabases", bundle: .currentLocalized)) {
                         ForEach(auth.databases) { database in
                             Toggle(database.name, isOn: Binding(
                                 get: { database._id == api.databaseId },
@@ -145,7 +154,7 @@ struct EntuApp: App {
                 }
 
                 if !auth.publicDatabases.isEmpty {
-                    Section("publicDatabasesSection") {
+                    Section(String(localized: "publicDatabasesSection", bundle: .currentLocalized)) {
                         ForEach(auth.publicDatabases, id: \.self) { id in
                             Toggle(id, isOn: Binding(
                                 get: { id == api.databaseId },
@@ -162,7 +171,7 @@ struct EntuApp: App {
                 Button {
                     showingPublicEntry = true
                 } label: {
-                    Text("browsePublicDatabaseMenu")
+                    Text(String(localized: "browsePublicDatabaseMenu", bundle: .currentLocalized))
                 }
             }
         }

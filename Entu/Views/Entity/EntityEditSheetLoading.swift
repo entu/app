@@ -43,10 +43,51 @@ extension EntityEditView {
         if let typeId {
             definitions = await fetchDefinitions(typeId: typeId)
             typeDescription = await fetchTypeDescription(typeId: typeId)
+            plugins = await fetchPlugins(typeId: typeId)
         }
 
         seedValues()
         isLoading = false
+    }
+
+    /// Fetch the UI plugins attached to the entity type, filtered to the slot
+    /// for the current mode (`entity-edit` when editing, `entity-add` when
+    /// creating). Mirrors `stores/entity-type.js::fetchType` +
+    /// `components/entity/drawer/edit.vue`'s slot filter.
+    ///
+    /// Non-`https` plugin URLs are dropped to satisfy App Transport Security —
+    /// they could not load in a web view anyway.
+    func fetchPlugins(typeId: String) async -> [Plugin] {
+        // 1. Which plugins does this type reference? Skip everything else if none.
+        guard let typeResponse: EntityDetailResponse = try? await api.get("entity/\(typeId)", params: ["props": "plugin"]),
+              let refs = typeResponse.entity?.properties["plugin"] else {
+            return []
+        }
+
+        let referencedIds = Set(refs.compactMap { $0.reference })
+        guard !referencedIds.isEmpty else { return [] }
+
+        // 2. Fetch account-wide plugin definitions and join by reference.
+        let params: [String: String] = [
+            "_type.string": "plugin",
+            "props": "name,type,url"
+        ]
+        guard let response: EntityListResponse = try? await api.get("entity", params: params) else {
+            return []
+        }
+
+        let wantedSlot = isEditMode ? Plugin.editSlot : Plugin.addSlot
+
+        return response.entities.compactMap { summary -> Plugin? in
+            guard referencedIds.contains(summary._id),
+                  let type = PropertyValue.localized(summary.additionalProperties?["type"]), type == wantedSlot,
+                  let url = PropertyValue.localized(summary.additionalProperties?["url"]),
+                  URL(string: url)?.scheme == "https" else {
+                return nil
+            }
+
+            return Plugin(_id: summary._id, name: summary.displayName, type: type, url: url)
+        }
     }
 
     /// Fetch the type entity's `description` property and localize it.

@@ -29,10 +29,6 @@ private struct PublicDatabaseEntryModifier: ViewModifier {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
 
-    /// Re-apply the in-app language — system alerts don't always inherit
-    /// the parent's `\.locale`.
-    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
-
     @Binding var isPresented: Bool
     @Binding var isSubmitting: Bool
     @State private var input: String = ""
@@ -71,8 +67,7 @@ private struct PublicDatabaseEntryModifier: ViewModifier {
                     Text(error)
                 }
             }
-            .id(appLanguage)
-            .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+            .appLanguageScoped()
     }
 
     private func submit() async {

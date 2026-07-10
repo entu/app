@@ -1,0 +1,196 @@
+// Entu AI assistant sheet. Presents the conversation, an input bar with
+// example prompts on an empty conversation, and the proposal review flow.
+// Mirrors the webapp's `components/chat/drawer.vue`. Presented from the
+// sidebar's sparkles button; account-scoped state lives in `AIChatModel`.
+
+import SwiftUI
+
+/// Chat conversation UI hosted in a sheet.
+struct AIChatView: View {
+    @Environment(AIChatModel.self) private var chat
+    @Environment(\.dismiss) private var dismiss
+
+    /// Open a created entity in the main layout (dismisses this sheet).
+    let onOpenEntity: (String) -> Void
+
+    @State private var input = ""
+    @FocusState private var inputFocused: Bool
+
+    /// Example prompt keys — displayed localized and sent as resolved text.
+    private let examplePromptKeys = ["aiExample1", "aiExample2", "aiExample3"]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            #if os(macOS)
+            header
+            Divider()
+            #endif
+
+            messageList
+
+            Divider()
+            inputBar
+        }
+        #if os(iOS)
+        .navigationTitle(Text("entuAi"))
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                #if os(macOS)
+                Button("close", role: .close) { dismiss() }
+                #else
+                Button("close") { dismiss() }
+                #endif
+            }
+        }
+        .appLanguageScoped()
+    }
+
+    #if os(macOS)
+    private var header: some View {
+        HStack {
+            Label("entuAi", systemImage: "sparkles")
+                .font(.headline)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+    #endif
+
+    // MARK: - Messages
+
+    private var messageList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if chat.visibleMessages.isEmpty {
+                    emptyState
+                        .padding(.top, 40)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(chat.visibleMessages) { message in
+                            ChatMessageView(
+                                message: message,
+                                isPending: message.id == chat.pendingMessageId,
+                                isExecuting: chat.isExecuting,
+                                onApply: { Task { await chat.confirm(message.id) } },
+                                onCancel: { chat.reject(message.id) },
+                                onOpenEntity: openEntity
+                            )
+                            .id(message.id)
+                        }
+
+                        if chat.isLoading {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("aiThinking")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .id(loadingAnchor)
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .onChange(of: chat.messages.count) {
+                scrollToBottom(proxy)
+            }
+            .onChange(of: chat.isLoading) {
+                scrollToBottom(proxy)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 40))
+                .foregroundStyle(ChatMessageView.brand)
+
+            Text("aiEmptyHint")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 8) {
+                ForEach(examplePromptKeys, id: \.self) { key in
+                    Button {
+                        send(String(localized: String.LocalizationValue(key), bundle: .currentLocalized))
+                    } label: {
+                        Text(LocalizedStringKey(key))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 340)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Input
+
+    private var inputBar: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField("aiInputPrompt", text: $input, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...5)
+                .focused($inputFocused)
+                .onSubmit { send(input) }
+                .disabled(chat.isLoading)
+
+            Button {
+                send(input)
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(canSend ? ChatMessageView.brand : Color.secondary)
+            .disabled(!canSend)
+            .accessibilityLabel("send")
+        }
+        .padding(12)
+    }
+
+    private var canSend: Bool {
+        !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !chat.isLoading
+    }
+
+    // MARK: - Actions
+
+    private func send(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !chat.isLoading else { return }
+
+        input = ""
+        Task {
+            await chat.send(trimmed)
+            inputFocused = true
+        }
+    }
+
+    /// Open a created entity: close the chat first so navigation is visible.
+    private func openEntity(_ id: String) {
+        chat.isOpen = false
+        onOpenEntity(id)
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation {
+            if chat.isLoading {
+                proxy.scrollTo(loadingAnchor, anchor: .bottom)
+            } else if let lastId = chat.visibleMessages.last?.id {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
+        }
+    }
+
+    private let loadingAnchor = "ai-loading-anchor"
+}

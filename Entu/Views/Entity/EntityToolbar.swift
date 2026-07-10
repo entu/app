@@ -18,6 +18,8 @@ private struct EntityToolbar: ToolbarContent {
     @Environment(MenuModel.self) private var menu
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #else
+    @Environment(SearchModel.self) private var search
     #endif
 
     let entity: EntityDetail
@@ -87,9 +89,39 @@ private struct EntityToolbar: ToolbarContent {
             rightsButton
             historyButton
         }
+        #if os(macOS)
+        // Last in this block → renders immediately left of the system
+        // search field, ungrouped from the entity buttons. On iOS the
+        // equivalent button lives in the list column's toolbar.
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+        ToolbarItem(placement: .primaryAction) {
+            advancedSearchButton
+        }
+        #endif
     }
 
     // MARK: - Buttons
+
+    #if os(macOS)
+    /// Opens the advanced-search sheet (hosted by `MainView`). Hidden in
+    /// public-database mode — webapp gates the whole search UI on a
+    /// signed-in user.
+    @ViewBuilder
+    private var advancedSearchButton: some View {
+        if SearchModel.showAdvancedButton, auth.currentUserId != nil {
+            Button {
+                search.showAdvanced = true
+            } label: {
+                Label(
+                    "advancedSearch",
+                    systemImage: search.advancedQuery != nil
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease.circle"
+                )
+            }
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var menuLevelAddButton: some View {
@@ -229,6 +261,7 @@ extension View {
 
 private struct EntityToolbarHost: ViewModifier {
     @Environment(APIClient.self) private var api
+    @Environment(DeepLinkRouter.self) private var router
 
     let entity: EntityDetail
     let menuId: String?
@@ -349,6 +382,19 @@ private struct EntityToolbarHost: ViewModifier {
                 }
                 .presentationDetents([.large])
             }
+            // A plugin redirect to `entu.app/{db}/{id}#edit` opens the entity
+            // in edit mode (webapp parity). The deep link already navigated
+            // here; when this entity appears, honor the pending edit request.
+            .onAppear { openPendingEditIfNeeded() }
+    }
+
+    /// Present the editor once for an entity the deep link flagged with
+    /// `#edit`, then clear the flag so manual revisits don't re-open it.
+    private func openPendingEditIfNeeded() {
+        guard router.pendingEditEntityId == entity._id else { return }
+
+        router.pendingEditEntityId = nil
+        editMode = .edit(entityId: entity._id)
     }
 }
 

@@ -20,6 +20,13 @@ final class DeepLinkRouter {
     /// any additional params for forward compatibility.
     var pendingQuery: [String: String] = [:]
 
+    /// Set when the link carried the `#edit` fragment (plugins redirect to
+    /// `entu.app/{db}/{id}#edit` after creating an entity). Consumed by the
+    /// entity toolbar host once that entity opens, to present the editor.
+    /// Deliberately outside `clear()` — it outlives the navigation deep link
+    /// so it survives until the detail view can act on it.
+    var pendingEditEntityId: String?
+
     /// Parse `url` and stash any matching deep-link state.
     /// Returns `true` when the URL was consumed (entu.app entity/database link),
     /// `false` when the caller should fall through (auth callback, foreign host, etc).
@@ -28,7 +35,10 @@ final class DeepLinkRouter {
         if url.path.hasPrefix("/auth/") { return false }
 
         let segments = url.path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        guard let first = segments.first, isObjectId(first) else { return false }
+        // The database segment is an account *slug* (e.g. `roots`), not an
+        // ObjectId — the webapp's own URLs are `entu.app/roots/…`, and plugins
+        // redirect using that same slug.
+        guard let first = segments.first, isDatabaseId(first) else { return false }
 
         let second: String?
         if segments.count >= 2 {
@@ -49,6 +59,10 @@ final class DeepLinkRouter {
         pendingDatabaseId = first
         pendingEntityId = second
         pendingQuery = queryDict
+        // `#edit` on an entity link means "open the editor" (webapp parity).
+        if url.fragment == "edit", let second {
+            pendingEditEntityId = second
+        }
         return true
     }
 
@@ -62,5 +76,14 @@ final class DeepLinkRouter {
     private func isObjectId(_ s: String) -> Bool {
         guard s.count == 24 else { return false }
         return s.allSatisfy { $0.isHexDigit }
+    }
+
+    /// A database id in a link is an account slug — lowercase letters, digits,
+    /// `-`/`_` (e.g. `roots`). 24-hex ObjectIds also satisfy this, so both
+    /// forms are accepted for the first path segment.
+    private func isDatabaseId(_ s: String) -> Bool {
+        guard !s.isEmpty, s.count <= 64 else { return false }
+
+        return s.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
     }
 }

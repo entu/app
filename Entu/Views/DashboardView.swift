@@ -1,6 +1,6 @@
 // Dashboard — shown as the default detail view when no menu item is selected.
 // In an authenticated session, displays database usage statistics
-// (entities, properties, files, requests) with progress bars and a detail
+// (entities, properties, files, AI tokens) with progress bars and a detail
 // popover on tap. In a public-database session, the stats endpoint requires
 // auth so this falls back to a "Viewing as guest" placeholder card.
 
@@ -31,26 +31,28 @@ struct DashboardView: View {
                              usage: stats.entities.usage ?? 0,
                              limit: stats.entities.limit ?? 0,
                              deleted: stats.entities.deleted ?? 0,
-                             color: .cyan)
+                             color: .statEntities)
 
                     StatsRow(label: "properties",
                              usage: stats.properties.usage ?? 0,
                              limit: 0,
                              deleted: stats.properties.deleted ?? 0,
-                             color: .yellow)
+                             color: .statProperties)
 
                     StatsRow(label: "files",
                              usage: stats.files.usage ?? 0,
                              limit: stats.files.limit ?? 0,
                              deleted: stats.files.deleted ?? 0,
-                             color: .green,
+                             color: .statFiles,
                              isBytes: true)
 
-                    StatsRow(label: "requests",
-                             usage: stats.requests.usage ?? 0,
-                             limit: stats.requests.limit ?? 0,
-                             deleted: 0,
-                             color: .gray)
+                    if let tokens = stats.tokens {
+                        StatsRow(label: "aiTokens",
+                                 usage: tokens.usage ?? 0,
+                                 limit: tokens.limit ?? 0,
+                                 deleted: 0,
+                                 color: .statTokens)
+                    }
 
                     Spacer()
                 }
@@ -182,6 +184,7 @@ private struct StatsRow: View {
         .onTapGesture { showDetail.toggle() }
         .popover(isPresented: $showDetail) {
             detailPopover
+                .appLanguageScoped()
         }
         .padding(.vertical, 4)
     }
@@ -242,4 +245,14 @@ private struct StatsRow: View {
     private func formatValue(_ value: Int) -> String {
         isBytes ? ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file) : value.formatted()
     }
+}
+
+// MARK: - Stat colours
+
+/// Dashboard stat colours, matched exactly to the webapp's `db-stats.vue`.
+private extension Color {
+    static let statEntities = Color(red: 23 / 255, green: 162 / 255, blue: 184 / 255)
+    static let statProperties = Color(red: 255 / 255, green: 193 / 255, blue: 7 / 255)
+    static let statFiles = Color(red: 40 / 255, green: 167 / 255, blue: 69 / 255)
+    static let statTokens = Color(red: 108 / 255, green: 117 / 255, blue: 125 / 255)
 }

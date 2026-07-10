@@ -37,6 +37,7 @@ struct EntityEditView: View {
     // (`EntityEditSheetLoading.swift`, `EntityEditSheetCommit.swift`) can read state.
     @Environment(AuthModel.self) var auth
     @Environment(APIClient.self) var api
+    @Environment(DeepLinkRouter.self) var router
     @Environment(\.dismiss) var dismiss
 
     let mode: EntityEditMode
@@ -50,13 +51,17 @@ struct EntityEditView: View {
     /// Caller pops navigation and removes the entity from any list.
     var onDeleted: (() -> Void)?
 
-    /// Re-apply the in-app language inside the sheet so confirmation
-    /// dialogs / button labels translate. See `AppLanguage` notes.
-    @AppStorage(AppLanguage.storageKey) var appLanguage: String = ""
-
     @State var entity: EntityDetail?
     @State var definitions: [PropertyDefinition] = []
     @State var values: [String: [EditableValue]] = [:]
+
+    /// UI plugins attached to the type for the current slot (`entity-edit`
+    /// when editing, `entity-add` when creating). Empty = no plugin tabs.
+    @State var plugins: [Plugin] = []
+
+    /// Selected tab: 0 = the native property form ("Manual input"),
+    /// 1…N = `plugins[selectedTab - 1]`.
+    @State private var selectedTab = 0
 
     /// Set up-front in edit mode; in create mode populated by the first
     /// commit's upsert response, after which we're effectively in edit mode.
@@ -98,7 +103,7 @@ struct EntityEditView: View {
                     ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    formBody
+                    contentBody
                 }
             }
         }
@@ -150,8 +155,7 @@ struct EntityEditView: View {
             if let commitError { Text(commitError) }
         }
         .task { await load() }
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        .appLanguageScoped()
     }
 
     /// Sheet title split into action + subtitle so the entity name / type
@@ -204,6 +208,109 @@ struct EntityEditView: View {
         .padding(.bottom, 8)
     }
     #endif
+
+    /// True when editing an existing entity (drives the plugin slot choice).
+    var isEditMode: Bool {
+        if case .edit = mode { return true }
+        return false
+    }
+
+    // MARK: - Plugin tabs
+
+    /// The form on its own when the type has no UI plugins, otherwise a
+    /// segmented switcher with the form as the first tab ("Manual input") and
+    /// one tab per plugin. Mirrors the webapp's `n-tabs` in
+    /// `components/entity/drawer/edit.vue` — the tab bar is hidden when there
+    /// are no plugins.
+    @ViewBuilder
+    private var contentBody: some View {
+        if plugins.isEmpty {
+            formBody
+        } else {
+            VStack(spacing: 0) {
+                Picker("plugins", selection: $selectedTab) {
+                    Text("pluginManualInput").tag(0)
+                    ForEach(Array(plugins.enumerated()), id: \.element.id) { index, plugin in
+                        Text(verbatim: plugin.name).tag(index + 1)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+
+                if selectedTab == 0 {
+                    formBody
+                } else if selectedTab - 1 < plugins.count, let url = pluginURL(plugins[selectedTab - 1]) {
+                    // `WebView` has no intrinsic size — fill the tab so the
+                    // sheet keeps the height the min frame below establishes,
+                    // instead of collapsing to the picker.
+                    PluginWebView(url: url, onEntuLink: openEntuLink)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            // Plugin tabs (unlike the grouped Form) don't propose a height, so
+            // pin the app's usual sheet minimum — the menu-level Add sheet
+            // doesn't set one itself. Width only on macOS so compact iPhone
+            // sheets aren't forced wider than the screen.
+            .frame(minHeight: 600, maxHeight: .infinity)
+            #if os(macOS)
+            .frame(minWidth: 640)
+            #endif
+        }
+    }
+
+    /// Build the plugin page URL with the same query params the webapp appends
+    /// (`components/entity/drawer/edit.vue`): account (= database), entity or
+    /// parent, type, locale, and the user's token. The plugin page calls the
+    /// Entu API back with that token.
+    ///
+    /// The `token` is the full user JWT (webapp parity). It therefore rides in
+    /// the page URL — exposed to the plugin origin and its `Referer` headers.
+    /// A scoped, short-lived plugin token is the planned hardening (FEATURES
+    /// #51); until then this matches the webapp's exposure and no worse.
+    private func pluginURL(_ plugin: Plugin) -> URL? {
+        guard var components = URLComponents(string: plugin.url), components.scheme == "https" else { return nil }
+        var items = components.queryItems ?? []
+
+        if let databaseId = api.databaseId {
+            items.append(URLQueryItem(name: "account", value: databaseId))
+        }
+
+        switch mode {
+        case .edit(let entityId):
+            items.append(URLQueryItem(name: "entity", value: entityId))
+        case .create(let parentId, _, _):
+            if let parentId {
+                items.append(URLQueryItem(name: "parent", value: parentId))
+            }
+        }
+
+        if let typeId = currentTypeId {
+            items.append(URLQueryItem(name: "type", value: typeId))
+        }
+
+        items.append(URLQueryItem(name: "locale", value: AppLanguage.resolvedLanguageCode))
+
+        if let token = api.token {
+            items.append(URLQueryItem(name: "token", value: token))
+        }
+
+        components.queryItems = items
+        return components.url
+    }
+
+    /// A plugin can finish by redirecting to an Entu entity link (e.g. after
+    /// an import). Route it through the shared deep-link path — `MainView`
+    /// observes the router and navigates — then close the sheet. Returns
+    /// `true` when the URL was an Entu link (so the web navigation is
+    /// cancelled); `false` lets the plugin navigate normally.
+    private func openEntuLink(_ url: URL) -> Bool {
+        guard router.handle(url: url) else { return false }
+
+        dismiss()
+        return true
+    }
 
     // MARK: - Form body
 

@@ -21,11 +21,6 @@ struct ParentsSheet: View {
     let entityId: String
     var onChanged: (() -> Void)?
 
-    /// Re-apply the in-app language inside the sheet so a switch in
-    /// Settings re-resolves every `LocalizedStringKey` here. Sheets
-    /// present at scene root and don't always inherit `\.locale`.
-    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
-
     @State private var entity: EntityDetail?
     /// IDs of parent entities the active user can remove (i.e. holds
     /// `_expander` on). Webapp loads these one-by-one; we parallelise
@@ -78,8 +73,7 @@ struct ParentsSheet: View {
             }
         }
         .task { await load() }
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        .appLanguageScoped()
     }
 
     #if os(macOS)

@@ -74,12 +74,9 @@ struct UserSheet: View {
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                 #endif
         }
-        // Sheets are hosted outside the parent's view tree, so the
-        // `.id(appLanguage)` on `ContentView` doesn't propagate. Re-key the
-        // sheet itself so its body re-runs when the user picks a new language
-        // from inside it.
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        // Re-scopes to the in-app language so this sheet — the one that hosts
+        // the language picker — re-renders immediately when the user switches.
+        .appLanguageScoped()
         .disabled(isDeleting)
         .overlay { if isDeleting { deletingOverlay } }
         .task(id: activeDatabase?.user?._id) { await loadUserEntity() }

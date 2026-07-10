@@ -19,10 +19,6 @@ struct DuplicateSheet: View {
     let entityId: String
     var onDuplicated: (() -> Void)?
 
-    /// Re-apply the in-app language inside the sheet so a switch in
-    /// Settings re-resolves every `LocalizedStringKey` here.
-    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
-
     @State private var entity: EntityDetail?
     @State private var definitions: [PropertyDefinition] = []
     @State private var count: Int = 1
@@ -88,8 +84,7 @@ struct DuplicateSheet: View {
             if let commitError { Text(commitError) }
         }
         .task { await load() }
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        .appLanguageScoped()
     }
 
     /// Subtitle: entity name, fall back to type label.

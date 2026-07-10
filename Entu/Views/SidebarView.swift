@@ -6,6 +6,7 @@ struct SidebarView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
     @Environment(MenuModel.self) private var menu
+    @Environment(AIChatModel.self) private var chat
 
     @Binding var selectedMenuId: String?
     let openPinnedEntity: (String) -> Void
@@ -25,7 +26,9 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        List(selection: $selectedMenuId) {
+        @Bindable var chat = chat
+
+        return List(selection: $selectedMenuId) {
             ForEach(menu.groups) { group in
                 Section(isExpanded: expansionBinding(for: group.id)) {
                     ForEach(group.items) { item in
@@ -40,6 +43,15 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .sheet(isPresented: $chat.isOpen) {
+            NavigationStack {
+                AIChatView(onOpenEntity: openPinnedEntity)
+            }
+            .presentationDetents([.large])
+            #if os(macOS)
+            .frame(minWidth: 480, minHeight: 560)
+            #endif
+        }
         .onAppear {
             seedExpansionIfNeeded()
         }
@@ -50,23 +62,47 @@ struct SidebarView: View {
         .navigationTitle("Entu")
         .navigationSubtitle(currentDatabase?.name ?? "")
         #endif
-        // Bottom bar: current user
+        // Bottom bar: Entu AI entry point (above) + current user.
         .safeAreaBar(edge: .bottom) {
-            Button {
-                showUserSheet = true
-            } label: {
-                HStack(spacing: 10) {
-                    UserAvatar(thumbnail: userThumbnail, size: 28)
-                    ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
-                        .lineLimit(1)
-                    Spacer()
+            VStack(spacing: 0) {
+                // Global Entu AI entry point — gated on a signed-in user
+                // (hidden in public-database mode, matching the webapp).
+                if auth.currentUserId != nil {
+                    Button {
+                        chat.isOpen = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(ChatMessageView.brand)
+                                .frame(width: 28)
+                            Text("entuAi")
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-            }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $showUserSheet) {
-                UserSheet(openPinnedEntity: openPinnedEntity)
+
+                Button {
+                    showUserSheet = true
+                } label: {
+                    HStack(spacing: 10) {
+                        UserAvatar(thumbnail: userThumbnail, size: 28)
+                        ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showUserSheet) {
+                    UserSheet(openPinnedEntity: openPinnedEntity)
+                }
             }
         }
         .task(id: currentDatabase?.user?._id) {

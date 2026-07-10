@@ -105,14 +105,13 @@ final class APIClient {
     }
 
     /// Resolve an entity's thumbnail to a signed S3 URL via
-    /// `GET /entity/{id}/thumbnail?size=N`, which returns `{ url }`. The
+    /// `GET /entity/{id}/thumbnail/{size}`, which returns `{ url }`. The
     /// URL is presigned (60 s) so it loads without an auth header. Returns
     /// `nil` when the entity has no thumbnailable photo or the request fails.
     func entityThumbnailURL(entityId: String, size: Int = 200) async -> URL? {
         struct ThumbnailResponse: Decodable { let url: String? }
         guard let response: ThumbnailResponse = try? await get(
-            "entity/\(entityId)/thumbnail",
-            params: ["size": String(size)]
+            "entity/\(entityId)/thumbnail/\(size)"
         ), let urlString = response.url else {
             return nil
         }
@@ -156,6 +155,20 @@ final class APIClient {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw APIError.serverError(http.statusCode, body.isEmpty ? "Upload failed" : body)
         }
+    }
+
+    /// Send the conversation to the Entu AI assistant. The assistant replies
+    /// in `message` and may return a `proposal` of write operations the user
+    /// must confirm via `aiExecute`. Non-streaming — a single JSON response.
+    func aiChat(messages: [AIChatRequest.Message]) async throws -> AIChatResponse {
+        try await post("ai/chat", body: AIChatRequest(messages: messages))
+    }
+
+    /// Execute a user-confirmed proposal. Operations run sequentially and
+    /// execution stops at the first failure; the response reports what was
+    /// applied.
+    func aiExecute(operations: [ProposalOperation]) async throws -> ExecutionResults {
+        try await post("ai/execute", body: AIExecuteRequest(operations: operations))
     }
 
     /// GET using a one-time bearer token instead of the stored token — for the auth callback flow.

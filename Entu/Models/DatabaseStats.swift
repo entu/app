@@ -5,7 +5,10 @@ struct DatabaseStats: Codable {
     let entities: UsageStat
     let properties: UsageStat
     let files: UsageStat
-    let requests: UsageStat
+    /// Monthly AI token usage vs limit (the API's `tokens` block). Optional —
+    /// only present once the API reports it, so older deployments decode
+    /// without it.
+    let tokens: UsageStat?
 }
 
 /// Single usage stat with current, limit, and deleted counts.

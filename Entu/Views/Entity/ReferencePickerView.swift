@@ -16,11 +16,6 @@ struct ReferencePickerView: View {
     @Environment(APIClient.self) private var api
     @Environment(\.dismiss) private var dismiss
 
-    /// In-app language preference. Sheets host their content outside the
-    /// parent's view tree, so the root locale doesn't propagate down — this
-    /// view re-applies it below so localized strings translate correctly.
-    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
-
     /// Property definition's `query` string — additional filters scoped to
     /// the kinds of entities this reference can point at. nil ⇒ unscoped.
     let query: String?
@@ -29,6 +24,27 @@ struct ReferencePickerView: View {
     /// or referenced type label, whichever is contextually useful. nil hides
     /// the subtitle row entirely.
     var subtitle: String?
+
+    /// Sheet title — overridable for non-reference uses (e.g. the advanced
+    /// search entity-type picker).
+    var titleKey: LocalizedStringKey = "selectReference"
+
+    /// Extra property fetched and preferred for row display (e.g. `label`
+    /// on entity-type definitions — webapp shows label || name). The
+    /// `onSelect`/`isSelected` name stays the entity's `name` property.
+    var labelProperty: String?
+
+    /// Trailing type badge on rows — turn off when every result shares the
+    /// same type and the badge is just noise.
+    var showsTypeBadge = true
+
+    /// Multi-select mode: the sheet stays open, rows show checkmarks from
+    /// `isSelected`, and each tap calls `onSelect` to toggle.
+    var multiSelect = false
+
+    /// In multi-select mode, whether a row is selected — called with the
+    /// entity's id and name (same values `onSelect` receives).
+    var isSelected: ((String, String) -> Bool)?
 
     /// Called with the picked entity's id and display name.
     let onSelect: (String, String) -> Void
@@ -47,6 +63,7 @@ struct ReferencePickerView: View {
     private struct ReferenceItem: Identifiable, Hashable {
         let _id: String
         let name: String
+        let label: String?
         let typeLabel: String?
         var id: String { _id }
     }
@@ -56,19 +73,29 @@ struct ReferencePickerView: View {
             ForEach(results) { item in
                 Button {
                     onSelect(item._id, item.name)
-                    dismiss()
+                    if !multiSelect {
+                        dismiss()
+                    }
                 } label: {
                     HStack(spacing: 12) {
-                        Text(verbatim: item.name)
+                        Text(verbatim: item.label ?? item.name)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        if let typeLabel = item.typeLabel, !typeLabel.isEmpty {
+                        if showsTypeBadge, let typeLabel = item.typeLabel, !typeLabel.isEmpty {
                             Text(verbatim: typeLabel)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 4))
+                        }
+                        if multiSelect {
+                            // Always laid out (hidden via opacity) so row
+                            // heights stay stable when toggling.
+                            Image(systemName: "checkmark")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.tint)
+                                .opacity(isSelected?(item._id, item.name) == true ? 1 : 0)
                         }
                     }
                     .padding(.vertical, 6)
@@ -112,7 +139,7 @@ struct ReferencePickerView: View {
         }
         .task { await runSearch() }
         #if os(iOS)
-        .navigationTitle(Text("selectReference"))
+        .navigationTitle(Text(titleKey))
         .navigationSubtitle(subtitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
         #else
@@ -122,7 +149,7 @@ struct ReferencePickerView: View {
         // lives inside the sheet's locale override and stays scoped here.
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("selectReference")
+                Text(titleKey)
                     .font(.headline)
                 if let subtitle, !subtitle.isEmpty {
                     Text(verbatim: subtitle)
@@ -146,8 +173,7 @@ struct ReferencePickerView: View {
             }
         }
         .frame(minWidth: 480, minHeight: 500)
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        .appLanguageScoped()
     }
 
     /// Debounce the user's typing so we don't fire a request per keystroke.
@@ -172,7 +198,7 @@ struct ReferencePickerView: View {
         if !searchText.isEmpty {
             params["q"] = searchText
         }
-        params["props"] = "_type.string,name"
+        params["props"] = ["_type.string,name", labelProperty].compactMap(\.self).joined(separator: ",")
         params["sort"] = "name.string"
         params["limit"] = "\(Self.pageLimit)"
 
@@ -186,6 +212,7 @@ struct ReferencePickerView: View {
             ReferenceItem(
                 _id: entity._id,
                 name: entity.displayName,
+                label: labelProperty.flatMap { PropertyValue.localized(entity.additionalProperties?[$0]) },
                 typeLabel: PropertyValue.localized(entity.additionalProperties?["_type"])
             )
         }

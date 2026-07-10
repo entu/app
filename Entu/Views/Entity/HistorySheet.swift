@@ -26,10 +26,6 @@ struct HistorySheet: View {
     let entityName: String?
     let typeLabel: String?
 
-    /// Re-apply the in-app language inside the sheet so a switch in
-    /// Settings re-resolves every `LocalizedStringKey` here.
-    @AppStorage(AppLanguage.storageKey) private var appLanguage: String = ""
-
     /// Memberwise init with default-nil header inputs so existing call sites
     /// without the new arguments still compile.
     init(entityId: String, typeId: String?, entityName: String? = nil, typeLabel: String? = nil) {
@@ -84,8 +80,7 @@ struct HistorySheet: View {
             }
         }
         .task { await load() }
-        .id(appLanguage)
-        .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+        .appLanguageScoped()
     }
 
     /// Subtitle: entity name (preferred), fall back to type label.
