@@ -16,7 +16,15 @@ struct PropertyRow: View {
     var onNavigate: ((String) -> Void)?
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var previewURL: URL?
+
+    /// Stack label above value on iPhone — and at accessibility Dynamic
+    /// Type sizes on every platform, where the trailing-aligned label
+    /// column would clip the scaled-up label.
+    private var isCompact: Bool {
+        sizeClass == .compact || dynamicTypeSize.isAccessibilitySize
+    }
 
     /// Filter multilingual values to the user's preferred language.
     /// Priority matches `PropertyValue.best`: in-app language → no language
@@ -39,7 +47,7 @@ struct PropertyRow: View {
     var body: some View {
         if isVisible {
             Group {
-                if sizeClass == .compact {
+                if isCompact {
                     // iPhone: label above value, full width
                     VStack(alignment: .leading, spacing: 2) {
                         Text(definition.displayLabel(valueCount: displayValues.count))

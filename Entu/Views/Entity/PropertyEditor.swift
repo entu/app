@@ -10,6 +10,7 @@ import PhotosUI
 struct PropertyEditor: View {
     @Environment(APIClient.self) var api
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -141,8 +142,12 @@ struct PropertyEditor: View {
     }
 
     /// True on iPhone (compact horizontal size class) — narrow rows can't
-    /// fit a 160pt label column + value column without clipping.
+    /// fit a 160pt label column + value column without clipping. Also true
+    /// at accessibility Dynamic Type sizes on every platform: the fixed
+    /// label column would clip the scaled-up label, so the row stacks.
     private var isCompact: Bool {
+        if dynamicTypeSize.isAccessibilitySize { return true }
+
         #if os(iOS)
         return horizontalSizeClass == .compact
         #else

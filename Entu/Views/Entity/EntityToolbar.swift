@@ -10,6 +10,26 @@
 
 import SwiftUI
 
+/// Types that can be added under `entity`. Mirrors the webapp's
+/// `addChildOptions`: prefer `addFromTypes[entity._id]`, skipping the
+/// `entity`/`menu` meta-types, then fall back to the type's allow-list.
+/// Shared by the toolbar's Add-child button and the File > Add Child
+/// menu command (via `EntityToolbarHost`).
+@MainActor
+func entityAddChildTypes(for entity: EntityDetail, menu: MenuModel) -> [AddFromType] {
+    let typeName = entity.typeName?.lowercased() ?? ""
+    let isMetaType = typeName == "entity" || typeName == "menu"
+
+    if !isMetaType {
+        let byEntity = menu.addFromTypes[entity._id] ?? []
+        if !byEntity.isEmpty { return byEntity }
+    }
+    if let typeId = entity.typeId {
+        return menu.addFromTypes[typeId] ?? []
+    }
+    return []
+}
+
 /// Edit / Add / Duplicate / Parents / Rights / History buttons. Each
 /// opens a feature sheet via its corresponding `@Binding` flag, set
 /// from `EntityToolbarHost`.
@@ -55,17 +75,7 @@ private struct EntityToolbar: ToolbarContent {
     /// `addChildOptions`: prefer `addFromTypes[entity._id]`, skipping the
     /// `entity`/`menu` meta-types, then fall back to the type's allow-list.
     private var addChildTypes: [AddFromType] {
-        let typeName = entity.typeName?.lowercased() ?? ""
-        let isMetaType = typeName == "entity" || typeName == "menu"
-
-        if !isMetaType {
-            let byEntity = menu.addFromTypes[entity._id] ?? []
-            if !byEntity.isEmpty { return byEntity }
-        }
-        if let typeId = entity.typeId {
-            return menu.addFromTypes[typeId] ?? []
-        }
-        return []
+        entityAddChildTypes(for: entity, menu: menu)
     }
 
     var body: some ToolbarContent {
@@ -261,6 +271,8 @@ extension View {
 
 private struct EntityToolbarHost: ViewModifier {
     @Environment(APIClient.self) private var api
+    @Environment(AuthModel.self) private var auth
+    @Environment(MenuModel.self) private var menu
     @Environment(DeepLinkRouter.self) private var router
 
     let entity: EntityDetail
@@ -285,6 +297,12 @@ private struct EntityToolbarHost: ViewModifier {
     @State private var didDuplicate = false
     @State private var showingHistory = false
 
+    /// Presents the child-type chooser when ⌃⌘N fires and the entity has
+    /// more than one addable child type. `pendingChildType` holds the chosen
+    /// type until the picker dismisses, then opens the editor for it.
+    @State private var showAddChildPicker = false
+    @State private var pendingChildType: EntityCreateOption?
+
     func body(content: Content) -> some View {
         content
             .toolbar {
@@ -297,6 +315,27 @@ private struct EntityToolbarHost: ViewModifier {
                     showingDuplicate: $showingDuplicate,
                     showingHistory: $showingHistory
                 )
+            }
+            // Menu-bar / keyboard mirror of the toolbar buttons — same
+            // rights gating, same sheet state. See `EntityCommands`.
+            .focusedSceneValue(\.entityActions, entityActions)
+            // File > Add Child (⌃⌘N) — same expander gating and create-sheet
+            // state as the toolbar's Add-child button.
+            .focusedSceneValue(\.addChildCommand, addChildCommand)
+            // ⌃⌘N with several child types opens this chooser. Title matches
+            // the create window's header (`titleChildBare`) so the picker and
+            // the editor it opens read the same. The chosen type's create runs
+            // on dismiss so the editor sheet doesn't present while the picker
+            // is still closing.
+            .sheet(isPresented: $showAddChildPicker, onDismiss: {
+                if let option = pendingChildType {
+                    pendingChildType = nil
+                    option.create()
+                }
+            }) {
+                TypePickerSheet(title: "titleChildBare", options: childAddOptions) { chosen in
+                    pendingChildType = chosen
+                }
             }
             // Sheet hosts use `entitySheet(...)` so each one gets the same
             // chrome (NavigationStack + sheetMinSize + .large detent) and
@@ -386,6 +425,47 @@ private struct EntityToolbarHost: ViewModifier {
             // in edit mode (webapp parity). The deep link already navigated
             // here; when this entity appears, honor the pending edit request.
             .onAppear { openPendingEditIfNeeded() }
+    }
+
+    /// The current entity's rights-gated action set for the `Entity` menu.
+    /// Gates match `EntityToolbar`'s buttons exactly.
+    private var entityActions: EntityActions {
+        let rights = entity.rights(for: auth.currentUserId)
+        return EntityActions(
+            edit: rights.editor ? { editMode = .edit(entityId: entity._id) } : nil,
+            duplicate: rights.owner ? { showingDuplicate = true } : nil,
+            parents: rights.editor ? { showingParents = true } : nil,
+            rights: rights.owner ? { showingRights = true } : nil,
+            history: rights.editor ? { showingHistory = true } : nil
+        )
+    }
+
+    /// Add-child options — expander-gated, one per addable child type, each
+    /// opening the create sheet parented to this entity.
+    private var childAddOptions: [EntityCreateOption] {
+        guard entity.rights(for: auth.currentUserId).expander else { return [] }
+
+        return entityAddChildTypes(for: entity, menu: menu).map { type in
+            EntityCreateOption(id: type._id, label: type.label, menuLabel: type.englishLabel) {
+                editMode = .create(parentId: entity._id, typeId: type._id, typeLabel: type.label)
+            }
+        }
+    }
+
+    /// File > Add Child (⌃⌘N) command. `nil` (not empty) when unavailable so
+    /// the menu item disappears. One type → the shortcut creates it directly;
+    /// several → it opens the type chooser.
+    private var addChildCommand: EntityCreateCommand? {
+        let options = childAddOptions
+        guard !options.isEmpty else { return nil }
+
+        return EntityCreateCommand(options: options) {
+            if options.count == 1 {
+                options[0].create()
+            } else {
+                showAddChildPicker = true
+            }
+        }
     }
 
     /// Present the editor once for an entity the deep link flagged with

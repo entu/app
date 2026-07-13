@@ -4,7 +4,11 @@ import Foundation
 /// Mirrors the webapp's `addFromEntities` items in `stores/menu.js`.
 struct AddFromType: Identifiable, Hashable {
     let _id: String
+    /// Label in the active in-app language — used for in-app UI.
     let label: String
+    /// English label (falls back to `label` when the type has no English
+    /// value) — used in the menu bar, which follows the system language.
+    let englishLabel: String
     var id: String { _id }
 }
 
@@ -161,9 +165,15 @@ final class MenuModel {
         var addFromMap: [String: [AddFromType]] = [:]
         var parentMap: [String: [String]] = [:]
         for type in response?.entities ?? [] {
-            let label = PropertyValue.localized(type.additionalProperties?["label"]) ??
+            let labelValues = type.additionalProperties?["label"]
+            let label = PropertyValue.localized(labelValues) ??
                         PropertyValue.localized(type.name) ?? type._id
-            let entry = AddFromType(_id: type._id, label: label)
+            // Prefer the English label for the menu bar; fall back to
+            // untagged, then to the active-language label.
+            let englishLabel = labelValues?.first { $0.language == "en" }?.string
+                ?? labelValues?.first { $0.language == nil }?.string
+                ?? label
+            let entry = AddFromType(_id: type._id, label: label, englishLabel: englishLabel)
 
             for parent in type.additionalProperties?["add_from"] ?? [] {
                 guard let parentId = parent.reference else { continue }

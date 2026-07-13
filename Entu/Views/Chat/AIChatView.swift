@@ -29,9 +29,11 @@ struct AIChatView: View {
             #endif
 
             messageList
-
-            bottomBar
         }
+        // The input bar floats over the message scroll as a glass surface —
+        // messages scroll under it, per the Liquid Glass controls-layer
+        // guidance.
+        .safeAreaBar(edge: .bottom) { bottomBar }
         .appLanguageScoped()
         .onAppear { inputFocused = true }
     }
@@ -75,7 +77,7 @@ struct AIChatView: View {
                         if chat.isLoading {
                             HStack {
                                 Image(systemName: "sparkles")
-                                    .foregroundStyle(Color.entuBrand)
+                                    .foregroundStyle(.tint)
                                     .symbolEffect(.pulse, options: .repeating)
                                 Text("aiThinking")
                                     .font(.footnote)
@@ -99,8 +101,9 @@ struct AIChatView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "sparkles")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.entuBrand)
+                .font(.largeTitle)
+                .imageScale(.large)
+                .foregroundStyle(.tint)
 
             Text("aiEmptyHint")
                 .font(.subheadline)
@@ -129,23 +132,26 @@ struct AIChatView: View {
 
     // MARK: - Input
 
-    /// Circular close (X), centered against the rounded input field.
+    /// Circular glass close (X) next to the glass input field. Wrapped in a
+    /// `GlassEffectContainer` so the two glass shapes blend correctly when
+    /// they come close.
     private var bottomBar: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Button {
-                chat.isOpen = false
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .padding(7)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("close")
+        GlassEffectContainer(spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Button {
+                    chat.isOpen = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+                .accessibilityLabel("close")
 
-            inputField
+                inputField
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -171,14 +177,7 @@ struct AIChatView: View {
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-            )
+            .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 
     // MARK: - Actions

@@ -27,8 +27,7 @@ struct EntityDetailView: View {
         Group {
             if let model {
                 if model.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    detailSkeleton
                 } else if let entity = model.entity {
                     EntityDetailContent(
                         entity: entity,
@@ -61,20 +60,19 @@ struct EntityDetailView: View {
                         onListChanged: { onListChanged?() }
                     )
                 } else if let message = model.errorMessage {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
+                    ContentUnavailableView {
+                        Label("loadError", systemImage: "exclamationmark.triangle")
+                    } description: {
                         Text(message)
-                            .multilineTextAlignment(.center)
                             .textSelection(.enabled)
+                    } actions: {
+                        Button("retry") {
+                            Task { await model.load(entityId: entityId) }
+                        }
                     }
-                    .foregroundStyle(.red)
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                detailSkeleton
             }
         }
         .animation(.easeInOut(duration: 0.2), value: model?.entity?._id)
@@ -83,5 +81,34 @@ struct EntityDetailView: View {
             model = m
             await m.load(entityId: entityId)
         }
+    }
+
+    /// Redacted placeholder mirroring the detail layout (title + property
+    /// rows) — shown while the entity loads so content resolves in place
+    /// instead of flashing from a spinner.
+    private var detailSkeleton: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text(verbatim: "Entity name placeholder")
+                    .font(.title)
+                    .fontWeight(.bold)
+
+                ForEach(0..<6, id: \.self) { index in
+                    HStack(alignment: .top, spacing: 16) {
+                        Text(verbatim: "label")
+                            .font(.subheadline)
+                            .frame(minWidth: 80, alignment: .trailing)
+                        Text(verbatim: String(repeating: "value ", count: 2 + index % 4))
+                            .font(.subheadline)
+                        Spacer()
+                    }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .redacted(reason: .placeholder)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

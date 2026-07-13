@@ -34,6 +34,12 @@ struct EntityListView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var pendingCreate: EntityEditMode?
 
+    /// Presents the type chooser when ⌘N fires and the active menu has
+    /// more than one addable type. `pendingNewType` holds the chosen type
+    /// until the picker dismisses, then opens the editor for it.
+    @State private var showNewTypePicker = false
+    @State private var pendingNewType: EntityCreateOption?
+
     /// Hardware keyboard arrow-key navigation. SwiftUI's `List(selection:)`
     /// moves selection on Up/Down once it has focus — we just need to
     /// surrender focus to it on appear. Mirrors webapp's `onKeyStroke`
@@ -81,7 +87,7 @@ struct EntityListView: View {
         .refreshable { await loadEntities() }
         .overlay {
             if isLoading && items.isEmpty {
-                ProgressView()
+                listSkeleton
             } else if !isLoading && items.isEmpty {
                 ContentUnavailableView {
                     Label("noResults", systemImage: "magnifyingglass")
@@ -116,6 +122,26 @@ struct EntityListView: View {
             }
         }
         .toolbar { addToolbarContent }
+        // File > New (⌘N) — same menu-level add types and create-sheet state
+        // as the toolbar's Add button. Present whenever a menu is selected,
+        // so ⌘N works from the list and while an entity is open.
+        .focusedSceneValue(\.newEntityCommand, newEntityCommand)
+        // ⌘N with several addable types opens this chooser (the toolbar's
+        // Add menu can't be opened programmatically). Title matches the
+        // create window's header (`titleAddBare`) so the picker and the
+        // editor it opens read the same. The chosen type's create runs on
+        // dismiss so the editor sheet doesn't present while the picker is
+        // still closing.
+        .sheet(isPresented: $showNewTypePicker, onDismiss: {
+            if let option = pendingNewType {
+                pendingNewType = nil
+                option.create()
+            }
+        }) {
+            TypePickerSheet(title: "titleAddBare", options: newEntityOptions) { chosen in
+                pendingNewType = chosen
+            }
+        }
         #if os(iOS)
         .toolbar { advancedSearchToolbarContent }
         #endif
@@ -135,6 +161,63 @@ struct EntityListView: View {
                 }
             }
             .presentationDetents([.large])
+        }
+    }
+
+    /// Redacted placeholder rows shown while the first page loads —
+    /// content resolves in place instead of flashing from a spinner to
+    /// the loaded list. Row layout mirrors the real rows above; varying
+    /// name lengths keep the placeholder looking organic.
+    private var listSkeleton: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<8, id: \.self) { index in
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(.fill.secondary)
+                        .frame(width: 28, height: 28)
+                    Text(verbatim: String(repeating: "name ", count: 3 + index % 3))
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+            }
+            Spacer()
+        }
+        .redacted(reason: .placeholder)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    // MARK: - New-entity command
+
+    /// Menu-level "new entity" options — one per addable type in the active
+    /// menu, each opening the create sheet. Same guard as `addToolbarContent`.
+    private var newEntityOptions: [EntityCreateOption] {
+        guard auth.currentUserId != nil,
+              let menuId,
+              let types = menu.addFromTypes[menuId] else { return [] }
+
+        return types.map { type in
+            EntityCreateOption(id: type._id, label: type.label, menuLabel: type.englishLabel) {
+                pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+            }
+        }
+    }
+
+    /// File > New (⌘N) command. `nil` (not empty) when unavailable so the
+    /// menu item disappears. One type → the shortcut creates it directly;
+    /// several → it opens the type chooser below.
+    private var newEntityCommand: EntityCreateCommand? {
+        let options = newEntityOptions
+        guard !options.isEmpty else { return nil }
+
+        return EntityCreateCommand(options: options) {
+            if options.count == 1 {
+                options[0].create()
+            } else {
+                showNewTypePicker = true
+            }
         }
     }
 

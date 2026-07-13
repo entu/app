@@ -118,23 +118,26 @@ struct RightsSheet: View {
         .formStyle(.grouped)
     }
 
+    // Tint per scope follows the shared sharing-state color language
+    // (green = private, yellow = domain, orange = public) — same as the
+    // detail view's sharing badge and the webapp's sharing icons.
     private var sharingSection: some View {
         Section("sharingScope") {
             sharingOption(value: "private",
                           label: "sharingPrivate",
                           description: "sharingPrivateDescription",
                           icon: "lock",
-                          tint: .red)
+                          tint: .green)
             sharingOption(value: "domain",
                           label: "sharingDomain",
                           description: "sharingDomainDescription",
                           icon: "person.2",
-                          tint: .orange)
+                          tint: .yellow)
             sharingOption(value: "public",
                           label: "sharingPublic",
                           description: "sharingPublicDescription",
                           icon: "globe",
-                          tint: .green)
+                          tint: .orange)
         }
     }
 
@@ -474,18 +477,32 @@ private struct RightRow: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
+                            .frame(minWidth: Self.segmentSize, minHeight: Self.segmentSize)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.leading, 8)
                     .disabled(disabled)
+                    .accessibilityLabel("removeRight")
                 }
             }
         }
     }
 
+    /// Minimum per-segment hit target — HIG's 44pt on touch platforms, a
+    /// tighter pointer target on macOS.
+    static var segmentSize: CGFloat {
+        #if os(iOS)
+        44
+        #else
+        28
+        #endif
+    }
+
     /// Custom button group instead of `Picker(.segmented)` so each level
     /// can carry its own `.help()` tooltip — webapp parity with
-    /// `my-rights-switch`'s per-icon tooltip text.
+    /// `my-rights-switch`'s per-icon tooltip text. Selected fill uses
+    /// `Color.entuBrand` (dark in both appearances) so the white glyph
+    /// stays legible in dark mode, where the accent color turns light.
     private var rightButtonGroup: some View {
         HStack(spacing: 0) {
             ForEach(options, id: \.self) { type in
@@ -495,18 +512,35 @@ private struct RightRow: View {
                     Task { await onChange(type) }
                 } label: {
                     Image(systemName: iconFor(type))
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
+                        .frame(minWidth: Self.segmentSize, minHeight: Self.segmentSize)
                         .foregroundStyle(selection == type ? Color.white : Color.primary)
-                        .background(selection == type ? Color.accentColor : Color.clear)
+                        .background(selection == type ? Color.entuBrand : Color.clear)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(helpKey(for: type))
                 .disabled(!editable || disabled)
+                .accessibilityLabel(nameKey(for: type))
+                .accessibilityHint(helpKey(for: type))
+                .accessibilityAddTraits(selection == type ? .isSelected : [])
             }
         }
-        .background(Color.gray.opacity(0.15))
+        .background(.fill.tertiary)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// Short level name per right level — used as the segment's
+    /// accessibility label (the `.help()` sentence stays the hint).
+    /// Literal keys for the same xcstrings-extraction reason as `helpKey`.
+    private func nameKey(for type: String) -> LocalizedStringKey {
+        switch type {
+        case "noaccess": return "noaccess"
+        case "viewer":   return "viewer"
+        case "expander": return "expander"
+        case "editor":   return "editor"
+        case "owner":    return "owner"
+        default:         return ""
+        }
     }
 
     /// Static `LocalizedStringKey` per right level. Xcode's xcstrings

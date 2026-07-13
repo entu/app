@@ -56,7 +56,7 @@ struct EntuApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
                 .publicDatabaseEntry(isPresented: $showingPublicEntry)
                 .environment(api)
@@ -94,20 +94,27 @@ struct EntuApp: App {
         }
         .defaultSize(width: 1280, height: 850)
         .commands {
-            // Note: `.newItem` is intentionally left at its default (giving
-            // macOS the standard "File > New Entu" / Cmd-N command) so the
-            // user can reopen the main window after closing it. App Review
-            // flagged the previous empty replacement as a missing affordance.
+            // File > New — ⌘N creates an entity (the app's primary object),
+            // ⌃⌘N adds a child. `.newItem` is *replaced* (not left default)
+            // so ⌘N is the entity action; New Window moves to ⇧⌘N inside the
+            // same group, keeping the window-reopen affordance App Review
+            // requires. See `NewEntityCommands`.
+            NewEntityCommands()
 
             // Entu menu — Sign In (with providers submenu) when nothing is
             // remembered, otherwise Sign Out (which wipes both authenticated
             // credentials and the saved public-database list).
+            //
+            // Menu-bar strings resolve against the system language (plain
+            // `String(localized:)`, not `.currentLocalized`) — the OS has no
+            // Estonian localization, so following the in-app language toggle
+            // would leave a mixed-language menu bar.
             CommandGroup(after: .appInfo) {
                 if auth.isAuthenticated || !auth.publicDatabases.isEmpty {
                     Button {
                         auth.logOut()
                     } label: {
-                        Label(String(localized: "signOut", bundle: .currentLocalized), systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(String(localized: "signOut"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } else {
                     Menu {
@@ -121,7 +128,7 @@ struct EntuApp: App {
                             }
 
                             ForEach(providers, id: \.self) { provider in
-                                Button(provider.label) {
+                                Button(provider.menuLabel) {
                                     Task {
                                         if provider == .passkey {
                                             try? await passkeyService.signIn()
@@ -133,28 +140,25 @@ struct EntuApp: App {
                             }
                         }
                     } label: {
-                        Label(String(localized: "signIn", bundle: .currentLocalized), systemImage: "rectangle.portrait.and.arrow.forward")
+                        Label(String(localized: "signIn"), systemImage: "rectangle.portrait.and.arrow.forward")
                     }
                 }
             }
 
-            // Database menu — authenticated databases first, then public,
-            // then a Browse-public entry. Always shown so the user can add a
-            // public database from the menu bar even before signing in.
-            CommandMenu(String(localized: "database", bundle: .currentLocalized)) {
-                if !auth.databases.isEmpty {
-                    Section(String(localized: "myDatabases", bundle: .currentLocalized)) {
-                        ForEach(auth.databases) { database in
-                            Toggle(database.name, isOn: Binding(
-                                get: { database._id == api.databaseId },
-                                set: { if $0 { auth.selectDatabase(database) } }
-                            ))
-                        }
-                    }
+            // Database menu — authenticated databases first (no group title),
+            // then public, then a Browse-public entry. Always shown so the
+            // user can add a public database from the menu bar even before
+            // signing in.
+            CommandMenu(String(localized: "database")) {
+                ForEach(auth.databases) { database in
+                    Toggle(database.name, isOn: Binding(
+                        get: { database._id == api.databaseId },
+                        set: { if $0 { auth.selectDatabase(database) } }
+                    ))
                 }
 
                 if !auth.publicDatabases.isEmpty {
-                    Section(String(localized: "publicDatabasesSection", bundle: .currentLocalized)) {
+                    Section(String(localized: "publicDatabasesSection")) {
                         ForEach(auth.publicDatabases, id: \.self) { id in
                             Toggle(id, isOn: Binding(
                                 get: { id == api.databaseId },
@@ -171,9 +175,13 @@ struct EntuApp: App {
                 Button {
                     showingPublicEntry = true
                 } label: {
-                    Text(String(localized: "browsePublicDatabaseMenu", bundle: .currentLocalized))
+                    Text(String(localized: "browsePublicDatabaseMenu"))
                 }
             }
+
+            // Entity menu — actions for the entity shown in the detail
+            // column, published via the `entityActions` focused value.
+            EntityCommands()
         }
     }
 }

@@ -21,6 +21,9 @@ struct EntityAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        // Decorative — the avatar always sits next to the entity's name
+        // text, so VoiceOver reading it would only duplicate the row.
+        .accessibilityHidden(true)
         .task(id: entityId) {
             image = nil
             guard hasPhoto,

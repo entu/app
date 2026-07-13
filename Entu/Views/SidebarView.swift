@@ -74,27 +74,23 @@ struct SidebarView: View {
                 // Global Entu AI entry point — gated on a signed-in user
                 // (hidden in public-database mode, matching the webapp).
                 // Hidden while the chat inspector is open to avoid redundancy.
+                // Glass button — it floats over the sidebar list in the
+                // `.safeAreaBar`, so it belongs to the Liquid Glass controls
+                // layer. Neutral system glass (no brand tint).
                 if auth.currentUserId != nil && !chat.isOpen {
                     Button {
                         chat.isOpen = true
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sparkles")
-                            Text("entuAi")
-                                .lineLimit(1)
-                        }
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            Capsule().fill(Color.entuBrand)
-                        )
+                        Label("entuAi", systemImage: "sparkles")
+                            .font(.callout.weight(.medium))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 20)
-                    .padding(.bottom, 8)
+                    .buttonStyle(.glass)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 16)
+                    .padding(.bottom, 16)
                 }
             }
         }

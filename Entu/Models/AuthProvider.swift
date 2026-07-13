@@ -24,6 +24,22 @@ enum AuthProvider: String, CaseIterable {
         }
     }
 
+    /// Menu-bar label — a plain `String` resolved against the system
+    /// language. The menu bar belongs to the OS (which has no Estonian
+    /// localization), so unlike `label` it must not follow the in-app
+    /// language override.
+    var menuLabel: String {
+        switch self {
+        case .passkey: return String(localized: "passkey")
+        case .email: return String(localized: "email")
+        case .apple: return "Apple"
+        case .google: return "Google"
+        case .smartId: return "Smart-ID"
+        case .mobileId: return "Mobile-ID"
+        case .idCard: return String(localized: "idCard")
+        }
+    }
+
     /// Icon name — `sf:` prefix means SF Symbols (Apple's built-in icons),
     /// otherwise it's a custom image from the asset catalog.
     var icon: String {

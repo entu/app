@@ -60,16 +60,18 @@ struct DashboardView: View {
                 .frame(maxWidth: 500)
                 .frame(maxWidth: .infinity)
             } else if let error {
-                Spacer()
-                Text(error)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                Spacer()
+                ContentUnavailableView {
+                    Label("loadError", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                        .textSelection(.enabled)
+                } actions: {
+                    Button("retry") {
+                        Task { await loadStats() }
+                    }
+                }
             } else {
-                Spacer()
-                Text("statistics")
-                    .foregroundStyle(.secondary)
-                Spacer()
+                ContentUnavailableView("statistics", systemImage: "chart.bar.xaxis")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -81,20 +83,15 @@ struct DashboardView: View {
     /// as a guest — the stats endpoint requires auth so we have nothing to
     /// fetch, but we still want a friendly empty state.
     private var publicPlaceholder: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "globe")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text(verbatim: api.databaseId ?? "")
-                .font(.title2)
-                .fontWeight(.semibold)
+        ContentUnavailableView {
+            Label {
+                Text(verbatim: api.databaseId ?? "")
+            } icon: {
+                Image(systemName: "globe")
+            }
+        } description: {
             Text("viewingAsGuest")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer()
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func loadStats() async {
@@ -144,18 +141,10 @@ private struct StatsRow: View {
                 }
             }
 
-            // Progress bar
-            if isOverLimit {
-                // Over limit: filled = limit portion, red track = over-limit
-                ProgressView(value: Double(limit), total: Double(total))
-                    .tint(color)
-                    .background(
-                        Capsule().fill(.red.opacity(0.3)).frame(height: 4)
-                    )
-            } else {
-                ProgressView(value: Double(total), total: Double(max(limit, total, 1)))
-                    .tint(color)
-            }
+            // Progress bar — explicit capsule fill. `ProgressView` + `.tint`
+            // renders all bars in a uniform system color in dark mode,
+            // losing the per-stat hue.
+            bar
 
             // Bottom: total + limit value
             HStack {
@@ -182,6 +171,10 @@ private struct StatsRow: View {
             showDetail = $0
         }
         .onTapGesture { showDetail.toggle() }
+        // One VoiceOver element per stat — label and values read together;
+        // the button trait exposes the tap-for-details popover.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .popover(isPresented: $showDetail) {
             detailPopover
                 .appLanguageScoped()
@@ -242,17 +235,31 @@ private struct StatsRow: View {
         .fixedSize()
     }
 
+    /// Filled fraction of the bar — the limit's share when over limit
+    /// (the red track behind shows the excess), usage otherwise.
+    private var fillFraction: Double {
+        isOverLimit
+            ? Double(limit) / Double(total)
+            : Double(total) / Double(max(limit, total, 1))
+    }
+
+    /// Capsule track + fill. Stat colours come from the `Stat*` asset
+    /// colorsets (webapp's `db-stats.vue` values, slightly darkened for
+    /// dark mode) via the generated `Color.stat*` symbols.
+    private var bar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(isOverLimit ? Color.red.opacity(0.3) : color.opacity(0.15))
+                Capsule()
+                    .fill(color)
+                    .frame(width: geo.size.width * fillFraction)
+            }
+        }
+        .frame(height: 5)
+    }
+
     private func formatValue(_ value: Int) -> String {
         isBytes ? value.fileSizeString : value.formatted()
     }
-}
-
-// MARK: - Stat colours
-
-/// Dashboard stat colours, matched exactly to the webapp's `db-stats.vue`.
-private extension Color {
-    static let statEntities = Color(red: 23 / 255, green: 162 / 255, blue: 184 / 255)
-    static let statProperties = Color(red: 255 / 255, green: 193 / 255, blue: 7 / 255)
-    static let statFiles = Color(red: 40 / 255, green: 167 / 255, blue: 69 / 255)
-    static let statTokens = Color(red: 108 / 255, green: 117 / 255, blue: 125 / 255)
 }

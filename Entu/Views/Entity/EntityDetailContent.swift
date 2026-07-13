@@ -199,6 +199,7 @@ struct EntityDetailContent: View {
             .font(.caption2)
             .foregroundStyle(.separator)
             .frame(width: 20)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Property group section

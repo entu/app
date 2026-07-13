@@ -5,15 +5,13 @@ import SwiftUI
 /// transitions on the parent's conditional inclusion.
 struct OfflineBanner: View {
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "wifi.slash")
-            Text("offline")
-        }
-        .font(.footnote.weight(.medium))
-        .foregroundStyle(.white)
+        Label("offline", systemImage: "wifi.slash")
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.white)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Capsule().fill(.red.opacity(0.9)))
-        .accessibilityElement(children: .combine)
+        // Floats over the root view — a tinted glass capsule per the
+        // Liquid Glass controls-layer guidance.
+        .glassEffect(.regular.tint(.red), in: .capsule)
     }
 }

@@ -195,6 +195,7 @@ struct EntityTable: View {
                 } label: {
                     Image(systemName: "chevron.left")
                 }
+                .controlSize(.small)
                 .disabled(page <= 1)
                 .accessibilityLabel("previousPage")
 
@@ -208,6 +209,7 @@ struct EntityTable: View {
                 } label: {
                     Image(systemName: "chevron.right")
                 }
+                .controlSize(.small)
                 .disabled(page >= totalPages)
                 .accessibilityLabel("nextPage")
 
@@ -216,6 +218,7 @@ struct EntityTable: View {
                     Text("25").tag(25)
                     Text("100").tag(100)
                 }
+                .controlSize(.small)
                 .frame(width: 70)
                 .accessibilityLabel("pageSize")
                 .onChange(of: pageSize) {
