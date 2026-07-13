@@ -1,14 +1,13 @@
 // Entu AI assistant sheet. Presents the conversation, an input bar with
 // example prompts on an empty conversation, and the proposal review flow.
 // Mirrors the webapp's `components/chat/drawer.vue`. Presented from the
-// sidebar's sparkles button; account-scoped state lives in `AIChatModel`.
+// sidebar's Entu AI button; account-scoped state lives in `AIChatModel`.
 
 import SwiftUI
 
 /// Chat conversation UI hosted in a sheet.
 struct AIChatView: View {
     @Environment(AIChatModel.self) private var chat
-    @Environment(\.dismiss) private var dismiss
 
     /// Open a created entity in the main layout (dismisses this sheet).
     let onOpenEntity: (String) -> Void
@@ -21,36 +20,28 @@ struct AIChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            #if os(macOS)
+            // On macOS the chat is a custom column below the full-width window
+            // toolbar, so an in-content title would sit awkwardly under it. The
+            // panel is self-evidently the assistant, so the title is iOS-only.
+            #if os(iOS)
             header
             Divider()
             #endif
 
             messageList
 
-            Divider()
-            inputBar
-        }
-        #if os(iOS)
-        .navigationTitle(Text("entuAi"))
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                #if os(macOS)
-                Button("close", role: .close) { dismiss() }
-                #else
-                Button("close") { dismiss() }
-                #endif
-            }
+            bottomBar
         }
         .appLanguageScoped()
+        .onAppear { inputFocused = true }
     }
 
-    #if os(macOS)
+    #if os(iOS)
+    /// In-content title bar — the chat is presented in an inspector (or a sheet
+    /// on iPhone) without its own navigation chrome, so the title lives here.
     private var header: some View {
         HStack {
-            Label("entuAi", systemImage: "sparkles")
+            Text("entuAi")
                 .font(.headline)
             Spacer()
         }
@@ -83,7 +74,9 @@ struct AIChatView: View {
 
                         if chat.isLoading {
                             HStack {
-                                ProgressView().controlSize(.small)
+                                Image(systemName: "sparkles")
+                                    .foregroundStyle(Color.entuBrand)
+                                    .symbolEffect(.pulse, options: .repeating)
                                 Text("aiThinking")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
@@ -107,7 +100,7 @@ struct AIChatView: View {
         VStack(spacing: 16) {
             Image(systemName: "sparkles")
                 .font(.system(size: 40))
-                .foregroundStyle(ChatMessageView.brand)
+                .foregroundStyle(Color.entuBrand)
 
             Text("aiEmptyHint")
                 .font(.subheadline)
@@ -136,31 +129,56 @@ struct AIChatView: View {
 
     // MARK: - Input
 
-    private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("aiInputPrompt", text: $input, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($inputFocused)
-                .onSubmit { send(input) }
-                .disabled(chat.isLoading)
-
+    /// Circular close (X), centered against the rounded input field.
+    private var bottomBar: some View {
+        HStack(alignment: .center, spacing: 10) {
             Button {
-                send(input)
+                chat.isOpen = false
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
+                Image(systemName: "xmark")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .padding(7)
+                    .background(Circle().fill(Color.primary.opacity(0.06)))
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(canSend ? ChatMessageView.brand : Color.secondary)
-            .disabled(!canSend)
-            .accessibilityLabel("send")
+            .accessibilityLabel("close")
+
+            inputField
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
-    private var canSend: Bool {
-        !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !chat.isLoading
+    private var inputField: some View {
+        TextField("aiInputPrompt", text: $input, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(1...5)
+            .focused($inputFocused)
+            .disabled(chat.isLoading)
+            // Enter sends; Shift+Enter inserts a newline (handled explicitly —
+            // the field's default Shift+Return isn't a newline).
+            .onKeyPress { keyPress in
+                guard keyPress.key == .return else { return .ignored }
+
+                if keyPress.modifiers.contains(.shift) {
+                    input += "\n"
+                } else {
+                    send(input)
+                }
+                return .handled
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+            )
     }
 
     // MARK: - Actions

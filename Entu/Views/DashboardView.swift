@@ -243,7 +243,7 @@ private struct StatsRow: View {
     }
 
     private func formatValue(_ value: Int) -> String {
-        isBytes ? ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file) : value.formatted()
+        isBytes ? value.fileSizeString : value.formatted()
     }
 }
 

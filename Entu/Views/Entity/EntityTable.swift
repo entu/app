@@ -156,7 +156,7 @@ struct EntityTable: View {
                     HStack(spacing: 6) {
                         Text(filename)
                         if let size = value?.filesize {
-                            Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                            Text(size.fileSizeString)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

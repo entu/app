@@ -34,7 +34,7 @@ enum EntityEditMode: Hashable, Identifiable {
 /// Modal sheet that creates or edits a single entity, autosaving per-field.
 struct EntityEditView: View {
     // Internal (non-private) so extensions in companion files
-    // (`EntityEditSheetLoading.swift`, `EntityEditSheetCommit.swift`) can read state.
+    // (`EntityEditViewLoading.swift`, `EntityEditViewCommit.swift`) can read state.
     @Environment(AuthModel.self) var auth
     @Environment(APIClient.self) var api
     @Environment(DeepLinkRouter.self) var router
@@ -115,13 +115,7 @@ struct EntityEditView: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                #if os(macOS)
-                Button("close", role: .close) { dismiss() }
-                    .disabled(isDeleting)
-                #else
-                Button(role: .close) { dismiss() }
-                    .disabled(isDeleting)
-                #endif
+                CloseButton(isDisabled: isDeleting) { dismiss() }
             }
             if showsDelete {
                 ToolbarItem(placement: .destructiveAction) {
@@ -320,13 +314,7 @@ struct EntityEditView: View {
     private var formBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let typeDescription, !typeDescription.isEmpty {
-                Group {
-                    if let attributed = try? AttributedString(markdown: typeDescription) {
-                        Text(attributed)
-                    } else {
-                        Text(verbatim: typeDescription)
-                    }
-                }
+                Text(markdown: typeDescription)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24)
@@ -440,5 +428,5 @@ struct EntityEditView: View {
     }
 
     // Per-value commit, file upload, delete and `manageEmptyFields`
-    // housekeeping live in `EntityEditSheetCommit.swift`.
+    // housekeeping live in `EntityEditViewCommit.swift`.
 }

@@ -250,6 +250,7 @@ struct MainView: View {
     /// extracted from `body` to keep the expression type-checkable.
     private func mainContent(menu: MenuModel) -> some View {
         @Bindable var search = search
+        @Bindable var chat = chat
 
         return Group {
             if showDashboard {
@@ -260,6 +261,7 @@ struct MainView: View {
         }
         .modifier(MenuScopedSearchable(text: $search.text, enabled: showSearchField))
         .sheet(isPresented: $search.showAdvanced) { advancedSearchSheet }
+        .modifier(ChatPresentation(chat: chat, onOpenEntity: openPinnedEntity))
         #if os(macOS)
         .navigationTitle("Entu")
         .navigationSubtitle(currentDatabase?.name ?? "")
@@ -429,6 +431,41 @@ private struct MenuScopedSearchable: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+// MARK: - Chat presentation
+
+/// Docks the Entu AI chat as a trailing panel so it stays open while the user
+/// navigates. iOS/iPadOS use `.inspector`; macOS uses a custom column, since
+/// `.inspector` fights the window's floating toolbar there.
+private struct ChatPresentation: ViewModifier {
+    @Bindable var chat: AIChatModel
+    let onOpenEntity: (String) -> Void
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        // A custom trailing column — `.inspector` doesn't coordinate with the
+        // window's floating toolbar on macOS. A plain view honors the toolbar's
+        // safe-area inset (content sits below it), and a fixed width can't
+        // destabilize the split view on resize.
+        HStack(spacing: 0) {
+            content
+
+            if chat.isOpen {
+                Divider()
+                AIChatView(onOpenEntity: onOpenEntity)
+                    .frame(width: 380)
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(.snappy, value: chat.isOpen)
+        #else
+        content.inspector(isPresented: $chat.isOpen) {
+            AIChatView(onOpenEntity: onOpenEntity)
+                .inspectorColumnWidth(min: 320, ideal: 380, max: 520)
+        }
+        #endif
     }
 }
 

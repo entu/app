@@ -2,7 +2,7 @@
 // webapp's `components/entity/search-modal.vue` — same option loading,
 // operator lists, query building, and applied-query parsing.
 //
-// Deviation from webapp: `search-modal.vue:57` reads `_type.string` while
+// Deviation from webapp: `search-modal.vue` reads `_type.string` while
 // parsing the `_type.string.in` param (webapp bug — yields undefined). The
 // intent is to split the `_type.string.in` value, so we do that.
 
@@ -132,12 +132,6 @@ final class AdvancedSearchModel {
 
     func addFilter() {
         filters.append(SearchFilter())
-    }
-
-    func removeFilter(at index: Int) {
-        guard filters.indices.contains(index) else { return }
-
-        filters.remove(at: index)
     }
 
     func reset() {

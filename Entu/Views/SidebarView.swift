@@ -26,9 +26,7 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        @Bindable var chat = chat
-
-        return List(selection: $selectedMenuId) {
+        List(selection: $selectedMenuId) {
             ForEach(menu.groups) { group in
                 Section(isExpanded: expansionBinding(for: group.id)) {
                     ForEach(group.items) { item in
@@ -43,15 +41,6 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .sheet(isPresented: $chat.isOpen) {
-            NavigationStack {
-                AIChatView(onOpenEntity: openPinnedEntity)
-            }
-            .presentationDetents([.large])
-            #if os(macOS)
-            .frame(minWidth: 480, minHeight: 560)
-            #endif
-        }
         .onAppear {
             seedExpansionIfNeeded()
         }
@@ -62,31 +51,9 @@ struct SidebarView: View {
         .navigationTitle("Entu")
         .navigationSubtitle(currentDatabase?.name ?? "")
         #endif
-        // Bottom bar: Entu AI entry point (above) + current user.
+        // Bottom bar: current user (above) + Entu AI entry point (below).
         .safeAreaBar(edge: .bottom) {
             VStack(spacing: 0) {
-                // Global Entu AI entry point — gated on a signed-in user
-                // (hidden in public-database mode, matching the webapp).
-                if auth.currentUserId != nil {
-                    Button {
-                        chat.isOpen = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "sparkles")
-                                .foregroundStyle(ChatMessageView.brand)
-                                .frame(width: 28)
-                            Text("entuAi")
-                                .lineLimit(1)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.plain)
-
-                    Divider()
-                }
-
                 Button {
                     showUserSheet = true
                 } label: {
@@ -102,6 +69,32 @@ struct SidebarView: View {
                 .buttonStyle(.plain)
                 .sheet(isPresented: $showUserSheet) {
                     UserSheet(openPinnedEntity: openPinnedEntity)
+                }
+
+                // Global Entu AI entry point — gated on a signed-in user
+                // (hidden in public-database mode, matching the webapp).
+                // Hidden while the chat inspector is open to avoid redundancy.
+                if auth.currentUserId != nil && !chat.isOpen {
+                    Button {
+                        chat.isOpen = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                            Text("entuAi")
+                                .lineLimit(1)
+                        }
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule().fill(Color.entuBrand)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 20)
+                    .padding(.bottom, 8)
                 }
             }
         }

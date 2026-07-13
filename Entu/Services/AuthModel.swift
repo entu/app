@@ -101,6 +101,8 @@ final class AuthModel {
         }
     }
 
+    // MARK: - Token persistence & refresh
+
     /// Persist a freshly issued token and its expiry (keychain + in-memory).
     func storeToken(_ token: String, expires: String?) {
         KeychainService.saveToken(token)
@@ -151,6 +153,8 @@ final class AuthModel {
         await task.value
     }
 
+    // MARK: - Auth callback
+
     /// Exchange a temporary auth key for a permanent JWT token and database list.
     func handleAuthCallback(key: String, databaseId: String?) async throws {
         var params: [String: String] = [:]
@@ -174,6 +178,8 @@ final class AuthModel {
         user = response.user
     }
 
+    // MARK: - Database selection
+
     /// Set the active database for all subsequent API calls (authenticated).
     func selectDatabase(_ database: Database) {
         api.databaseId = database._id
@@ -195,6 +201,8 @@ final class AuthModel {
         guard !publicDatabases.contains(id) else { return }
         publicDatabases.append(id)
     }
+
+    // MARK: - Sign out & account deletion
 
     /// Reset everything — clear stored credentials, the saved public-database
     /// list, and the active database. Returns the user to `AuthView`.

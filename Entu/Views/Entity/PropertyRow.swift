@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Single property row — label left, type-specific value(s) right.
 /// Handles type-specific formatting: string, number, boolean, reference,
-/// date, datetime, file. File properties use QuickLook for native preview.
+/// date, datetime, file, and auth-provider values. File properties use
+/// QuickLook for native preview.
 struct PropertyRow: View {
     @Environment(APIClient.self) private var api
     @Environment(\.locale) private var locale
@@ -82,6 +83,8 @@ struct PropertyRow: View {
     private func renderValue(_ value: PropertyValue) -> some View {
         if let ref = value.reference {
             referenceButton(id: ref, name: value.string)
+        } else if value.provider != nil {
+            providerValue(value)
         } else {
             switch definition.type {
             case "boolean": booleanValue(value)
@@ -190,6 +193,33 @@ struct PropertyRow: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Auth provider
+
+    /// Login-linked value (e.g. `entu_user`) — provider icon + email/string.
+    /// Mirrors the webapp's `property/value.vue` provider branch.
+    private func providerValue(_ value: PropertyValue) -> some View {
+        HStack(spacing: 8) {
+            providerIcon(value.provider)
+            Text(value.email ?? value.string ?? "")
+                .textSelection(.enabled)
+        }
+    }
+
+    /// Provider glyph — reuses `AuthProvider`'s icon (custom asset or `sf:`
+    /// SF Symbol), falling back to a generic glyph for unknown providers.
+    @ViewBuilder
+    private func providerIcon(_ provider: String?) -> some View {
+        if let icon = provider.flatMap({ AuthProvider(rawValue: $0) })?.icon {
+            if icon.hasPrefix("sf:") {
+                Image(systemName: String(icon.dropFirst(3)))
+            } else {
+                Image(icon).resizable().scaledToFit().frame(width: 16, height: 16)
+            }
+        } else {
+            Image(systemName: "person.circle").foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - File (QuickLook preview)
 
     /// File property — tap to download (signed URL via `GET /property/{id}`)
@@ -205,7 +235,7 @@ struct PropertyRow: View {
                     Text(value.filename ?? propId).foregroundStyle(.tint)
 
                     if let filesize = value.filesize {
-                        Text(ByteCountFormatter.string(fromByteCount: Int64(filesize), countStyle: .file))
+                        Text(filesize.fileSizeString)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

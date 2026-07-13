@@ -13,5 +13,4 @@ struct Database: Codable, Identifiable, Equatable {
 struct DatabaseUser: Codable, Equatable {
     let _id: String?
     let name: String?
-    let new: Bool?    // true if user was just created via invite
 }

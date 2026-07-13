@@ -35,13 +35,6 @@ final class EntityDetailModel {
         typeCache = [:]
     }
 
-    /// Drop the type cache entry for `typeId`. Use after a successful write
-    /// when the type's property definitions may have changed.
-    static func invalidate(typeId: String) {
-        let key = cacheKey(typeId: typeId)
-        typeCache[key] = nil
-    }
-
     /// Cache key combining the active in-app language with the type id.
     private static func cacheKey(typeId: String) -> String {
         "\(AppLanguage.current.rawValue):\(typeId)"

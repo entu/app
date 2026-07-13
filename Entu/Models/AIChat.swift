@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single message in the Entu AI conversation. Mirrors the webapp store's
-/// message shape (`webapp/app/stores/chat.js`): user/assistant text plus
+/// message shape (`stores/chat.js`): user/assistant text plus
 /// optional proposal, execution results, and local/hidden bookkeeping.
 struct ChatMessage: Identifiable, Sendable {
     enum Role: String, Codable, Sendable {

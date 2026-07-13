@@ -70,13 +70,7 @@ struct RightsSheet: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                #if os(macOS)
-                Button("close", role: .close) { dismiss() }
-                    .disabled(isUpdating)
-                #else
-                Button(role: .close) { dismiss() }
-                    .disabled(isUpdating)
-                #endif
+                CloseButton(isDisabled: isUpdating) { dismiss() }
             }
         }
         .task { await load() }
@@ -84,7 +78,7 @@ struct RightsSheet: View {
     }
 
     #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditSheet.swift —
+    /// In-content title bar for macOS sheets. See EntityEditView.swift —
     /// macOS sheets don't render the toolbar's principal slot.
     private var sheetHeader: some View {
         VStack(alignment: .leading, spacing: 2) {

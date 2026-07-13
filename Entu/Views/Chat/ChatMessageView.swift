@@ -14,8 +14,6 @@ struct ChatMessageView: View {
     let onCancel: () -> Void
     let onOpenEntity: (String) -> Void
 
-    /// Brand teal used for the user bubble and the toolbar button.
-    static let brand = Color(red: 0x1E / 255, green: 0x43 / 255, blue: 0x4C / 255)
 
     var body: some View {
         if message.role == .user {
@@ -44,7 +42,7 @@ struct ChatMessageView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Self.brand))
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.entuBrand))
             .foregroundStyle(.white)
         }
     }

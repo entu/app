@@ -14,8 +14,8 @@ import SwiftUI
 /// Read-only entity-history viewer.
 struct HistorySheet: View {
     @Environment(APIClient.self) private var api
-    @Environment(\.locale) private var locale
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     let entityId: String
     let typeId: String?
@@ -26,9 +26,9 @@ struct HistorySheet: View {
     let entityName: String?
     let typeLabel: String?
 
-    /// Memberwise init with default-nil header inputs so existing call sites
-    /// without the new arguments still compile.
-    init(entityId: String, typeId: String?, entityName: String? = nil, typeLabel: String? = nil) {
+    /// Explicit init so the `@State` properties below stay out of the init
+    /// surface (the caller supplies only these four inputs).
+    init(entityId: String, typeId: String?, entityName: String?, typeLabel: String?) {
         self.entityId = entityId
         self.typeId = typeId
         self.entityName = entityName
@@ -72,11 +72,7 @@ struct HistorySheet: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                #if os(macOS)
-                Button("close", role: .close) { dismiss() }
-                #else
-                Button(role: .close) { dismiss() }
-                #endif
+                CloseButton { dismiss() }
             }
         }
         .task { await load() }
@@ -90,7 +86,7 @@ struct HistorySheet: View {
     }
 
     #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditSheet.swift —
+    /// In-content title bar for macOS sheets. See EntityEditView.swift —
     /// macOS sheets don't render the toolbar's principal slot.
     private var sheetHeader: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -344,7 +340,7 @@ struct HistorySheet: View {
             return HistoryValue(text: value.string ?? ref, suffix: nil, language: value.language)
         }
         if let filename = value.filename {
-            let suffix = value.filesize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) }
+            let suffix = value.filesize.map { $0.fileSizeString }
             return HistoryValue(text: filename, suffix: suffix, language: value.language)
         }
         if let b = value.boolean {

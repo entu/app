@@ -15,6 +15,8 @@ struct PropertyValue: Codable {
     let filename: String?
     let filesize: Int?
     let language: String?
+    /// Auth metadata on login-linked values (mirrors the webapp): the OAuth
+    /// provider and email behind a person's authentication property.
     let provider: String?
     let email: String?
     let ordinal: Double?

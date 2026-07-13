@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Collapsible sections showing child and referencing entities grouped by type.
+/// One collapsible group per child/reference type, each lazily loading its table.
 struct ChildEntitiesSection: View {
     @Environment(APIClient.self) private var api
 

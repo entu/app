@@ -58,11 +58,7 @@ struct SearchSheet: View {
             }
             #endif
             ToolbarItem(placement: .cancellationAction) {
-                #if os(macOS)
-                Button("close", role: .close) { dismiss() }
-                #else
-                Button(role: .close) { dismiss() }
-                #endif
+                CloseButton { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button {
@@ -90,7 +86,7 @@ struct SearchSheet: View {
     }
 
     #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditSheet.swift —
+    /// In-content title bar for macOS sheets. See EntityEditView.swift —
     /// macOS sheets don't render the toolbar's principal slot.
     private var sheetHeader: some View {
         Text("searchTitle")

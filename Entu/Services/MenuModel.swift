@@ -57,6 +57,8 @@ final class MenuModel {
         self.api = api
     }
 
+    // MARK: - Load
+
     /// Fetch all menu-type entities, then group and sort them for sidebar display.
     /// Hits the language-keyed cache first; only fetches on a miss.
     func load() async {
@@ -135,6 +137,8 @@ final class MenuModel {
             parentTypesByChild = [:]
         }
     }
+
+    // MARK: - add_from types
 
     /// Look up all entity types that declare `add_from`, then build two
     /// inverse maps from the same response:

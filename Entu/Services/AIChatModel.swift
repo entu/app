@@ -1,7 +1,7 @@
 import Foundation
 
 /// Conversation state for the Entu AI assistant. Mirrors the webapp store
-/// (`webapp/app/stores/chat.js`): holds the message list, drives the two
+/// (`stores/chat.js`): holds the message list, drives the two
 /// API calls (chat + execute), and manages the proposal review flow.
 ///
 /// Account-scoped like the webapp — the conversation resets when the active

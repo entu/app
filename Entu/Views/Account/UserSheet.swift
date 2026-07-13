@@ -110,7 +110,7 @@ struct UserSheet: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button(role: .close) { dismiss() }
+            CloseButton { dismiss() }
         }
         ToolbarItem(placement: .destructiveAction) {
             Button("signOut", role: .destructive) {

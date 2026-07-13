@@ -165,11 +165,7 @@ struct ReferencePickerView: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                #if os(macOS)
-                Button("close", role: .close) { dismiss() }
-                #else
-                Button(role: .close) { dismiss() }
-                #endif
+                CloseButton { dismiss() }
             }
         }
         .frame(minWidth: 480, minHeight: 500)
