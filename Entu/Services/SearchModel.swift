@@ -23,5 +23,5 @@ final class SearchModel {
     /// Feature flag: temporarily hides every advanced-search button. The
     /// sheet, apply logic, and query wiring stay intact — flip to `true` to
     /// restore the button everywhere.
-    static let showAdvancedButton = false
+    static let showAdvancedButton = true
 }
