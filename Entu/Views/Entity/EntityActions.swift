@@ -5,12 +5,25 @@ import SwiftUI
 /// the File-menu `EntityCommands` (and their keyboard shortcuts) drive
 /// the same feature sheets as the toolbar buttons. A `nil` closure means
 /// the user lacks the required right — the menu item disables.
-struct EntityActions {
+///
+/// `Equatable` on the *availability* of each action (not the closures,
+/// which change every render): lets SwiftUI dedupe the focused-value
+/// updates so a burst of re-renders during entity load doesn't republish
+/// many times per frame (which merely warns on macOS but can freeze iPad).
+struct EntityActions: Equatable {
     var edit: (() -> Void)?
     var duplicate: (() -> Void)?
     var parents: (() -> Void)?
     var rights: (() -> Void)?
     var history: (() -> Void)?
+
+    static func == (lhs: EntityActions, rhs: EntityActions) -> Bool {
+        (lhs.edit == nil) == (rhs.edit == nil)
+            && (lhs.duplicate == nil) == (rhs.duplicate == nil)
+            && (lhs.parents == nil) == (rhs.parents == nil)
+            && (lhs.rights == nil) == (rhs.rights == nil)
+            && (lhs.history == nil) == (rhs.history == nil)
+    }
 }
 
 /// One "create an entity of this type" choice for the File > New and
@@ -29,9 +42,16 @@ struct EntityCreateOption: Identifiable {
 /// or asks the publishing view to present a type chooser when there are
 /// several (SwiftUI can't open the toolbar's Add menu programmatically, so
 /// the shortcut opens an equivalent picker instead).
-struct EntityCreateCommand {
+///
+/// `Equatable` on the option ids (not the closures) so SwiftUI dedupes the
+/// focused-value updates — see `EntityActions`.
+struct EntityCreateCommand: Equatable {
     let options: [EntityCreateOption]
     let invoke: () -> Void
+
+    static func == (lhs: EntityCreateCommand, rhs: EntityCreateCommand) -> Bool {
+        lhs.options.map(\.id) == rhs.options.map(\.id)
+    }
 }
 
 extension FocusedValues {

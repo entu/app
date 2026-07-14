@@ -20,14 +20,8 @@ struct AIChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // On macOS the chat is a custom column below the full-width window
-            // toolbar, so an in-content title would sit awkwardly under it. The
-            // panel is self-evidently the assistant, so the title is iOS-only.
-            #if os(iOS)
-            header
-            Divider()
-            #endif
-
+            // No in-content title on either platform — the panel is
+            // self-evidently the assistant (matching the macOS column).
             messageList
         }
         // The input bar floats over the message scroll as a glass surface —
@@ -37,20 +31,6 @@ struct AIChatView: View {
         .appLanguageScoped()
         .onAppear { inputFocused = true }
     }
-
-    #if os(iOS)
-    /// In-content title bar — the chat is presented in an inspector (or a sheet
-    /// on iPhone) without its own navigation chrome, so the title lives here.
-    private var header: some View {
-        HStack {
-            Text("entuAi")
-                .font(.headline)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-    #endif
 
     // MARK: - Messages
 

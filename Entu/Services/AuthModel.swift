@@ -220,6 +220,7 @@ final class AuthModel {
         UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
         MenuModel.clearCache()
         EntityDetailModel.clearCache()
+        SessionState.clearStored()
     }
 
     /// Permanently delete the signed-in user's person entity in the active

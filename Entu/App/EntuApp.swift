@@ -12,6 +12,7 @@ struct EntuApp: App {
     @State private var passkeyService: PasskeyService
     @State private var chat: AIChatModel
     @State private var search = SearchModel()
+    @State private var session = SessionState()
     @State private var network = NetworkMonitor()
     @State private var router = DeepLinkRouter()
     @State private var showingPublicEntry = false
@@ -62,6 +63,7 @@ struct EntuApp: App {
                 .environment(api)
                 .environment(auth)
                 .environment(search)
+                .environment(session)
                 .environment(authService)
                 .environment(passkeyService)
                 .environment(chat)

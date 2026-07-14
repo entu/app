@@ -15,15 +15,12 @@ struct MainView: View {
     @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
     @Environment(AIChatModel.self) private var chat
+    @Environment(SessionState.self) private var session
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
     @State private var menu: MenuModel?
     @State private var preferredColumn: NavigationSplitViewColumn = .detail
-    @State private var selectedMenuId: String?
-    @State private var selectedEntityId: String?
-    @State private var entityHistory: [String] = []
-    @State private var pinnedEntityId: String?
 
     /// Bumped by detail-side operations (currently: duplicate) to force
     /// `EntityListView` to refetch its rows even when `query` is unchanged.
@@ -46,7 +43,7 @@ struct MainView: View {
 
     /// Resolves the selected menu item ID to its API query string.
     private var selectedQuery: String? {
-        if let selectedMenuId, let menu, let query = menu.queryById[selectedMenuId] {
+        if let selectedMenuId = session.selectedMenuId, let menu, let query = menu.queryById[selectedMenuId] {
             return query
         }
         return nil
@@ -61,35 +58,35 @@ struct MainView: View {
 
     /// The entity shown in detail — from list selection or history stack navigation.
     private var currentEntityId: String? {
-        entityHistory.last ?? selectedEntityId
+        session.entityHistory.last ?? session.selectedEntityId
     }
 
     /// Dashboard is shown when no menu item is selected and no search
     /// (text or advanced) is active.
     private var showDashboard: Bool {
-        selectedMenuId == nil && !search.isActive
+        session.selectedMenuId == nil && !search.isActive
     }
 
     /// Hide the search field on compact-size sidebar (iPhone, iPad split) when no menu is selected.
     /// Matches Mail.app behaviour — search appears on the list view, not the root sidebar.
     private var showSearchField: Bool {
-        hSizeClass != .compact || selectedMenuId != nil
+        hSizeClass != .compact || session.selectedMenuId != nil
     }
 
     /// Binding that resets search, selection, and history in the same tick as the menu change,
     /// so EntityListView observes a consistent (query, search.text) pair on re-render.
     private var menuSelection: Binding<String?> {
         Binding(
-            get: { selectedMenuId },
+            get: { session.selectedMenuId },
             set: { newValue in
                 search.text = ""
                 search.advancedQuery = nil
-                selectedEntityId = nil
-                entityHistory = []
+                session.selectedEntityId = nil
+                session.entityHistory = []
                 if newValue != nil {
-                    pinnedEntityId = nil
+                    session.pinnedEntityId = nil
                 }
-                selectedMenuId = newValue
+                session.selectedMenuId = newValue
             }
         )
     }
@@ -138,27 +135,24 @@ struct MainView: View {
     private func consumePendingDeepLink() {
         search.text = ""
         search.advancedQuery = nil
-        selectedEntityId = nil
-        entityHistory = []
-        pinnedEntityId = nil
-        selectedMenuId = nil
+        session.clearNavigation()
 
         if let q = router.pendingQuery["q"], !q.isEmpty {
             search.text = q
         }
 
         if let menuId = router.pendingQuery["menu"], menu?.queryById[menuId] != nil {
-            selectedMenuId = menuId
+            session.selectedMenuId = menuId
         }
 
         if let entityId = router.pendingEntityId {
-            if selectedMenuId == nil {
+            if session.selectedMenuId == nil {
                 // No menu context (e.g. a plugin redirect with no `menu`
                 // param) — the two-column layout shows the dashboard unless an
                 // entity is *pinned*, so pin it to surface the detail.
-                pinnedEntityId = entityId
+                session.pinnedEntityId = entityId
             } else {
-                entityHistory.append(entityId)
+                session.entityHistory.append(entityId)
             }
             preferredColumn = .detail
         }
@@ -177,10 +171,7 @@ struct MainView: View {
 
         search.text = q
         search.advancedQuery = query.buildURLQuery()
-        selectedMenuId = nil
-        selectedEntityId = nil
-        entityHistory = []
-        pinnedEntityId = nil
+        session.clearNavigation()
         // Guarantees a refetch even when the serialized query is unchanged.
         listRefreshToken &+= 1
     }
@@ -189,10 +180,10 @@ struct MainView: View {
     /// sidebar user row (two-column mode). When history is empty, clear the
     /// pinned entity so the dashboard takes over.
     private func popOrClearPinnedDetail() {
-        if !entityHistory.isEmpty {
-            entityHistory.removeLast()
+        if !session.entityHistory.isEmpty {
+            session.entityHistory.removeLast()
         } else {
-            pinnedEntityId = nil
+            session.pinnedEntityId = nil
         }
     }
 
@@ -200,10 +191,10 @@ struct MainView: View {
     /// selected (three-column mode). When history is empty, clear the
     /// selection so the detail column shows nothing.
     private func popOrClearListDetail() {
-        if !entityHistory.isEmpty {
-            entityHistory.removeLast()
+        if !session.entityHistory.isEmpty {
+            session.entityHistory.removeLast()
         } else {
-            selectedEntityId = nil
+            session.selectedEntityId = nil
         }
     }
 
@@ -213,16 +204,16 @@ struct MainView: View {
     private func openPinnedEntity(_ entityId: String) {
         if showDashboard {
             // No-op if already viewing that exact entity with no sub-navigation.
-            if pinnedEntityId == entityId && entityHistory.isEmpty {
+            if session.pinnedEntityId == entityId && session.entityHistory.isEmpty {
                 return
             }
-            entityHistory = []
-            pinnedEntityId = entityId
+            session.entityHistory = []
+            session.pinnedEntityId = entityId
         } else {
-            if entityHistory.last == entityId {
+            if session.entityHistory.last == entityId {
                 return
             }
-            entityHistory.append(entityId)
+            session.entityHistory.append(entityId)
         }
 
         // Push the detail column on compact (iPhone) so NavigationSplitView
@@ -239,10 +230,53 @@ struct MainView: View {
             }
         }
         .task {
+            // Reopen where the user left off *before* the menu loads, so the
+            // split view's first render is already in the right (two/three-
+            // column, chat open/closed) configuration. Reconfiguring after
+            // the first paint mislays the toolbar on macOS. A deep link wins
+            // over a saved session, so it's applied after the menu is ready.
+            if router.pendingDatabaseId == nil {
+                restoreSession(for: api.databaseId)
+            }
             let menuModel = MenuModel(api: api)
             menu = menuModel
             await menuModel.load()
-            applyPendingDeepLink()
+            if router.pendingDatabaseId != nil {
+                applyPendingDeepLink()
+            }
+        }
+    }
+
+    // MARK: - Session persistence
+
+    /// Save the current "where I left off" state for the active database.
+    private func persistSession() {
+        session.persist(
+            databaseId: api.databaseId,
+            searchText: search.text,
+            advancedQuery: search.advancedQuery,
+            chatOpen: chat.isOpen
+        )
+    }
+
+    /// Apply the saved session for `databaseId` (nav + search + chat), or
+    /// clear to the dashboard when there's none. Wrapped in `withRestoring`
+    /// so the side-effect `onChange` handlers don't mangle the restored state.
+    private func restoreSession(for databaseId: String?) {
+        session.withRestoring {
+            if let snapshot = session.snapshot(databaseId: databaseId) {
+                session.applyNavigation(snapshot)
+                search.text = snapshot.searchText
+                search.advancedQuery = snapshot.advancedQuery
+                chat.isOpen = snapshot.chatOpen
+                if snapshot.entityId != nil || !snapshot.history.isEmpty || snapshot.pinnedId != nil {
+                    preferredColumn = .detail
+                }
+            } else {
+                session.clearNavigation()
+                search.text = ""
+                search.advancedQuery = nil
+            }
         }
     }
 
@@ -252,7 +286,7 @@ struct MainView: View {
         @Bindable var search = search
         @Bindable var chat = chat
 
-        return Group {
+        let layout = Group {
             if showDashboard {
                 twoColumnView(menu: menu)
             } else {
@@ -266,40 +300,56 @@ struct MainView: View {
         .navigationTitle("Entu")
         .navigationSubtitle(currentDatabase?.name ?? "")
         #endif
-        .onChange(of: selectedEntityId) {
-            entityHistory = []
-        }
-        .onChange(of: search.text) {
-            if !search.text.isEmpty {
-                pinnedEntityId = nil
+
+        // Split off the event handlers into a second expression — the whole
+        // chain otherwise overwhelms the type-checker.
+        return stateSync(layout, menu: menu)
+    }
+
+    /// Attaches the session-persistence, restore, and cross-cutting reload
+    /// handlers to the main layout.
+    private func stateSync(_ content: some View, menu: MenuModel) -> some View {
+        content
+            // A new list selection resets the drill-down history, and a
+            // non-empty search clears the pinned entity — but not while
+            // restoring a saved session (which sets these together). Each
+            // change also persists "where I left off" (`persist` is itself a
+            // no-op while restoring).
+            .onChange(of: session.selectedEntityId) {
+                if !session.isRestoring { session.entityHistory = [] }
+                persistSession()
             }
-        }
-        .onChange(of: api.databaseId) {
-            selectedMenuId = nil
-            selectedEntityId = nil
-            entityHistory = []
-            pinnedEntityId = nil
-            search.text = ""
-            search.advancedQuery = nil
-            // AI conversation is account-scoped — clear it and close the sheet
-            // on database switch, mirroring the webapp.
-            chat.reset()
-            chat.isOpen = false
-            EntityDetailModel.clearCache()
-            Task { await menu.load() }
-        }
-        // An applied AI proposal may have created entity types / entities —
-        // reload the menu and force the entity list to refetch.
-        .onChange(of: chat.appliedToken) {
-            listRefreshToken &+= 1
-            Task { await menu.load() }
-        }
-        .onChange(of: router.pendingDatabaseId) {
-            applyPendingDeepLink()
-        }
-        .onChange(of: auth.isAuthenticated) {
-            applyPendingDeepLink()
-        }
+            .onChange(of: search.text) {
+                if !session.isRestoring && !search.text.isEmpty { session.pinnedEntityId = nil }
+                persistSession()
+            }
+            .onChange(of: session.selectedMenuId) { persistSession() }
+            .onChange(of: session.entityHistory) { persistSession() }
+            .onChange(of: session.pinnedEntityId) { persistSession() }
+            .onChange(of: search.advancedQuery) { persistSession() }
+            .onChange(of: chat.isOpen) { persistSession() }
+            .onChange(of: api.databaseId) {
+                // AI conversation is account-scoped — clear it on database
+                // switch, mirroring the webapp. The account's own saved
+                // session (nav + search + chat-open) is then restored, so each
+                // database reopens where it was left.
+                chat.reset()
+                EntityDetailModel.clearCache()
+                restoreSession(for: api.databaseId)
+                Task { await menu.load() }
+            }
+            // An applied AI proposal may have created entity types / entities —
+            // reload the menu and force the entity list to refetch.
+            .onChange(of: chat.appliedToken) {
+                listRefreshToken &+= 1
+                Task { await menu.load() }
+            }
+            .onChange(of: router.pendingDatabaseId) {
+                applyPendingDeepLink()
+            }
+            .onChange(of: auth.isAuthenticated) {
+                applyPendingDeepLink()
+            }
     }
 
     // MARK: - Advanced search
@@ -350,22 +400,23 @@ struct MainView: View {
     // MARK: - Two-column: sidebar + dashboard (no menu selected, empty search)
 
     private func twoColumnView(menu: MenuModel) -> some View {
-        NavigationSplitView(preferredCompactColumn: $preferredColumn) {
+        @Bindable var session = session
+        return NavigationSplitView(preferredCompactColumn: $preferredColumn) {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
-                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
+                .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
         } detail: {
-            if let pinnedEntityId {
-                let shownId = entityHistory.last ?? pinnedEntityId
+            if let pinnedEntityId = session.pinnedEntityId {
+                let shownId = session.entityHistory.last ?? pinnedEntityId
                 EntityDetailView(
                     entityId: shownId,
-                    menuId: selectedMenuId,
-                    onNavigate: { entityHistory.append($0) },
+                    menuId: session.selectedMenuId,
+                    onNavigate: { session.entityHistory.append($0) },
                     onDelete: { popOrClearPinnedDetail() },
                     onListChanged: { listRefreshToken &+= 1 }
                 )
-                .entityHistoryBack($entityHistory)
+                .entityHistoryBack($session.entityHistory)
             } else {
                 DashboardView()
                     #if os(macOS)
@@ -379,31 +430,32 @@ struct MainView: View {
     // MARK: - Three-column: sidebar + entity list + detail (menu selected or search active)
 
     private func threeColumnView(menu: MenuModel) -> some View {
-        NavigationSplitView {
+        @Bindable var session = session
+        return NavigationSplitView {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
-                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
+                .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
         } content: {
             EntityListView(
                 query: activeQuery,
-                menuId: selectedMenuId,
-                selectedEntityId: $selectedEntityId,
+                menuId: session.selectedMenuId,
+                selectedEntityId: $session.selectedEntityId,
                 refreshToken: listRefreshToken,
                 onOpenAdvancedSearch: { search.showAdvanced = true }
             )
                 .navigationSplitViewColumnWidth(min: 240, ideal: contentWidth, max: 600)
-                .onGeometryChange(for: Double.self) { $0.size.width } action: { contentWidth = $0 }
+                .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != contentWidth { contentWidth = $0 } }
         } detail: {
             if let currentEntityId {
                 EntityDetailView(
                     entityId: currentEntityId,
-                    menuId: selectedMenuId,
-                    onNavigate: { entityHistory.append($0) },
+                    menuId: session.selectedMenuId,
+                    onNavigate: { session.entityHistory.append($0) },
                     onDelete: { popOrClearListDetail() },
                     onListChanged: { listRefreshToken &+= 1 }
                 )
-                .entityHistoryBack($entityHistory)
+                .entityHistoryBack($session.entityHistory)
             } else {
                 // Keeps the detail column (and its toolbar contribution)
                 // alive when no entity is selected.
