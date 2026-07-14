@@ -103,6 +103,11 @@ struct EntuApp: App {
                 }
         }
         .defaultSize(width: 1280, height: 850)
+        // App Store screenshot capture mode — uncomment together with the
+        // `.frame(width: 1280, height: 768)` above to lock the window to the
+        // fixed content size (otherwise the window resizes and leaves margins
+        // around the fixed content). Comment both out to ship.
+        // .windowResizability(.contentSize)
         .commands {
             // File > New — ⌘N creates an entity (the app's primary object),
             // ⌃⌘N adds a child. `.newItem` is *replaced* (not left default)
