@@ -80,6 +80,14 @@ struct EntuApp: App {
                 .id(appLanguage)
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 700)
+                // App Store macOS screenshot capture mode — DO NOT DELETE.
+                // Swap with the `minWidth/minHeight` line above when taking
+                // App Store screenshots. Apple requires a 1280×800 pt outer
+                // window; macOS adds ~32pt of title-bar chrome above the
+                // content view, so the content frame is 1280×768 to land the
+                // window at 1280×800 (= 2560×1600 px @2x, Apple's accepted
+                // screenshot size).
+                // .frame(width: 1280, height: 768)
                 #endif
                 .onOpenURL { url in
                     if !router.handle(url: url) {
