@@ -111,7 +111,8 @@ struct SidebarView: View {
             params: ["props": "photo"]
         ), response.entity?.hasPhoto == true else { return }
 
-        userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 200)?.absoluteString
+        // Small 28pt bottom-bar avatar — the 50px thumbnail is plenty.
+        userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 50)?.absoluteString
     }
 
     // MARK: - Expansion seed + binding

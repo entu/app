@@ -26,8 +26,9 @@ struct EntityAvatar: View {
         .accessibilityHidden(true)
         .task(id: entityId) {
             image = nil
+            // Small avatars (list + table) — the 50px thumbnail is plenty.
             guard hasPhoto,
-                  let url = await api.entityThumbnailURL(entityId: entityId, size: 200) else { return }
+                  let url = await api.entityThumbnailURL(entityId: entityId, size: 50) else { return }
             image = await loadImage(from: url)
         }
     }

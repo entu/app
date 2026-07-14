@@ -257,7 +257,7 @@ private struct ThumbnailView: View {
         }
         .task(id: entityId) {
             image = nil
-            guard let url = await api.entityThumbnailURL(entityId: entityId, size: 800) else { return }
+            guard let url = await api.entityThumbnailURL(entityId: entityId, size: 400) else { return }
             image = await loadImage(from: url)
         }
     }
