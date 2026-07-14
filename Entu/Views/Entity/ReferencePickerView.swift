@@ -112,7 +112,7 @@ struct ReferencePickerView: View {
         }
         .overlay {
             if isLoading && results.isEmpty {
-                ProgressView()
+                EntityRowsPlaceholder()
             } else if !isLoading && results.isEmpty && !searchText.isEmpty {
                 ContentUnavailableView {
                     Label("noResults", systemImage: "magnifyingglass")

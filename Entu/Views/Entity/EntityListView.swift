@@ -87,7 +87,7 @@ struct EntityListView: View {
         .refreshable { await loadEntities() }
         .overlay {
             if isLoading && items.isEmpty {
-                listSkeleton
+                EntityRowsPlaceholder(count: 8)
             } else if !isLoading && items.isEmpty {
                 ContentUnavailableView {
                     Label("noResults", systemImage: "magnifyingglass")
@@ -162,31 +162,6 @@ struct EntityListView: View {
             }
             .presentationDetents([.large])
         }
-    }
-
-    /// Redacted placeholder rows shown while the first page loads —
-    /// content resolves in place instead of flashing from a spinner to
-    /// the loaded list. Row layout mirrors the real rows above; varying
-    /// name lengths keep the placeholder looking organic.
-    private var listSkeleton: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<8, id: \.self) { index in
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(.fill.secondary)
-                        .frame(width: 28, height: 28)
-                    Text(verbatim: String(repeating: "name ", count: 3 + index % 3))
-                        .lineLimit(1)
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-            }
-            Spacer()
-        }
-        .redacted(reason: .placeholder)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     // MARK: - New-entity command

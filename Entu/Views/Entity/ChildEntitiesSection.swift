@@ -23,9 +23,7 @@ struct ChildEntitiesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                childSkeleton
             } else {
                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                     DisclosureGroup(isExpanded: expansionBinding(for: group.id, isFirst: index == 0)) {
@@ -50,6 +48,19 @@ struct ChildEntitiesSection: View {
             }
         }
         .task(id: entityId) { await loadGroups() }
+    }
+
+    /// Placeholder shown while the child/reference groups load. Their count
+    /// and labels aren't known yet, so it's a single pulsing bar rather than
+    /// fabricated section headers.
+    private var childSkeleton: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(.fill.secondary)
+            .frame(width: 160, height: 22)
+            .padding(.vertical, 12)
+            .pulsePlaceholder()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     // First group expanded by default, rest collapsed. Each can be toggled independently.

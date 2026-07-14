@@ -92,6 +92,7 @@ struct EntityDetailView: View {
                 Text(verbatim: "Entity name placeholder")
                     .font(.title)
                     .fontWeight(.bold)
+                    .pulsePlaceholder()
 
                 ForEach(0..<6, id: \.self) { index in
                     HStack(alignment: .top, spacing: 16) {
@@ -102,13 +103,13 @@ struct EntityDetailView: View {
                             .font(.subheadline)
                         Spacer()
                     }
+                    // +1 so the title (delay 0) leads the property rows.
+                    .pulsePlaceholder(delay: Double(index + 1) * 0.12)
                 }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .redacted(reason: .placeholder)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        .placeholderContainer()
     }
 }

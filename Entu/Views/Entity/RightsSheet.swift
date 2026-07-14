@@ -54,8 +54,7 @@ struct RightsSheet: View {
             #endif
             Group {
                 if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    FormPlaceholder()
                 } else if let loadError {
                     ContentUnavailableView(loadError, systemImage: "exclamationmark.triangle")
                 } else {

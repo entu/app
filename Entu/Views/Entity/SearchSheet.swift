@@ -40,8 +40,7 @@ struct SearchSheet: View {
                 if let model {
                     formBody(model)
                 } else {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    FormPlaceholder()
                 }
             }
         }

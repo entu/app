@@ -20,9 +20,7 @@ struct DashboardView: View {
             if auth.isCurrentDatabasePublic {
                 publicPlaceholder
             } else if isLoading {
-                Spacer()
-                ProgressView()
-                Spacer()
+                StatsPlaceholder()
             } else if let stats {
                 VStack(spacing: 8) {
                     Spacer()

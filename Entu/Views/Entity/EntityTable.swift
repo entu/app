@@ -46,9 +46,7 @@ struct EntityTable: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if isLoading && entities.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                EntityRowsPlaceholder(count: 5, avatarSize: 18)
             } else {
                 grid
                 pagination
