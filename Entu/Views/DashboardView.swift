@@ -1,19 +1,24 @@
 // Dashboard — shown as the default detail view when no menu item is selected.
-// In an authenticated session, displays database usage statistics
-// (entities, properties, files, AI tokens) with progress bars and a detail
-// popover on tap. In a public-database session, the stats endpoint requires
-// auth so this falls back to a "Viewing as guest" placeholder card.
+// In an authenticated session, a centered column: logo + database name +
+// organization header with an "updated" caption, then four stat tiles
+// (entities, properties, files, AI tokens) with thin capacity bars. In a
+// public-database session, the stats endpoint requires auth so this falls
+// back to a "Viewing as guest" placeholder card.
 
 import SwiftUI
 
-/// Dashboard showing database usage statistics with interactive progress bars.
+/// Dashboard showing database usage statistics as stat tiles.
 struct DashboardView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
 
     @State private var stats: DatabaseStats?
+    @State private var fetchedAt: Date?
     @State private var isLoading = false
     @State private var error: String?
+
+    /// Two tiles per row at full width, one column when the pane is narrow.
+    private let columns = [GridItem(.adaptive(minimum: 240), spacing: 10)]
 
     var body: some View {
         VStack {
@@ -22,41 +27,7 @@ struct DashboardView: View {
             } else if isLoading {
                 StatsPlaceholder()
             } else if let stats {
-                VStack(spacing: 8) {
-                    Spacer()
-
-                    StatsRow(label: "entities",
-                             usage: stats.entities.usage ?? 0,
-                             limit: stats.entities.limit ?? 0,
-                             deleted: stats.entities.deleted ?? 0,
-                             color: .statEntities)
-
-                    StatsRow(label: "properties",
-                             usage: stats.properties.usage ?? 0,
-                             limit: 0,
-                             deleted: stats.properties.deleted ?? 0,
-                             color: .statProperties)
-
-                    StatsRow(label: "files",
-                             usage: stats.files.usage ?? 0,
-                             limit: stats.files.limit ?? 0,
-                             deleted: stats.files.deleted ?? 0,
-                             color: .statFiles,
-                             isBytes: true)
-
-                    if let tokens = stats.tokens {
-                        StatsRow(label: "aiTokens",
-                                 usage: tokens.usage ?? 0,
-                                 limit: tokens.limit ?? 0,
-                                 deleted: 0,
-                                 color: .statTokens)
-                    }
-
-                    Spacer()
-                }
-                .padding(32)
-                .frame(maxWidth: 500)
-                .frame(maxWidth: .infinity)
+                content(stats)
             } else if let error {
                 ContentUnavailableView {
                     Label("loadError", systemImage: "exclamationmark.triangle")
@@ -73,8 +44,75 @@ struct DashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Grayish window behind white/elevated cards, matching the design's
+        // surface hierarchy (the macOS semantic window color renders white
+        // in the split view's detail column, so the token is explicit).
+        .background(Color("WindowBackground").ignoresSafeArea())
         // Reloads when the active database changes (id: parameter triggers re-run).
         .task(id: api.databaseId) { await loadStats() }
+    }
+
+    // MARK: - Content
+
+    /// Header + tile grid, vertically centered while it fits, scrollable
+    /// when the pane is shorter than the content.
+    private func content(_ stats: DatabaseStats) -> some View {
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 26) {
+                    header(stats)
+                    tiles(stats)
+                }
+                .frame(maxWidth: 640)
+                .padding(32)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: geo.size.height)
+            }
+        }
+    }
+
+    private func header(_ stats: DatabaseStats) -> some View {
+        HStack(spacing: 18) {
+            Image("Logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 64)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: api.databaseId ?? "")
+                    .font(.title.bold())
+
+                // Design fix (18a shows "Updated" floating at header height):
+                // organization and the updated caption share the second line.
+                HStack(alignment: .firstTextBaseline) {
+                    if let organization = PropertyValue.localized(stats.organization) {
+                        Text(verbatim: organization)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if let fetchedAt {
+                        Text("statsUpdated \(fetchedAt.relativeString)")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func tiles(_ stats: DatabaseStats) -> some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            StatTile(label: "entities", stat: stats.entities, color: .accentColor)
+            StatTile(label: "properties", stat: stats.properties, color: .indigo)
+            StatTile(label: "files", stat: stats.files, color: .green, isBytes: true)
+
+            if let tokens = stats.tokens {
+                StatTile(label: "aiTokens", stat: tokens, color: .orange, isMonthly: true)
+            }
+        }
     }
 
     /// Card shown instead of stats when the active database is being browsed
@@ -98,6 +136,7 @@ struct DashboardView: View {
         error = nil
         do {
             stats = try await api.get("")
+            fetchedAt = .now
         } catch {
             self.error = error.localizedDescription
             stats = nil
@@ -106,158 +145,129 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - StatsRow
+// MARK: - StatTile
 
-/// Single stat row matching the webapp's stats-bar component:
-/// top label + over-limit indicator; usage + deleted bar with a red
-/// over-limit marker; total / limit values below; popover with a
-/// colour-keyed value grid.
-private struct StatsRow: View {
+/// One usage metric as a card: uppercase kicker, large current value,
+/// deleted line, thin capacity bar, limit caption. Metrics without a limit
+/// (properties) show a current-vs-deleted proportion bar captioned "no
+/// limit"; the monthly AI-token metric notes its reset date instead of a
+/// deleted line.
+private struct StatTile: View {
     let label: LocalizedStringKey
-    let usage: Int
-    let limit: Int
-    let deleted: Int
+    let stat: UsageStat
     let color: Color
     var isBytes: Bool = false
+    var isMonthly: Bool = false
 
-    @State private var showDetail = false
-    @State private var isHovered = false
-
-    private var total: Int { usage + deleted }
-    private var overLimit: Int { limit > 0 ? max(total - limit, 0) : 0 }
-    private var isOverLimit: Bool { overLimit > 0 }
+    private var usage: Int { stat.usage ?? 0 }
+    private var deleted: Int { stat.deleted ?? 0 }
+    private var limit: Int { stat.limit ?? 0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Top: label + "limit" text
-            HStack {
-                Text(label)
-                Spacer()
-                if limit > 0 {
-                    Text("statsLimit")
-                        .foregroundStyle(isOverLimit ? .red : .secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .kerning(0.8)
+                .foregroundStyle(.tertiary)
 
-            // Progress bar — explicit capsule fill. `ProgressView` + `.tint`
-            // renders all bars in a uniform system color in dark mode,
-            // losing the per-stat hue.
-            bar
+            Text(verbatim: format(usage))
+                .font(.title2.bold())
+                .monospacedDigit()
+                .padding(.top, 3)
 
-            // Bottom: total + limit value
-            HStack {
-                Text(formatValue(total)).monospacedDigit()
-                Spacer()
-                if limit > 0 {
-                    Text(formatValue(limit))
-                        .foregroundStyle(isOverLimit ? .red : .secondary)
-                        .monospacedDigit()
+            Group {
+                if isMonthly {
+                    Text("statsTokensUsage \(Date.tokensResetDate)")
+                } else {
+                    Text("statsDeletedCount \(format(deleted))")
                 }
             }
             .font(.caption)
-        }
-        .padding(8)
-        .background {
-            if isHovered || showDetail {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.primary.opacity(0.05))
+            .foregroundStyle(.secondary)
+
+            UsageBar(
+                color: barColor,
+                usageFraction: usageFraction,
+                deletedFraction: deletedFraction
+            )
+            .padding(.top, 9)
+
+            Group {
+                if limit == 0 {
+                    Text("statsNoLimit")
+                } else if isMonthly {
+                    Text("statsMonthlyLimit \(format(limit))")
+                } else {
+                    Text("statsOfLimit \(format(limit))")
+                }
             }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .onHover {
-            isHovered = $0
-            showDetail = $0
-        }
-        .onTapGesture { showDetail.toggle() }
-        // One VoiceOver element per stat — label and values read together;
-        // the button trait exposes the tap-for-details popover.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 16))
+        // One VoiceOver element per tile — kicker and values read together.
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .popover(isPresented: $showDetail) {
-            detailPopover
-                .appLanguageScoped()
+    }
+
+    /// Warning tint as capacity runs out — orange from 90%, red over the
+    /// limit. Deleted items still occupy the limit, so both trigger on the
+    /// total.
+    private var barColor: Color {
+        guard limit > 0 else { return color }
+
+        let total = Double(usage + deleted) / Double(limit)
+        if total > 1 { return .red }
+        if total >= 0.9 { return .orange }
+
+        return color
+    }
+
+    private var usageFraction: Double {
+        guard limit > 0 else {
+            // No limit — the bar shows the current-vs-deleted proportion.
+            let total = usage + deleted
+            return total > 0 ? Double(usage) / Double(total) : 0
         }
-        .padding(.vertical, 4)
+
+        return min(Double(usage) / Double(limit), 1)
     }
 
-    private var detailPopover: some View {
-        Grid(alignment: .leading, verticalSpacing: 8) {
-            if usage > 0 {
-                GridRow {
-                    HStack(spacing: 6) {
-                        Rectangle().fill(color).frame(width: 14, height: 14)
-                        Text("statsCurrent")
-                    }
-                    Text(formatValue(usage))
-                        .gridColumnAlignment(.trailing)
-                        .monospacedDigit()
-                }
-            }
-
-            if deleted > 0 {
-                GridRow {
-                    HStack(spacing: 6) {
-                        Rectangle().fill(color.opacity(0.3)).frame(width: 14, height: 14)
-                        Text("statsDeleted")
-                    }
-                    Text(formatValue(deleted)).monospacedDigit()
-                }
-            }
-
-            if limit > 0 {
-                GridRow {
-                    HStack(spacing: 6) {
-                        Rectangle().fill(color.opacity(0.1)).frame(width: 14, height: 14)
-                        Text("statsLimit")
-                    }
-                    Text(formatValue(limit)).monospacedDigit()
-                }
-            }
-
-            if overLimit > 0 {
-                GridRow {
-                    HStack(spacing: 6) {
-                        Rectangle().fill(.red.opacity(0.2)).frame(width: 14, height: 14)
-                        Text("statsOverLimit")
-                            .fontWeight(.bold)
-                            .foregroundStyle(.red)
-                    }
-                    Text(formatValue(overLimit))
-                        .fontWeight(.bold)
-                        .foregroundStyle(.red)
-                        .monospacedDigit()
-                }
-            }
+    private var deletedFraction: Double {
+        guard limit > 0 else {
+            let total = usage + deleted
+            return total > 0 ? Double(deleted) / Double(total) : 0
         }
-        .padding(16)
-        .fixedSize()
+
+        return min(Double(deleted) / Double(limit), 1 - usageFraction)
     }
 
-    /// Filled fraction of the bar — the limit's share when over limit
-    /// (the red track behind shows the excess), usage otherwise.
-    private var fillFraction: Double {
-        isOverLimit
-            ? Double(limit) / Double(total)
-            : Double(total) / Double(max(limit, total, 1))
-    }
-
-    /// Capsule track + fill. Stat colours come from the `Stat*` asset
-    /// colorsets (webapp's `db-stats.vue` values, slightly darkened for
-    /// dark mode) via the generated `Color.stat*` symbols.
-    private var bar: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(isOverLimit ? Color.red.opacity(0.3) : color.opacity(0.15))
-                Capsule()
-                    .fill(color)
-                    .frame(width: geo.size.width * fillFraction)
-            }
-        }
-        .frame(height: 5)
-    }
-
-    private func formatValue(_ value: Int) -> String {
+    private func format(_ value: Int) -> String {
         isBytes ? value.fileSizeString : value.formatted()
+    }
+}
+
+// MARK: - Date helpers
+
+private extension Date {
+    /// Relative "5 minutes ago" phrase in the in-app language.
+    var relativeString: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: AppLanguage.resolvedLanguageCode)
+        formatter.dateTimeStyle = .named
+
+        return formatter.localizedString(for: self, relativeTo: .now)
+    }
+
+    /// First day of the next month, e.g. "Aug 1" — when monthly AI token
+    /// usage resets.
+    static var tokensResetDate: String {
+        let nextMonth = Calendar.current.dateInterval(of: .month, for: .now)?.end ?? .now
+
+        return nextMonth.formatted(.dateTime.month(.abbreviated).day())
     }
 }

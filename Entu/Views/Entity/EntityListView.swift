@@ -22,8 +22,8 @@ struct EntityListView: View {
     /// `EntityToolbarHost`'s `onListChanged`.
     var refreshToken: Int = 0
 
-    /// Opens the advanced-search sheet (owned by `MainView`). iOS/iPadOS
-    /// only — on macOS the button lives in the window toolbar instead.
+    /// Opens the advanced-search sheet (owned by `MainView`) — wired to the
+    /// round button in the list header on all platforms.
     var onOpenAdvancedSearch: (() -> Void)? = nil
 
     @State private var items: [EntityListItem] = []
@@ -73,16 +73,40 @@ struct EntityListView: View {
             if isLoadingMore {
                 HStack { Spacer(); ProgressView(); Spacer() }
                     .listRowSeparator(.hidden)
-            } else if !hasMore && totalCount > 0 {
-                Text("\(totalCount)")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
-                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
         .clipped()
+        // List header — entity count as the list title, with the round
+        // advanced-search button (the sheet's only opener) on the right.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Text("entityCount \(totalCount)")
+                    .font(.subheadline.bold())
+                    .monospacedDigit()
+                    .opacity(isLoading && items.isEmpty ? 0 : 1)
+
+                Spacer()
+
+                if auth.currentUserId != nil, let onOpenAdvancedSearch {
+                    Button {
+                        onOpenAdvancedSearch()
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(.fill.quaternary, in: Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("advancedSearch")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+        }
         .focused($isListFocused)
         .refreshable { await loadEntities() }
         .overlay {
@@ -142,9 +166,6 @@ struct EntityListView: View {
                 pendingNewType = chosen
             }
         }
-        #if os(iOS)
-        .toolbar { advancedSearchToolbarContent }
-        #endif
         .sheet(
             item: $pendingCreate,
             onDismiss: {
@@ -239,29 +260,6 @@ struct EntityListView: View {
             }
         }
     }
-
-    #if os(iOS)
-    /// Advanced-search button next to the list. Mirrors the webapp's
-    /// advanced-search toolbar button — hidden in public-database mode
-    /// (webapp gates the whole search UI on a signed-in user).
-    @ToolbarContentBuilder
-    private var advancedSearchToolbarContent: some ToolbarContent {
-        if SearchModel.showAdvancedButton, auth.currentUserId != nil, let onOpenAdvancedSearch {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    onOpenAdvancedSearch()
-                } label: {
-                    Label(
-                        "advancedSearch",
-                        systemImage: search.advancedQuery != nil
-                            ? "line.3.horizontal.decrease.circle.fill"
-                            : "line.3.horizontal.decrease.circle"
-                    )
-                }
-            }
-        }
-    }
-    #endif
 
     // MARK: - Data loading
 

@@ -99,39 +99,9 @@ private struct EntityToolbar: ToolbarContent {
             rightsButton
             historyButton
         }
-        #if os(macOS)
-        // Last in this block → renders immediately left of the system
-        // search field, ungrouped from the entity buttons. On iOS the
-        // equivalent button lives in the list column's toolbar.
-        ToolbarSpacer(.fixed, placement: .primaryAction)
-        ToolbarItem(placement: .primaryAction) {
-            advancedSearchButton
-        }
-        #endif
     }
 
     // MARK: - Buttons
-
-    #if os(macOS)
-    /// Opens the advanced-search sheet (hosted by `MainView`). Hidden in
-    /// public-database mode — webapp gates the whole search UI on a
-    /// signed-in user.
-    @ViewBuilder
-    private var advancedSearchButton: some View {
-        if SearchModel.showAdvancedButton, auth.currentUserId != nil {
-            Button {
-                search.showAdvanced = true
-            } label: {
-                Label(
-                    "advancedSearch",
-                    systemImage: search.advancedQuery != nil
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle"
-                )
-            }
-        }
-    }
-    #endif
 
     @ViewBuilder
     private var menuLevelAddButton: some View {

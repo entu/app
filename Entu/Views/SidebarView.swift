@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Sidebar with menu groups as expandable sections and a bottom user
-/// bar that opens `UserSheet` on tap.
+/// Sidebar with menu groups as expandable sections and a bottom row holding
+/// the user pill (opens `UserSheet`) and the Entu AI button.
 struct SidebarView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
@@ -37,6 +37,8 @@ struct SidebarView: View {
                     }
                 } header: {
                     Text(group.name ?? "")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -51,48 +53,63 @@ struct SidebarView: View {
         .navigationTitle("Entu")
         .navigationSubtitle(currentDatabase?.name ?? "")
         #endif
-        // Bottom bar: current user (above) + Entu AI entry point (below).
+        // Bottom row: user pill (name + database) and the Entu AI button
+        // side by side. Both are Liquid Glass pills floating over the list.
         .safeAreaBar(edge: .bottom) {
-            VStack(spacing: 0) {
+            HStack(spacing: 8) {
                 Button {
                     showUserSheet = true
                 } label: {
-                    HStack(spacing: 10) {
-                        UserAvatar(thumbnail: userThumbnail, size: 28)
-                        ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
-                            .lineLimit(1)
-                        Spacer()
+                    HStack(spacing: 8) {
+                        UserAvatar(thumbnail: userThumbnail, size: 26)
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+
+                            if let databaseId = api.databaseId {
+                                Text(verbatim: databaseId)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                        }
+
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
                 .sheet(isPresented: $showUserSheet) {
                     UserSheet(openPinnedEntity: openPinnedEntity)
                 }
 
-                // Global Entu AI entry point — gated on a signed-in user
-                // (hidden in public-database mode, matching the webapp).
-                // Hidden while the chat inspector is open to avoid redundancy.
-                // Glass button — it floats over the sidebar list in the
-                // `.safeAreaBar`, so it belongs to the Liquid Glass controls
-                // layer. Neutral system glass (no brand tint).
+                // Entu AI entry point — gated on a signed-in user (hidden in
+                // public-database mode, matching the webapp) and hidden while
+                // the chat panel is open to avoid redundancy. Accent-tinted
+                // glass per the design's AI pill.
                 if auth.currentUserId != nil && !chat.isOpen {
                     Button {
                         chat.isOpen = true
                     } label: {
-                        Label("entuAi", systemImage: "sparkles")
-                            .font(.callout.weight(.medium))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
+                        Label {
+                            Text(verbatim: "AI")
+                        } icon: {
+                            Image(systemName: "sparkles")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 8)
                     }
                     .buttonStyle(.glass)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 16)
-                    .padding(.bottom, 16)
+                    .buttonBorderShape(.capsule)
+                    .tint(.accentColor)
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
         }
         .task(id: currentDatabase?.user?._id) {
             await loadUserThumbnail()
@@ -111,7 +128,7 @@ struct SidebarView: View {
             params: ["props": "photo"]
         ), response.entity?.hasPhoto == true else { return }
 
-        // Small 28pt bottom-bar avatar — the 50px thumbnail is plenty.
+        // Small 26pt bottom-bar avatar — the 50px thumbnail is plenty.
         userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 50)?.absoluteString
     }
 

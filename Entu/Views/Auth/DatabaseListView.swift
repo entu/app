@@ -256,22 +256,11 @@ private struct CapacityBar: View {
             }
             .font(.caption)
 
-            GeometryReader { geo in
-                let fillColor = isNearLimit ? .orange : color
-
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .fill(fillColor)
-                        .frame(width: geo.size.width * usageFraction)
-                    Rectangle()
-                        .fill(fillColor.opacity(0.35))
-                        .frame(width: geo.size.width * deletedFraction)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.fill.secondary)
-                .clipShape(Capsule())
-            }
-            .frame(height: 4)
+            UsageBar(
+                color: isNearLimit ? .orange : color,
+                usageFraction: usageFraction,
+                deletedFraction: deletedFraction
+            )
         }
     }
 

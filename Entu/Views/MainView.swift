@@ -29,18 +29,6 @@ struct MainView: View {
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = 220
     @AppStorage("ui.contentWidth") private var contentWidth: Double = 320
 
-    private var currentDatabase: Database? {
-        if let authenticated = auth.databases.first(where: { $0._id == api.databaseId }) {
-            return authenticated
-        }
-        // Public databases have no name/user info from the API — synthesize a
-        // Database value from the id so the macOS subtitle can show something.
-        if let id = api.databaseId, auth.publicDatabases.contains(id) {
-            return Database(_id: id, name: id, user: nil)
-        }
-        return nil
-    }
-
     /// Resolves the selected menu item ID to its API query string.
     private var selectedQuery: String? {
         if let selectedMenuId = session.selectedMenuId, let menu, let query = menu.queryById[selectedMenuId] {
@@ -297,8 +285,9 @@ struct MainView: View {
         .sheet(isPresented: $search.showAdvanced) { advancedSearchSheet }
         .modifier(ChatPresentation(chat: chat, onOpenEntity: openPinnedEntity))
         #if os(macOS)
-        .navigationTitle("Entu")
-        .navigationSubtitle(currentDatabase?.name ?? "")
+        // Blank title — the redesign's toolbar carries only the search field;
+        // database context lives in the sidebar's bottom user pill.
+        .navigationTitle("")
         #endif
 
         // Split off the event handlers into a second expression — the whole
@@ -370,33 +359,6 @@ struct MainView: View {
         #endif
     }
 
-    #if os(macOS)
-    /// Advanced-search button for detail columns WITHOUT an open entity —
-    /// when an entity is open, `EntityToolbar` renders the same button as
-    /// its last item so it stays next to the search field. The leading
-    /// spacer keeps it visually ungrouped from other buttons. Webapp gates
-    /// the whole search UI on a signed-in user, so hide it in
-    /// public-database mode.
-    @ToolbarContentBuilder
-    private var advancedSearchToolbarContent: some ToolbarContent {
-        if SearchModel.showAdvancedButton, auth.currentUserId != nil {
-            ToolbarSpacer(.fixed)
-            ToolbarItem {
-                Button {
-                    search.showAdvanced = true
-                } label: {
-                    Label(
-                        "advancedSearch",
-                        systemImage: search.advancedQuery != nil
-                            ? "line.3.horizontal.decrease.circle.fill"
-                            : "line.3.horizontal.decrease.circle"
-                    )
-                }
-            }
-        }
-    }
-    #endif
-
     // MARK: - Two-column: sidebar + dashboard (no menu selected, empty search)
 
     private func twoColumnView(menu: MenuModel) -> some View {
@@ -419,9 +381,6 @@ struct MainView: View {
                 .entityHistoryBack($session.entityHistory)
             } else {
                 DashboardView()
-                    #if os(macOS)
-                    .toolbar { advancedSearchToolbarContent }
-                    #endif
             }
         }
         .environment(menu)
@@ -457,12 +416,8 @@ struct MainView: View {
                 )
                 .entityHistoryBack($session.entityHistory)
             } else {
-                // Keeps the detail column (and its toolbar contribution)
-                // alive when no entity is selected.
+                // Keeps the detail column alive when no entity is selected.
                 Color.clear
-                    #if os(macOS)
-                    .toolbar { advancedSearchToolbarContent }
-                    #endif
             }
         }
         .environment(menu)

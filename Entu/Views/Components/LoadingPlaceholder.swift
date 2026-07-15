@@ -78,28 +78,35 @@ struct FormPlaceholder: View {
     }
 }
 
-/// Dashboard usage-stats placeholder — a label bar, a track bar, and a
-/// value bar per stat, matching the four `StatsRow`s. Fades row by row.
+/// Dashboard usage-stats placeholder — four stat-tile skeletons in the same
+/// adaptive grid as the real tiles. Fades tile by tile.
 struct StatsPlaceholder: View {
     var body: some View {
-        VStack(spacing: 20) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 10)], spacing: 10) {
             ForEach(0..<4, id: \.self) { index in
-                VStack(alignment: .leading, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.fill.secondary)
-                        .frame(width: 90, height: 12)
-                    Capsule()
-                        .fill(.fill.secondary)
-                        .frame(height: 6)
+                VStack(alignment: .leading, spacing: 8) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(.fill.secondary)
                         .frame(width: 60, height: 10)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(.fill.secondary)
+                        .frame(width: 90, height: 22)
+                    Capsule()
+                        .fill(.fill.secondary)
+                        .frame(height: 4)
+                        .padding(.top, 8)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(.fill.secondary)
+                        .frame(width: 80, height: 9)
                 }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 16))
                 .pulsePlaceholder(delay: Double(index) * 0.12)
             }
         }
+        .frame(maxWidth: 640)
         .padding(32)
-        .frame(maxWidth: 500)
         .frame(maxWidth: .infinity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
