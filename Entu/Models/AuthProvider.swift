@@ -45,12 +45,12 @@ enum AuthProvider: String, CaseIterable {
     var icon: String {
         switch self {
         case .passkey: return "sf:person.badge.key.fill"
-        case .email: return "auth-e-mail"
-        case .apple: return "auth-apple"
+        case .email: return "sf:envelope"
+        case .apple: return "sf:apple.logo"
         case .google: return "auth-google"
         case .smartId: return "auth-smart-id"
         case .mobileId: return "auth-mobile-id"
-        case .idCard: return "auth-id-card"
+        case .idCard: return "sf:person.text.rectangle"
         }
     }
 

@@ -1,8 +1,78 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "" : {
-
+    "" : {},
+    "continueWithPasskey" : {
+      "comment" : "Primary sign-in button promoting passkey authentication.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue with Passkey"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jätka turvavõtmega"
+          }
+        }
+      }
+    },
+    "statsTableCurrent" : {
+      "comment" : "Column header in the database usage mini-table.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiivne"
+          }
+        }
+      }
+    },
+    "statsTableDeleted" : {
+      "comment" : "Column header in the database usage mini-table.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deleted"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kustutatud"
+          }
+        }
+      }
+    },
+    "statsTableLimit" : {
+      "comment" : "Column header in the database usage mini-table.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limit"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limiit"
+          }
+        }
+      }
     },
     "·" : {
       "comment" : "A separator between parent breadcrumbs.",
@@ -1596,22 +1666,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Operaator"
-          }
-        }
-      }
-    },
-    "or" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OR"
-          }
-        },
-        "et" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "VÕI"
           }
         }
       }

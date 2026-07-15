@@ -2,6 +2,10 @@ import Foundation
 
 /// Usage statistics for a database.
 struct DatabaseStats: Codable {
+    /// Database description (organization) — multilingual values in the same
+    /// shape as entity properties. Optional so older deployments decode
+    /// without it.
+    let organization: [PropertyValue]?
     let entities: UsageStat
     let properties: UsageStat
     let files: UsageStat

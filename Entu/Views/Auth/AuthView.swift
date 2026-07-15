@@ -1,12 +1,12 @@
 // Sign-in screen — shown when the user has no stored token and no saved
-// public database. Displays the app logo, a list of authentication providers
-// (Apple, Google, email, Estonian ID methods, passkey), and an entry point
-// for browsing public databases as a guest.
+// public database. Entu logo header, a promoted Continue-with-Passkey pill,
+// the remaining providers in two grouped cards (e-mail/Apple/Google and the
+// Estonian ID methods), and a View-public-database link below.
 
 import AuthenticationServices
 import SwiftUI
 
-/// Sign-in screen with grouped authentication provider buttons.
+/// Sign-in screen with a primary passkey button and grouped provider rows.
 struct AuthView: View {
     @Environment(AuthService.self) private var authService
     @Environment(PasskeyService.self) private var passkeyService
@@ -14,6 +14,7 @@ struct AuthView: View {
     @State private var error: String?
     @State private var showingPublicEntry = false
     @State private var isProbingPublicDatabase = false
+    @State private var isPasskeySigningIn = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,14 +23,14 @@ struct AuthView: View {
             Image("Logo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 96, height: 96)
-                .padding(.top, 48)
-                .padding(.bottom, 16)
+                .frame(width: 72, height: 72)
+                .padding(.top, 44)
+                .padding(.bottom, 14)
 
             VStack(spacing: 4) {
                 Text("signInTitle")
                     .font(.title2)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
 
                 Text("signInDescription")
                     .font(.subheadline)
@@ -38,46 +39,67 @@ struct AuthView: View {
             }
             .frame(maxWidth: 320)
             .padding(.horizontal, 32)
-            .padding(.bottom, 24)
 
-            // MARK: - Provider buttons + browse public
+            // MARK: - Passkey (promoted primary action)
 
-            // Provider list + Browse-public live in one ScrollView so they
-            // stay grouped on tight iPhone layouts; gradient mask fades the
-            // scroll edges.
-            ScrollView {
-                VStack(spacing: 0) {
-                    VStack(spacing: 36) {
-                        ForEach(AuthProviderGroup.allCases, id: \.self) { group in
-                            let providers = AuthProvider.allCases.filter {
-                                $0.group == group && $0.isAvailableOnCurrentPlatform
-                            }
-
-                            VStack(spacing: 12) {
-                                ForEach(providers, id: \.self) { provider in
-                                    AuthButton(provider: provider) {
-                                        await signIn(with: provider)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    VStack(spacing: 20) {
-                        OrSeparator()
-                        BrowsePublicDatabaseButton(
-                            isWorking: showingPublicEntry || isProbingPublicDatabase
-                        ) {
-                            showingPublicEntry = true
-                        }
-                    }
-                    .padding(.top, 20)
+            Button {
+                guard !isPasskeySigningIn else { return }
+                Task {
+                    isPasskeySigningIn = true
+                    await signIn(with: .passkey)
+                    isPasskeySigningIn = false
                 }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 20)
-                .frame(maxWidth: 320)
+            } label: {
+                HStack(spacing: 8) {
+                    if isPasskeySigningIn {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "person.badge.key.fill")
+                    }
+                    Text("continueWithPasskey")
+                        .fontWeight(.medium)
+                }
+                .frame(maxWidth: .infinity)
             }
-            .scrollFadeMask()
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+            .frame(maxWidth: 320)
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+
+            // MARK: - Other providers + browse public
+
+            Form {
+                Section {
+                    ForEach(providers(in: .main), id: \.self) { provider in
+                        AuthButton(provider: provider) {
+                            await signIn(with: provider)
+                        }
+                    }
+                }
+
+                Section {
+                    ForEach(providers(in: .estonian), id: \.self) { provider in
+                        AuthButton(provider: provider) {
+                            await signIn(with: provider)
+                        }
+                    }
+                } footer: {
+                    BrowsePublicDatabaseButton(
+                        isWorking: showingPublicEntry || isProbingPublicDatabase
+                    ) {
+                        showingPublicEntry = true
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .frame(maxWidth: 380)
 
             // MARK: - Error message
 
@@ -97,6 +119,11 @@ struct AuthView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
+        #if os(iOS)
+        // Grouped cards need the grouped window background behind the fixed
+        // header too, not only inside the Form's own scroll area.
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        #endif
         .publicDatabaseEntry(
             isPresented: $showingPublicEntry,
             isSubmitting: $isProbingPublicDatabase
@@ -104,6 +131,13 @@ struct AuthView: View {
         .onAppear {
             // Reset any stuck session left over from a prior attempt.
             authService.cancelPending()
+        }
+    }
+
+    /// Providers of one visual group, filtered to the current platform.
+    private func providers(in group: AuthProviderGroup) -> [AuthProvider] {
+        AuthProvider.allCases.filter {
+            $0.group == group && $0.isAvailableOnCurrentPlatform
         }
     }
 
@@ -145,7 +179,7 @@ private struct AuthButton: View {
                 isWorking = false
             }
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 AuthRowIcon(isWorking: isWorking) {
                     if provider.icon.hasPrefix("sf:") {
                         Image(systemName: String(provider.icon.dropFirst(3)))
@@ -153,10 +187,18 @@ private struct AuthButton: View {
                         Image(provider.icon).resizable().scaledToFit()
                     }
                 }
+                .foregroundStyle(.secondary)
+
                 Text(provider.label)
+                    .foregroundStyle(.primary)
+
                 Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .authRowStyle()
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
     }
