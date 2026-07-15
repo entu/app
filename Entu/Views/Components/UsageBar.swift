@@ -22,7 +22,7 @@ struct UsageBar: View {
                     .frame(width: geo.size.width * deletedFraction)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.fill.secondary)
+            .background(.fill.quaternary)
             .clipShape(Capsule())
         }
         .frame(height: 4)

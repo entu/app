@@ -34,7 +34,7 @@ struct AuthView: View {
 
                 Text("signInDescription")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: 320)
@@ -61,45 +61,36 @@ struct AuthView: View {
                     Text("continueWithPasskey")
                         .fontWeight(.medium)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 18)
+                // Matches the ~44pt height of the provider rows below.
+                .padding(.vertical, 10)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.capsule)
-            .controlSize(.large)
             .frame(maxWidth: 320)
             .padding(.horizontal, 32)
             .padding(.top, 24)
 
             // MARK: - Other providers + browse public
 
-            Form {
-                Section {
-                    ForEach(providers(in: .main), id: \.self) { provider in
-                        AuthButton(provider: provider) {
-                            await signIn(with: provider)
-                        }
-                    }
-                }
+            ScrollView {
+                VStack(spacing: CardMetrics.gap) {
+                    providerCard(for: .main)
+                    providerCard(for: .estonian)
 
-                Section {
-                    ForEach(providers(in: .estonian), id: \.self) { provider in
-                        AuthButton(provider: provider) {
-                            await signIn(with: provider)
-                        }
-                    }
-                } footer: {
                     BrowsePublicDatabaseButton(
                         isWorking: showingPublicEntry || isProbingPublicDatabase
                     ) {
                         showingPublicEntry = true
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 10)
+                    .padding(.top, 4)
                 }
+                .frame(maxWidth: 320)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: 380)
+            .scrollFadeMask()
 
             // MARK: - Error message
 
@@ -119,11 +110,9 @@ struct AuthView: View {
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
-        #if os(iOS)
-        // Grouped cards need the grouped window background behind the fixed
-        // header too, not only inside the Form's own scroll area.
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        #endif
+        // Design-token window background behind the fixed header and the
+        // Form's scroll area alike.
+        .background(Color("WindowBackground").ignoresSafeArea())
         .publicDatabaseEntry(
             isPresented: $showingPublicEntry,
             isSubmitting: $isProbingPublicDatabase
@@ -139,6 +128,24 @@ struct AuthView: View {
         AuthProvider.allCases.filter {
             $0.group == group && $0.isAvailableOnCurrentPlatform
         }
+    }
+
+    /// One white card with a hairline-separated row per provider.
+    private func providerCard(for group: AuthProviderGroup) -> some View {
+        let providers = providers(in: group)
+
+        return VStack(spacing: 0) {
+            ForEach(providers, id: \.self) { provider in
+                AuthButton(provider: provider) {
+                    await signIn(with: provider)
+                }
+
+                if provider != providers.last {
+                    Divider()
+                }
+            }
+        }
+        .cardSurface()
     }
 
     private func signIn(with provider: AuthProvider) async {
@@ -198,6 +205,8 @@ private struct AuthButton: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

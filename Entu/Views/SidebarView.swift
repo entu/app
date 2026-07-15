@@ -78,10 +78,15 @@ struct SidebarView: View {
 
                         Spacer(minLength: 0)
                     }
+                    // Uniform 4pt inset — the avatar sits as close to the
+                    // pill's left edge as to its top and bottom. A glass
+                    // *effect* instead of the glass button style, whose own
+                    // content padding would widen the leading gap.
                     .padding(4)
+                    .contentShape(Capsule())
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: Capsule())
                 .sheet(isPresented: $showUserSheet) {
                     UserSheet(openPinnedEntity: openPinnedEntity)
                 }
@@ -95,7 +100,9 @@ struct SidebarView: View {
                         chat.isOpen = true
                     } label: {
                         Label {
-                            Text(verbatim: "AI")
+                            Text("aiButton")
+                                .textCase(.uppercase)
+                                .kerning(0.5)
                         } icon: {
                             Image(systemName: "sparkles")
                         }

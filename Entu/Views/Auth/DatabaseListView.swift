@@ -36,17 +36,18 @@ struct DatabaseListView: View {
 
                 Text("selectDatabaseDescription")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: 320)
             .padding(.horizontal, 32)
+            .padding(.bottom, 8)
 
-            // MARK: - Database cards
+            // MARK: - Database cards + sign out / browse public
 
-            Form {
-                ForEach(auth.databases) { database in
-                    Section {
+            ScrollView {
+                VStack(spacing: CardMetrics.gap) {
+                    ForEach(auth.databases) { database in
                         DatabaseCard(
                             database: database,
                             stats: stats[database.id],
@@ -55,10 +56,14 @@ struct DatabaseListView: View {
                             auth.selectDatabase(database)
                         }
                     }
-                }
 
-                if !auth.publicDatabases.isEmpty {
-                    Section {
+                    if !auth.publicDatabases.isEmpty {
+                        Text("publicDatabasesSection")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.quaternary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 10)
+
                         ForEach(auth.publicDatabases, id: \.self) { id in
                             Button {
                                 auth.selectPublicDatabase(id)
@@ -66,52 +71,49 @@ struct DatabaseListView: View {
                                 DatabaseCardHeader(id: id, name: id) {
                                     Text("viewingAsGuest")
                                 }
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 14)
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
+                            .cardSurface()
                         }
-                    } header: {
-                        Text("publicDatabasesSection")
                     }
+
+                    // Scrolls with the cards, sitting right below the last one.
+                    HStack {
+                        Button { auth.logOut() } label: {
+                            Text("signOut")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.borderless)
+
+                        Spacer()
+
+                        BrowsePublicDatabaseButton(
+                            isWorking: showingPublicEntry || isProbingPublicDatabase
+                        ) {
+                            showingPublicEntry = true
+                        }
+                    }
+                    .padding(.top, 8)
                 }
+                .frame(maxWidth: 360)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: 420)
-
-            // MARK: - Sign out / browse public
-
-            HStack {
-                Button { auth.logOut() } label: {
-                    Text("signOut")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                }
-                .buttonStyle(.borderless)
-                .tint(.red)
-
-                Spacer()
-
-                BrowsePublicDatabaseButton(
-                    isWorking: showingPublicEntry || isProbingPublicDatabase
-                ) {
-                    showingPublicEntry = true
-                }
-            }
-            .frame(maxWidth: 420)
-            .padding(.horizontal, 36)
-            .padding(.top, 4)
-            .padding(.bottom, 20)
+            .scrollFadeMask()
         }
         .frame(maxWidth: .infinity)
         #if os(macOS)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
-        #if os(iOS)
-        // Grouped cards need the grouped window background behind the fixed
-        // header too, not only inside the Form's own scroll area.
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        #endif
+        // Design-token window background behind the fixed header and the
+        // Form's scroll area alike.
+        .background(Color("WindowBackground").ignoresSafeArea())
         .publicDatabaseEntry(
             isPresented: $showingPublicEntry,
             isSubmitting: $isProbingPublicDatabase
@@ -179,9 +181,12 @@ private struct DatabaseCard: View {
                         .padding(.vertical, 8)
                 }
             }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .cardSurface()
     }
 }
 
@@ -209,7 +214,7 @@ private struct DatabaseCardHeader<Subtitle: View>: View {
 
                 subtitle()
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
             }
 
             Spacer()
@@ -245,13 +250,13 @@ private struct CapacityBar: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text(label)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
 
                 Spacer()
 
                 Text(verbatim: "\(format(usage)) / \(format(limit))")
                     .fontWeight(isNearLimit ? .semibold : .regular)
-                    .foregroundStyle(isNearLimit ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(isNearLimit ? AnyShapeStyle(Color("WarningText")) : AnyShapeStyle(.tertiary))
                     .monospacedDigit()
             }
             .font(.caption)
@@ -297,7 +302,7 @@ private struct StatsMiniTable: View {
                 Text("statsTableDeleted")
                 Text("statsTableLimit")
             }
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.quaternary)
 
             row(label: "entities", stat: stats.entities)
             row(label: "properties", stat: stats.properties)
@@ -324,13 +329,13 @@ private struct StatsMiniTable: View {
 
             Text(verbatim: format(stat.usage, isBytes: isBytes) ?? "0")
                 .fontWeight(.semibold)
-                .foregroundStyle(isNearLimit ? AnyShapeStyle(.orange) : AnyShapeStyle(.primary))
+                .foregroundStyle(isNearLimit ? AnyShapeStyle(Color("WarningText")) : AnyShapeStyle(.primary))
 
             Text(verbatim: format(stat.deleted, isBytes: isBytes) ?? "—")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
 
             Text(verbatim: format(stat.limit, isBytes: isBytes, zeroAsMissing: true) ?? "—")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
         }
         .monospacedDigit()
     }

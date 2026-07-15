@@ -286,8 +286,11 @@ struct MainView: View {
         .modifier(ChatPresentation(chat: chat, onOpenEntity: openPinnedEntity))
         #if os(macOS)
         // Blank title — the redesign's toolbar carries only the search field;
-        // database context lives in the sidebar's bottom user pill.
+        // database context lives in the sidebar's bottom user pill. The
+        // toolbar background is hidden so the window color runs behind the
+        // floating search field instead of a white band.
         .navigationTitle("")
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #endif
 
         // Split off the event handlers into a second expression — the whole

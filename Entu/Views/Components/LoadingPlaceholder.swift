@@ -82,7 +82,7 @@ struct FormPlaceholder: View {
 /// adaptive grid as the real tiles. Fades tile by tile.
 struct StatsPlaceholder: View {
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: CardMetrics.gap)], spacing: CardMetrics.gap) {
             ForEach(0..<4, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     RoundedRectangle(cornerRadius: 4)
@@ -101,7 +101,7 @@ struct StatsPlaceholder: View {
                 }
                 .padding(.vertical, 14)
                 .padding(.horizontal, 16)
-                .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 16))
+                .cardSurface()
                 .pulsePlaceholder(delay: Double(index) * 0.12)
             }
         }

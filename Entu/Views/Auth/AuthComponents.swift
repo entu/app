@@ -43,6 +43,9 @@ struct BrowsePublicDatabaseButton: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
             }
+            // Explicit accent — macOS borderless buttons render the label
+            // in the label color, not the tint.
+            .foregroundStyle(.tint)
         }
         .buttonStyle(.borderless)
     }

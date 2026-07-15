@@ -2,6 +2,24 @@
   "sourceLanguage" : "en",
   "strings" : {
     "" : {},
+    "aiButton" : {
+      "comment" : "Label of the sidebar AI pill button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kratt"
+          }
+        }
+      }
+    },
     "·" : {
       "comment" : "A separator between parent breadcrumbs.",
       "extractionState" : "manual",
@@ -2829,24 +2847,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "kasutatud sel kuul · nullitakse %@"
-          }
-        }
-      }
-    },
-    "statsUpdated %@" : {
-      "comment" : "Relative timestamp in the dashboard header.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Updated %@"
-          }
-        },
-        "et" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uuendatud %@"
           }
         }
       }

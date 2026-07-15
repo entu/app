@@ -13,12 +13,11 @@ struct DashboardView: View {
     @Environment(APIClient.self) private var api
 
     @State private var stats: DatabaseStats?
-    @State private var fetchedAt: Date?
     @State private var isLoading = false
     @State private var error: String?
 
     /// Two tiles per row at full width, one column when the pane is narrow.
-    private let columns = [GridItem(.adaptive(minimum: 240), spacing: 10)]
+    private let columns = [GridItem(.adaptive(minimum: 240), spacing: CardMetrics.gap)]
 
     var body: some View {
         VStack {
@@ -82,29 +81,19 @@ struct DashboardView: View {
                 Text(verbatim: api.databaseId ?? "")
                     .font(.title.bold())
 
-                // Design fix (18a shows "Updated" floating at header height):
-                // organization and the updated caption share the second line.
-                HStack(alignment: .firstTextBaseline) {
-                    if let organization = PropertyValue.localized(stats.organization) {
-                        Text(verbatim: organization)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    if let fetchedAt {
-                        Text("statsUpdated \(fetchedAt.relativeString)")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
+                if let organization = PropertyValue.localized(stats.organization) {
+                    Text(verbatim: organization)
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                 }
             }
+
+            Spacer()
         }
     }
 
     private func tiles(_ stats: DatabaseStats) -> some View {
-        LazyVGrid(columns: columns, spacing: 10) {
+        LazyVGrid(columns: columns, spacing: CardMetrics.gap) {
             StatTile(label: "entities", stat: stats.entities, color: .accentColor)
             StatTile(label: "properties", stat: stats.properties, color: .indigo)
             StatTile(label: "files", stat: stats.files, color: .green, isBytes: true)
@@ -136,7 +125,6 @@ struct DashboardView: View {
         error = nil
         do {
             stats = try await api.get("")
-            fetchedAt = .now
         } catch {
             self.error = error.localizedDescription
             stats = nil
@@ -184,7 +172,7 @@ private struct StatTile: View {
                 }
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.tertiary)
 
             UsageBar(
                 color: barColor,
@@ -203,13 +191,13 @@ private struct StatTile: View {
                 }
             }
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.tertiary)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
-        .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 16))
+        .cardSurface()
         // One VoiceOver element per tile — kicker and values read together.
         .accessibilityElement(children: .combine)
     }
@@ -254,15 +242,6 @@ private struct StatTile: View {
 // MARK: - Date helpers
 
 private extension Date {
-    /// Relative "5 minutes ago" phrase in the in-app language.
-    var relativeString: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: AppLanguage.resolvedLanguageCode)
-        formatter.dateTimeStyle = .named
-
-        return formatter.localizedString(for: self, relativeTo: .now)
-    }
-
     /// First day of the next month, e.g. "Aug 1" — when monthly AI token
     /// usage resets.
     static var tokensResetDate: String {
