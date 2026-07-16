@@ -82,6 +82,71 @@ struct NewEntityCommands: Commands {
 /// `String(localized:)`, not `.currentLocalized`) — the OS has no Estonian
 /// localization, so following the in-app language toggle would leave a
 /// mixed-language menu bar.
+/// View-menu reload commands. ⌘R refetches the shown entity and its type
+/// from the API (bypassing the type cache); ⇧⌘R is the hard variant — it
+/// drops every local cache and UI setting (credentials survive) and returns
+/// to the database dashboard. Shortcuts follow the browser reload / hard-
+/// reload convention.
+///
+/// Menu-bar strings resolve against the system language (plain
+/// `String(localized:)`, not `.currentLocalized`) — see `EntityCommands`.
+struct ReloadCommands: Commands {
+    @FocusedValue(\.entityActions) private var actions
+    @FocusedValue(\.clearCacheCommand) private var clearCache
+    @FocusedValue(\.reloadListCommand) private var reloadList
+
+    /// ⌘R action — an open entity's reload (which also refetches the list)
+    /// wins; with only the list visible, the list refetch runs alone.
+    private func reload() {
+        if let reload = actions?.reload {
+            reload()
+        } else {
+            reloadList?.invoke()
+        }
+    }
+
+    private var reloadDisabled: Bool {
+        actions?.reload == nil && reloadList == nil
+    }
+
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Divider()
+
+            #if os(macOS)
+            // One menu slot: "Reload Entity" swaps to "Clear Cache and
+            // Reload" while ⇧ is held (standard macOS alternate item).
+            Button(String(localized: "menuReloadEntity")) {
+                reload()
+            }
+            .keyboardShortcut("r")
+            .disabled(reloadDisabled)
+            .modifierKeyAlternate(.shift) {
+                Button(String(localized: "menuClearCache")) {
+                    clearCache?.invoke()
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(clearCache == nil)
+            }
+            #else
+            // iPadOS keyboard menus don't support modifier alternates —
+            // both items stay visible.
+            Button(String(localized: "menuReloadEntity")) {
+                reload()
+            }
+            .keyboardShortcut("r")
+            .disabled(reloadDisabled)
+
+            Button(String(localized: "menuClearCache")) {
+                clearCache?.invoke()
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .disabled(clearCache == nil)
+            #endif
+        }
+    }
+}
+
 struct EntityCommands: Commands {
     @FocusedValue(\.entityActions) private var actions
 

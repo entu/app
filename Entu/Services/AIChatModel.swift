@@ -52,11 +52,13 @@ final class AIChatModel {
         }?.id
     }
 
-    /// Clear the conversation (e.g. on account switch).
+    /// Clear the conversation and close the panel (e.g. on account switch
+    /// or cache clear).
     func reset() {
         messages = []
         isLoading = false
         isExecuting = false
+        isOpen = false
     }
 
     // MARK: - Chat

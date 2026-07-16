@@ -260,6 +260,18 @@ struct MainView: View {
                 applyPendingDeepLink()
             }
         }
+        // View > Clear Cache (⇧⌘R) — see `ReloadCommands`.
+        .focusedSceneValue(\.clearCacheCommand, ClearCacheCommand { hardReset() })
+    }
+
+    /// ⇧⌘R — drop every local cache and UI setting (credentials survive),
+    /// reset the in-memory session, refetch the menu from the API, and land
+    /// on the database dashboard. When an in-app language was set, clearing
+    /// `ui.appLanguage` also re-keys the root view (see `EntuApp`), which
+    /// rebuilds this whole view tree.
+    private func hardReset() {
+        auth.clearLocalData()
+        Task { await menu?.load() }
     }
 
     // MARK: - Session persistence

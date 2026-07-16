@@ -63,7 +63,12 @@ struct EntityDetailView: View {
                             // Deleted entity disappears from the list.
                             onListChanged?()
                         },
-                        onListChanged: { onListChanged?() }
+                        onListChanged: { onListChanged?() },
+                        onReload: {
+                            Task { await model.reload(entityId: entityId) }
+                            // ⌘R refreshes the surrounding list too.
+                            onListChanged?()
+                        }
                     )
                 } else if let message = model.errorMessage {
                     ContentUnavailableView {

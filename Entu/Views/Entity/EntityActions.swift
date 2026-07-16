@@ -16,6 +16,7 @@ struct EntityActions: Equatable {
     var parents: (() -> Void)?
     var rights: (() -> Void)?
     var history: (() -> Void)?
+    var reload: (() -> Void)?
 
     static func == (lhs: EntityActions, rhs: EntityActions) -> Bool {
         (lhs.edit == nil) == (rhs.edit == nil)
@@ -23,6 +24,7 @@ struct EntityActions: Equatable {
             && (lhs.parents == nil) == (rhs.parents == nil)
             && (lhs.rights == nil) == (rhs.rights == nil)
             && (lhs.history == nil) == (rhs.history == nil)
+            && (lhs.reload == nil) == (rhs.reload == nil)
     }
 }
 
@@ -54,9 +56,39 @@ struct EntityCreateCommand: Equatable {
     }
 }
 
+/// View-menu "clear cache" command (⇧⌘R) published by `MainView`. Always
+/// equal — its availability never changes while the main view is up, so
+/// SwiftUI dedupes the focused-value republishes (see `EntityActions`).
+struct ClearCacheCommand: Equatable {
+    let invoke: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
+/// ⌘R fallback published by `EntityListView`: refetches the list when no
+/// entity is shown (an open entity's `EntityActions.reload` wins and
+/// reloads both). Equality compares `context` (the list's query), NOT the
+/// closure: SwiftUI drops republishes of equal focused values, so an
+/// always-equal command would freeze the first closure — and its captured
+/// query — forever, making ⌘R reload a long-gone list.
+struct ReloadListCommand: Equatable {
+    let context: String
+    let invoke: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.context == rhs.context
+    }
+}
+
 extension FocusedValues {
     /// Focused-scene slot for the current detail entity's actions.
     @Entry var entityActions: EntityActions?
+
+    /// Clear-every-cache command — published by `MainView`.
+    @Entry var clearCacheCommand: ClearCacheCommand?
+
+    /// List-refetch command — published by `EntityListView`.
+    @Entry var reloadListCommand: ReloadListCommand?
 
     /// Menu-level "new entity" command for the active menu — published by
     /// the entity list (present whenever a menu is selected).

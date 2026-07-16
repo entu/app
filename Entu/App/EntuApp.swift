@@ -200,6 +200,9 @@ struct EntuApp: App {
             // Entity menu — actions for the entity shown in the detail
             // column, published via the `entityActions` focused value.
             EntityCommands()
+
+            // View > Reload Entity (⌘R) / Clear Cache (⇧⌘R).
+            ReloadCommands()
         }
     }
 }

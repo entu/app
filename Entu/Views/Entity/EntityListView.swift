@@ -164,6 +164,12 @@ struct EntityListView: View {
         // as the toolbar's Add button. Present whenever a menu is selected,
         // so ⌘N works from the list and while an entity is open.
         .focusedSceneValue(\.newEntityCommand, newEntityCommand)
+        // View > Reload Entity (⌘R) fallback while no entity is open —
+        // refetches the list rows. Keeps existing rows visible (same
+        // no-flash behavior as the `refreshToken` path).
+        .focusedSceneValue(\.reloadListCommand, ReloadListCommand(context: query) {
+            Task { await loadEntities() }
+        })
         // ⌘N with several addable types opens this chooser (the toolbar's
         // Add menu can't be opened programmatically). Title matches the
         // create window's header (`titleAddBare`) so the picker and the

@@ -234,6 +234,25 @@ final class AuthModel {
         onLogOut?()
     }
 
+    /// ⇧⌘R — drop everything local except credentials: every cache, temp
+    /// files, and all `ui.*` settings (column widths, page size, language,
+    /// session snapshots). The Keychain token, database list, and last
+    /// database pointer survive, so the user stays signed in. In-memory
+    /// session state (chat, search, navigation, deep links) resets via the
+    /// same `onLogOut` hook sign-out uses.
+    func clearLocalData() {
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("ui.") {
+            defaults.removeObject(forKey: key)
+        }
+        MenuModel.clearCache()
+        EntityColorCache.shared.clear()
+        EntityDetailModel.clearCache()
+        ImageCache.shared.clear()
+        FileManager.default.clearTemporaryFiles()
+        onLogOut?()
+    }
+
     /// Permanently delete the signed-in user's person entity in the active
     /// database. Before deleting the entity, hard-deletes the user's auth
     /// properties (`entu_user`, `entu_passkey`, `entu_api_key`) so a stale

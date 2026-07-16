@@ -104,6 +104,15 @@ final class EntityDetailModel {
         isLoading = false
     }
 
+    /// ⌘R — refetch the entity *and* its type metadata straight from the
+    /// API by dropping the type's cache entry before loading.
+    func reload(entityId: String) async {
+        if let typeId = entity?.typeId {
+            Self.typeCache.removeValue(forKey: Self.cacheKey(typeId: typeId))
+        }
+        await load(entityId: entityId)
+    }
+
     /// Fetch the localized singular label from the type entity, name as
     /// fallback.
     private func fetchTypeLabel(typeId: String) async -> String? {

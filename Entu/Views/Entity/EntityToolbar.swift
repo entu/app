@@ -306,7 +306,8 @@ extension View {
         onEdited: (() -> Void)? = nil,
         onCreated: ((String) -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
-        onListChanged: (() -> Void)? = nil
+        onListChanged: (() -> Void)? = nil,
+        onReload: (() -> Void)? = nil
     ) -> some View {
         modifier(EntityToolbarHost(
             entity: entity,
@@ -315,7 +316,8 @@ extension View {
             onEdited: onEdited,
             onCreated: onCreated,
             onDelete: onDelete,
-            onListChanged: onListChanged
+            onListChanged: onListChanged,
+            onReload: onReload
         ))
     }
 }
@@ -333,6 +335,10 @@ private struct EntityToolbarHost: ViewModifier {
     let onCreated: ((String) -> Void)?
     let onDelete: (() -> Void)?
     let onListChanged: (() -> Void)?
+
+    /// View > Reload Entity (⌘R) — refetches the entity and its type
+    /// metadata from the API, bypassing the type cache.
+    let onReload: (() -> Void)?
 
     @State private var editMode: EntityEditMode?
 
@@ -488,7 +494,8 @@ private struct EntityToolbarHost: ViewModifier {
             duplicate: rights.owner ? { showingDuplicate = true } : nil,
             parents: rights.editor ? { showingParents = true } : nil,
             rights: rights.owner ? { showingRights = true } : nil,
-            history: rights.editor ? { showingHistory = true } : nil
+            history: rights.editor ? { showingHistory = true } : nil,
+            reload: onReload
         )
     }
 
