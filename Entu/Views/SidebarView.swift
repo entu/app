@@ -109,6 +109,9 @@ struct SidebarView: View {
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 8)
+                        // Never truncate the label — the user pill beside it
+                        // is the one that compresses in a narrow sidebar.
+                        .fixedSize()
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)

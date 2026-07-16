@@ -9,6 +9,17 @@
 
 import SwiftUI
 
+/// Column sizing — one source of truth for the split-view modifiers, the
+/// hard macOS minimum frames, and the AppStorage defaults (which apply only
+/// on first launch, before the user has dragged a divider).
+private enum ColumnMetrics {
+    static let sidebarMin: Double = 150
+    static let sidebarDefault: Double = 225
+
+    static let listMin: Double = 250
+    static let listDefault: Double = 375
+}
+
 /// Main app layout — two or three-column NavigationSplitView.
 struct MainView: View {
     @Environment(AuthModel.self) private var auth
@@ -30,8 +41,20 @@ struct MainView: View {
     /// `EntityListView` to refetch its rows even when `query` is unchanged.
     @State private var listRefreshToken: Int = 0
 
-    @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = 220
-    @AppStorage("ui.contentWidth") private var contentWidth: Double = 320
+    @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = ColumnMetrics.sidebarDefault
+    @AppStorage("ui.contentWidth") private var contentWidth: Double = ColumnMetrics.listDefault
+
+    /// Hard column minimums (macOS only — an iPhone screen is narrower than
+    /// the list minimum, and compact layouts show one full-width column).
+    /// They back up `navigationSplitViewColumnWidth`, which restored window
+    /// state can otherwise override with narrower legacy widths.
+    #if os(macOS)
+    private let sidebarMinWidth: CGFloat? = ColumnMetrics.sidebarMin
+    private let listMinWidth: CGFloat? = ColumnMetrics.listMin
+    #else
+    private let sidebarMinWidth: CGFloat? = nil
+    private let listMinWidth: CGFloat? = nil
+    #endif
 
     /// Resolves the selected menu item ID to its API query string.
     private var selectedQuery: String? {
@@ -382,7 +405,8 @@ struct MainView: View {
         return NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
-                .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
+                .frame(minWidth: sidebarMinWidth)
+                .navigationSplitViewColumnWidth(min: ColumnMetrics.sidebarMin, ideal: max(sidebarWidth, ColumnMetrics.sidebarMin))
                 .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
         } detail: {
             if let pinnedEntityId = session.pinnedEntityId {
@@ -410,7 +434,8 @@ struct MainView: View {
         return NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
-                .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
+                .frame(minWidth: sidebarMinWidth)
+                .navigationSplitViewColumnWidth(min: ColumnMetrics.sidebarMin, ideal: max(sidebarWidth, ColumnMetrics.sidebarMin))
                 .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
         } content: {
             EntityListView(
@@ -420,7 +445,8 @@ struct MainView: View {
                 refreshToken: listRefreshToken,
                 onOpenAdvancedSearch: { search.showAdvanced = true }
             )
-                .navigationSplitViewColumnWidth(min: 240, ideal: contentWidth, max: 600)
+                .frame(minWidth: listMinWidth)
+                .navigationSplitViewColumnWidth(min: ColumnMetrics.listMin, ideal: max(contentWidth, ColumnMetrics.listMin))
                 .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != contentWidth { contentWidth = $0 } }
         } detail: {
             if let currentEntityId {
