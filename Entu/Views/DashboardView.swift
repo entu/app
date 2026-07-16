@@ -150,6 +150,12 @@ private struct StatTile: View {
     private var usage: Int { stat.usage ?? 0 }
     private var deleted: Int { stat.deleted ?? 0 }
     private var limit: Int { stat.limit ?? 0 }
+    private var total: Int { usage + deleted }
+
+    /// Deleted items occupy the limit too, so the total is what overflows.
+    private var isOverLimit: Bool {
+        limit > 0 && total > limit
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -177,7 +183,8 @@ private struct StatTile: View {
             UsageBar(
                 color: barColor,
                 usageFraction: usageFraction,
-                deletedFraction: deletedFraction
+                deletedFraction: deletedFraction,
+                limitMarkFraction: isOverLimit ? Double(limit) / Double(total) : nil
             )
             .padding(.top, 9)
 
@@ -202,36 +209,33 @@ private struct StatTile: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Warning tint as capacity runs out — orange from 90%, red over the
-    /// limit. Deleted items still occupy the limit, so both trigger on the
-    /// total.
+    /// Warning tint as capacity runs out — orange from 90% of the limit
+    /// (deleted items occupy it too, so the trigger is the total). Over the
+    /// limit the red overlay marks the excess, webapp-style.
     private var barColor: Color {
-        guard limit > 0 else { return color }
+        guard limit > 0, Double(total) / Double(limit) >= 0.9 else { return color }
 
-        let total = Double(usage + deleted) / Double(limit)
-        if total > 1 { return .red }
-        if total >= 0.9 { return .orange }
-
-        return color
+        return .orange
     }
 
+    /// Webapp parity: bar denominator is the limit, switching to the total
+    /// when over it (the segments then fill the bar and the red overlay
+    /// marks the excess). Without a limit the bar shows the
+    /// current-vs-deleted proportion.
     private var usageFraction: Double {
         guard limit > 0 else {
-            // No limit — the bar shows the current-vs-deleted proportion.
-            let total = usage + deleted
             return total > 0 ? Double(usage) / Double(total) : 0
         }
 
-        return min(Double(usage) / Double(limit), 1)
+        return Double(usage) / Double(isOverLimit ? total : limit)
     }
 
     private var deletedFraction: Double {
         guard limit > 0 else {
-            let total = usage + deleted
             return total > 0 ? Double(deleted) / Double(total) : 0
         }
 
-        return min(Double(deleted) / Double(limit), 1 - usageFraction)
+        return Double(deleted) / Double(isOverLimit ? total : limit)
     }
 
     private func format(_ value: Int) -> String {

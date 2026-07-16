@@ -241,9 +241,15 @@ private struct CapacityBar: View {
     private var usage: Int { stat.usage ?? 0 }
     private var deleted: Int { stat.deleted ?? 0 }
     private var limit: Int { stat.limit ?? 0 }
+    private var total: Int { usage + deleted }
 
     private var isNearLimit: Bool {
-        limit > 0 && Double(usage + deleted) / Double(limit) >= 0.9
+        limit > 0 && Double(total) / Double(limit) >= 0.9
+    }
+
+    /// Deleted items occupy the limit too, so the total is what overflows.
+    private var isOverLimit: Bool {
+        limit > 0 && total > limit
     }
 
     var body: some View {
@@ -254,7 +260,9 @@ private struct CapacityBar: View {
 
                 Spacer()
 
-                Text(verbatim: "\(format(usage)) / \(format(limit))")
+                // Total (current + deleted) — the limit and the breakdown
+                // are in the mini-table below.
+                Text(verbatim: format(total))
                     .fontWeight(isNearLimit ? .semibold : .regular)
                     .foregroundStyle(isNearLimit ? AnyShapeStyle(Color("WarningText")) : AnyShapeStyle(.tertiary))
                     .monospacedDigit()
@@ -264,21 +272,25 @@ private struct CapacityBar: View {
             UsageBar(
                 color: isNearLimit ? .orange : color,
                 usageFraction: usageFraction,
-                deletedFraction: deletedFraction
+                deletedFraction: deletedFraction,
+                limitMarkFraction: isOverLimit ? Double(limit) / Double(total) : nil
             )
         }
     }
 
+    /// Webapp parity: bar denominator is the limit, switching to the total
+    /// when over it (the segments then fill the bar and the red overlay
+    /// marks the excess).
     private var usageFraction: Double {
         guard limit > 0 else { return 0 }
 
-        return min(Double(usage) / Double(limit), 1)
+        return Double(usage) / Double(isOverLimit ? total : limit)
     }
 
     private var deletedFraction: Double {
         guard limit > 0 else { return 0 }
 
-        return min(Double(deleted) / Double(limit), 1 - usageFraction)
+        return Double(deleted) / Double(isOverLimit ? total : limit)
     }
 
     private func format(_ value: Int) -> String {
