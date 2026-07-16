@@ -335,6 +335,7 @@ struct MainView: View {
                 // database reopens where it was left.
                 chat.reset()
                 EntityDetailModel.clearCache()
+                EntityColorCache.shared.clear()
                 restoreSession(for: api.databaseId)
                 Task { await menu.load() }
             }

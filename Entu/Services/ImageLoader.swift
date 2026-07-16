@@ -21,6 +21,12 @@ final class ImageCache: @unchecked Sendable {
     func set(_ image: PlatformImage, for url: URL) {
         cache.setObject(image, forKey: url as NSURL)
     }
+
+    /// Drop every cached image — called on logout so a signed-out session
+    /// keeps no thumbnails of the previous user's data in memory.
+    func clear() {
+        cache.removeAllObjects()
+    }
 }
 
 /// Load an image from URL with optional Bearer token auth, caching the result.

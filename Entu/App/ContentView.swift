@@ -8,6 +8,10 @@ struct ContentView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
     @Environment(NetworkMonitor.self) private var network
+    @Environment(SearchModel.self) private var search
+    @Environment(SessionState.self) private var session
+    @Environment(AIChatModel.self) private var chat
+    @Environment(DeepLinkRouter.self) private var router
 
     /// Total number of selectable databases (authenticated + saved public).
     private var totalDatabaseCount: Int {
@@ -55,6 +59,19 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: network.isOnline)
+        .onAppear {
+            // Logout wipes the in-memory session state these models hold —
+            // chat conversation, search text/query, navigation, pending deep
+            // link — so nothing of the signed-out user survives in RAM.
+            auth.onLogOut = { [weak search, weak session, weak chat, weak router] in
+                chat?.reset()
+                search?.text = ""
+                search?.advancedQuery = nil
+                search?.showAdvanced = false
+                session?.clearNavigation()
+                router?.clear()
+            }
+        }
     }
 
     /// Selects the only available database (authenticated first, public otherwise).

@@ -204,8 +204,15 @@ final class AuthModel {
 
     // MARK: - Sign out & account deletion
 
-    /// Reset everything — clear stored credentials, the saved public-database
-    /// list, and the active database. Returns the user to `AuthView`.
+    /// Extra cleanup on sign-out for state this model can't reach — set by
+    /// `ContentView` to reset the chat conversation, search state, and
+    /// in-memory navigation.
+    var onLogOut: (() -> Void)?
+
+    /// Reset everything — credentials, caches, temp files, and (via
+    /// `onLogOut`) all in-memory session state. Only app-general settings
+    /// survive: language, column widths, table page size. Returns the user
+    /// to `AuthView`.
     func logOut() {
         KeychainService.deleteToken()
         KeychainService.deleteTokenExpiry()
@@ -219,8 +226,12 @@ final class AuthModel {
         user = nil
         UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
         MenuModel.clearCache()
+        EntityColorCache.shared.clear()
         EntityDetailModel.clearCache()
         SessionState.clearStored()
+        ImageCache.shared.clear()
+        FileManager.default.clearTemporaryFiles()
+        onLogOut?()
     }
 
     /// Permanently delete the signed-in user's person entity in the active
