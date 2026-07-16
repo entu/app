@@ -61,7 +61,7 @@ struct SidebarView: View {
                     showUserSheet = true
                 } label: {
                     HStack(spacing: 8) {
-                        UserAvatar(thumbnail: userThumbnail, size: 26)
+                        UserAvatar(thumbnail: userThumbnail, size: 26, fallback: .personIcon)
 
                         VStack(alignment: .leading, spacing: 0) {
                             ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))

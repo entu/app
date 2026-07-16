@@ -125,19 +125,27 @@ struct UserSheet: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            UserAvatar(thumbnail: userThumbnail, size: 96)
-                .padding(.top, 48)
-                .padding(.bottom, 16)
+            UserAvatar(thumbnail: userThumbnail, size: 64)
+                .padding(.top, 28)
+                .padding(.bottom, 10)
 
-            Text(headerTitle)
-                .font(.title2)
-                .fontWeight(.semibold)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 20)
+            VStack(spacing: 2) {
+                Text(headerTitle)
+                    .font(.headline)
+                    .fontWeight(.bold)
+
+                if let email = auth.user?.email, !email.isEmpty {
+                    Text(verbatim: email)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 14)
 
             ScrollView {
                 VStack(spacing: 0) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 6) {
                         databaseRow
 
                         personEntityRow
@@ -149,16 +157,17 @@ struct UserSheet: View {
                     .padding(.top, 16)
 
                     deleteRow
-                        .padding(.vertical, 36)
+                        .padding(.vertical, 32)
                 }
                 .padding(.horizontal, 32)
-                .frame(maxWidth: 320)
+                .frame(maxWidth: 360)
             }
             .scrollFadeMask()
 
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .background(Color("WindowBackground").ignoresSafeArea())
         .publicDatabaseEntry(isPresented: $showingPublicEntry)
     }
 
@@ -281,12 +290,15 @@ struct UserSheet: View {
                 showDeleteConfirmation = true
             } label: {
                 Text("deleteAccount")
+                    .font(.caption)
+                    .fontWeight(.medium)
                     .foregroundStyle(.red)
             }
             .buttonStyle(.plain)
             .disabled(isDeleting)
         } else {
             Text("deleteAccount")
+                .font(.caption)
                 .hidden()
                 .accessibilityHidden(true)
         }

@@ -17,15 +17,17 @@ struct SheetRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).frame(width: 24)
+            Image(systemName: icon)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
-                title.fontWeight(.medium)
+                title.fontWeight(.semibold)
 
                 if let subtitle {
                     subtitle
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
             }
 
@@ -35,9 +37,13 @@ struct SheetRow: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.fill.quaternary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: CardMetrics.cornerRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: CardMetrics.cornerRadius)
+                .strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: CardMetrics.cornerRadius))
     }
 }
