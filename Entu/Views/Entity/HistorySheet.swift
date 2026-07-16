@@ -64,6 +64,7 @@ struct HistorySheet: View {
                 }
             }
         }
+        .background(Color("WindowBackground"))
         #if os(iOS)
         .navigationTitle(Text("history"))
         .navigationSubtitle(headerSubtitle ?? "")
@@ -104,78 +105,159 @@ struct HistorySheet: View {
     }
     #endif
 
-    /// `List` (not `Form`) so rows render lazily — the last row's
-    /// `.onAppear` fires only when scrolled into view, which is what the
-    /// infinite-scroll trigger relies on.
+    /// Timeline: per group an avatar + editor + timestamp header, then the
+    /// property rows on a left rule (design 8d). `LazyVStack` keeps the
+    /// infinite-scroll trigger working — the last row's `.onAppear` fires
+    /// only when scrolled into view.
     private var listBody: some View {
-        List {
-            ForEach(Array(groups.enumerated()), id: \.element.id) { groupIndex, group in
-                Section {
-                    ForEach(Array(group.changes.enumerated()), id: \.element.id) { changeIndex, change in
-                        changeRow(change)
-                            .onAppear {
-                                let isLastGroup = groupIndex == groups.count - 1
-                                let isLastChange = changeIndex == group.changes.count - 1
-                                if isLastGroup && isLastChange && hasMore && !isLoadingMore {
-                                    Task { await loadMore() }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(groups.enumerated()), id: \.element.id) { groupIndex, group in
+                    VStack(alignment: .leading, spacing: 0) {
+                        groupHeader(group)
+
+                        // Left rule aligned under the avatar's center.
+                        HStack(alignment: .top, spacing: 0) {
+                            Rectangle()
+                                .fill(.quaternary)
+                                .frame(width: 2)
+                                .padding(.leading, 10)
+
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(group.changes.enumerated()), id: \.element.id) { changeIndex, change in
+                                    changeRow(change)
+
+                                    if changeIndex < group.changes.count - 1 {
+                                        Divider()
+                                    }
                                 }
                             }
+                            .padding(.leading, 18)
+                        }
                     }
-                } header: {
-                    HStack {
-                        Text(verbatim: group.editorName ?? group.editorId.suffix(8).description)
-                            .fontWeight(.semibold)
-                        Spacer()
-                        if let at = group.at {
-                            Text(at, format: Date.FormatStyle(date: .numeric, time: .shortened, locale: locale))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    .onAppear {
+                        if groupIndex == groups.count - 1 && hasMore && !isLoadingMore {
+                            Task { await loadMore() }
                         }
                     }
                 }
+
+                if isLoadingMore {
+                    HStack { Spacer(); ProgressView(); Spacer() }
+                }
             }
-            if isLoadingMore {
-                HStack { Spacer(); ProgressView(); Spacer() }
-                    .listRowSeparator(.hidden)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+    }
+
+    private func groupHeader(_ group: HistoryGroup) -> some View {
+        HStack(spacing: 8) {
+            // Resolved name → editor id tail → "Entu" (with the logo) for
+            // changes without an editor (by == nil, system actions).
+            let name = group.editorName
+                ?? (group.editorId.isEmpty ? "Entu" : group.editorId.suffix(8).description)
+
+            EditorAvatar(editorId: group.editorId, name: name)
+
+            Text(verbatim: name)
+                .fontWeight(.semibold)
+
+            Spacer()
+
+            if let at = group.at {
+                Text(verbatim: timestamp(at))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
-        .listStyle(.inset)
+        .padding(.bottom, 6)
+    }
+
+    /// "13.09.2013 · 9:41" — date and time joined with a middot.
+    private func timestamp(_ date: Date) -> String {
+        let day = date.formatted(Date.FormatStyle(date: .numeric, time: .omitted, locale: locale))
+        let time = date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale))
+        return "\(day) · \(time)"
     }
 
     private func changeRow(_ change: HistoryChange) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
             Text(verbatim: change.label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            ForEach(Array(change.oldValues.enumerated()), id: \.offset) { _, value in
-                valueLine(value, kind: .old)
+                .foregroundStyle(.tertiary)
+                .frame(width: 110, alignment: .trailing)
+
+            // Old values (struck through) flow inline before the new ones,
+            // so a replacement reads "old  new" on one line. A change with
+            // no new values is a pure deletion — marked dark red.
+            FlowLayout(spacing: 8) {
+                ForEach(Array(change.oldValues.enumerated()), id: \.offset) { _, value in
+                    valueView(value, kind: change.newValues.isEmpty ? .deleted : .old, isAddition: false)
+                }
+                ForEach(Array(change.newValues.enumerated()), id: \.offset) { _, value in
+                    valueView(value, kind: .new, isAddition: change.oldValues.isEmpty)
+                }
             }
-            ForEach(Array(change.newValues.enumerated()), id: \.offset) { _, value in
-                valueLine(value, kind: .new)
-            }
+
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 5)
     }
 
-    private enum ValueKind { case old, new }
+    private enum ValueKind {
+        case old
+        case deleted
+        case new
 
-    private func valueLine(_ value: HistoryValue, kind: ValueKind) -> some View {
+        var isStruckThrough: Bool { self != .new }
+    }
+
+    private func valueView(_ value: HistoryValue, kind: ValueKind, isAddition: Bool) -> some View {
         HStack(spacing: 6) {
             if let lang = value.language?.uppercased() {
                 Text(verbatim: lang)
                     .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
-                    .background(kind == .old ? Color.red.opacity(0.15) : Color.green.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 3))
             }
-            Text(verbatim: value.text)
-                .strikethrough(kind == .old)
-                .foregroundStyle(kind == .old ? Color.red : Color.green)
-            if let suffix = value.suffix {
-                Text(verbatim: suffix)
+
+            let text = (isAddition ? "+ " : "") + value.text
+                + (value.suffix.map { " · \($0)" } ?? "")
+
+            if value.suffix != nil {
+                // File values render as tinted chips.
+                Text(verbatim: text)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .fontWeight(.medium)
+                    .strikethrough(kind.isStruckThrough)
+                    .foregroundStyle(valueColor(for: kind))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 2)
+                    .background(chipBackground(for: kind), in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                Text(verbatim: text)
+                    .strikethrough(kind.isStruckThrough)
+                    .foregroundStyle(valueColor(for: kind))
             }
+        }
+        .textSelection(.enabled)
+    }
+
+    private func valueColor(for kind: ValueKind) -> AnyShapeStyle {
+        switch kind {
+        case .old: AnyShapeStyle(.quaternary)
+        case .deleted: AnyShapeStyle(Color("DestructiveText"))
+        case .new: AnyShapeStyle(Color("SuccessText"))
+        }
+    }
+
+    private func chipBackground(for kind: ValueKind) -> AnyShapeStyle {
+        switch kind {
+        case .old: AnyShapeStyle(.fill.quaternary)
+        case .deleted: AnyShapeStyle(Color.red.opacity(0.1))
+        case .new: AnyShapeStyle(Color.green.opacity(0.12))
         }
     }
 
@@ -366,6 +448,54 @@ struct HistorySheet: View {
             return HistoryValue(text: s, suffix: nil, language: value.language)
         }
         return nil
+    }
+}
+
+// MARK: - Editor avatar
+
+/// 22pt circular editor avatar — the person entity's thumbnail when one
+/// exists, otherwise their initial on the derived id color.
+private struct EditorAvatar: View {
+    @Environment(APIClient.self) private var api
+
+    let editorId: String
+    let name: String
+
+    @State private var image: Image?
+
+    var body: some View {
+        Group {
+            if editorId.isEmpty {
+                // System changes — the Entu logo, unclipped like everywhere.
+                Image("Logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+            } else {
+                Group {
+                    if let image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Circle()
+                            .fill(Color.derivedGradient(from: editorId))
+                            .overlay {
+                                Text(verbatim: String(name.prefix(1)).uppercased())
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                    }
+                }
+                .frame(width: 22, height: 22)
+                .clipShape(Circle())
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: editorId) {
+            image = nil
+            guard !editorId.isEmpty,
+                  let url = await api.entityThumbnailURL(entityId: editorId, size: 50) else { return }
+            image = await loadImage(from: url)
+        }
     }
 }
 
