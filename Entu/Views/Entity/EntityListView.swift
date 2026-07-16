@@ -106,11 +106,21 @@ struct EntityListView: View {
             }
         }
         #else
-        .safeAreaInset(edge: .top, spacing: 0) {
-            listHeader
-                .padding(.top, 6)
-                .padding(.bottom, 12)
-                .background(.bar)
+        // iOS: the count is the (inline) navigation title and the
+        // advanced-search opener is a nav-bar item — an in-column header
+        // under the nav bar would leave a double strip of empty space.
+        .navigationTitle(Text("entityCount \(totalCount)"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if auth.currentUserId != nil, let onOpenAdvancedSearch {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onOpenAdvancedSearch()
+                    } label: {
+                        Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
+                    }
+                }
+            }
         }
         #endif
         .overlay {
@@ -198,29 +208,13 @@ struct EntityListView: View {
             .opacity(isLoading && items.isEmpty ? 0 : 1)
     }
 
-    /// iOS in-column header — count plus the round advanced-search button.
-    private var listHeader: some View {
-        HStack {
-            countTitle
-
-            Spacer()
-
-            if auth.currentUserId != nil, let onOpenAdvancedSearch {
-                Button {
-                    onOpenAdvancedSearch()
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(.fill.quaternary, in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("advancedSearch")
-            }
-        }
-        .padding(.horizontal, 16)
+    /// Touch platforms get taller rows (≈44pt targets); macOS stays compact.
+    private var rowVerticalPadding: CGFloat {
+        #if os(macOS)
+        5
+        #else
+        10
+        #endif
     }
 
     // MARK: - Rows
@@ -294,7 +288,7 @@ struct EntityListView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 5)
+            .padding(.vertical, rowVerticalPadding)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {

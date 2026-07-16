@@ -22,6 +22,10 @@ struct ChildEntitiesSection: View {
     @State private var isLoading = false
     @Namespace private var segmentNamespace
 
+    /// Segment frames in the control's coordinate space — lets a drag
+    /// across the pill track slide the selection (not just taps).
+    @State private var segmentFrames: [String: CGRect] = [:]
+
     /// Paging state for the selected group's table — lives here so the
     /// pager can sit on the segment row, outside the table card.
     @State private var page = 1
@@ -98,6 +102,7 @@ struct ChildEntitiesSection: View {
                     HStack(spacing: 6) {
                         Text(verbatim: group.label)
                             .fontWeight(isSelected ? .semibold : .medium)
+                            .lineLimit(1)
                         Text(verbatim: "\(group.count)")
                             .font(.caption2)
                             .foregroundStyle(isSelected ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
@@ -118,12 +123,31 @@ struct ChildEntitiesSection: View {
                         }
                     }
                     .contentShape(Capsule())
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .named("childSegments"))
+                    } action: { segmentFrames[group.id] = $0 }
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(3)
         .background(.fill.quaternary, in: Capsule())
+        .coordinateSpace(name: "childSegments")
+        // Sliding a finger (or dragging the pointer) across the track moves
+        // the selection like a native segmented control; taps still work
+        // through the buttons.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 5, coordinateSpace: .named("childSegments"))
+                .onChanged { value in
+                    guard let hit = segmentFrames.first(where: {
+                        $0.value.minX <= value.location.x && value.location.x <= $0.value.maxX
+                    })?.key, hit != selectedGroupId else { return }
+
+                    withAnimation(.snappy(duration: 0.25)) {
+                        selectedGroupId = hit
+                    }
+                }
+        )
     }
 
     /// ‹ page / total › plus the page-size picker, on the segment row.

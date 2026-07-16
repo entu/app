@@ -104,8 +104,11 @@ struct EntityDetailView: View {
             }
         }
         .background(Color("WindowBackground"))
-        #if os(macOS)
         .ignoresSafeArea(edges: .top)
+        #if os(iOS)
+        .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+        #endif
+        #if os(macOS)
         // Disabled toolbar stand-in — keeps the window toolbar layout
         // stable while the entity loads.
         .toolbar { EntityToolbarPlaceholder(onBack: onBack, menuId: menuId) }

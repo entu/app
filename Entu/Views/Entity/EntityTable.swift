@@ -47,6 +47,15 @@ struct EntityTable: View {
 
     private var totalPages: Int { max(1, Int(ceil(Double(totalCount) / Double(pageSize)))) }
 
+    /// Touch platforms get taller rows (≈44pt targets); macOS stays compact.
+    private var rowVerticalPadding: CGFloat {
+        #if os(macOS)
+        8
+        #else
+        12
+        #endif
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if isLoading && entities.isEmpty {
@@ -79,7 +88,7 @@ struct EntityTable: View {
                         cellContent(entity: entity, column: column)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, rowVerticalPadding)
                 .contentShape(Rectangle())
                 .onTapGesture { onNavigate?(entity._id) }
 

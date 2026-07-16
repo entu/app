@@ -81,9 +81,11 @@ struct EntityDetailContent: View {
             }
         }
         .background(Color("WindowBackground"))
-        #if os(macOS)
-        // The gradient band runs behind the floating window toolbar.
+        // The gradient band runs behind the (hidden-background) toolbar on
+        // every platform — macOS window toolbar, iOS navigation bar.
         .ignoresSafeArea(edges: .top)
+        #if os(iOS)
+        .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
         #endif
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
