@@ -261,7 +261,7 @@ struct EntityListView: View {
 
     private func row(_ item: EntityListItem) -> some View {
         let isSelected = selectedEntityId == item._id
-        let tint = Color.derived(from: item._id)
+        let tint = Color.entityTint(for: item._id)
 
         return Button {
             selectedEntityId = item._id
@@ -275,7 +275,7 @@ struct EntityListView: View {
                 Text(item.name)
                     .lineLimit(1)
                     .fontWeight(isSelected ? .semibold : .regular)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.derivedText(from: item._id)) : AnyShapeStyle(.primary))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.entityTintText(for: item._id)) : AnyShapeStyle(.primary))
 
                 Spacer(minLength: 0)
             }

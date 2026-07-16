@@ -97,7 +97,7 @@ struct EntityDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Rectangle()
-                    .fill(Color.derivedGradient(from: entityId))
+                    .fill(skeletonGradient)
                     .frame(maxWidth: .infinity)
                     .frame(height: 172)
             }
@@ -109,5 +109,16 @@ struct EntityDetailView: View {
         // stable while the entity loads.
         .toolbar { EntityToolbarPlaceholder(onBack: onBack, menuId: menuId) }
         #endif
+    }
+
+    /// Cover-derived gradient when the session cache already knows this
+    /// entity's color, the id-derived gradient otherwise — so the band shows
+    /// its final color while loading whenever possible.
+    private var skeletonGradient: LinearGradient {
+        if let rgb = EntityColorCache.shared.colors[entityId] {
+            return coverHeaderGradient(rgb)
+        }
+
+        return Color.derivedGradient(from: entityId)
     }
 }

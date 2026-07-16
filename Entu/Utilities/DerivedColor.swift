@@ -20,7 +20,7 @@ private let colorExtractionContext = CIContext()
 /// Washed-out clusters (near-white page backgrounds, near-black borders,
 /// grays) are skipped while a colorful cluster exists, so a book cover on
 /// white paper yields the artwork's color, not the paper's.
-func dominantRGB(of image: PlatformImage) -> (red: Double, green: Double, blue: Double)? {
+func dominantRGB(of image: PlatformImage) -> RGBColor? {
     #if os(macOS)
     guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
     #else
@@ -92,7 +92,19 @@ func dominantRGB(of image: PlatformImage) -> (red: Double, green: Double, blue: 
 
     let winner = clusters.first(where: isColorful) ?? clusters[0]
 
-    return (winner.red, winner.green, winner.blue)
+    return RGBColor(red: winner.red, green: winner.green, blue: winner.blue)
+}
+
+/// Header gradient for a cover color — darkened toward the leading stop.
+func coverHeaderGradient(_ rgb: RGBColor) -> LinearGradient {
+    LinearGradient(
+        colors: [
+            Color(red: rgb.red * 0.55, green: rgb.green * 0.55, blue: rgb.blue * 0.55),
+            Color(red: min(rgb.red * 1.2, 1), green: min(rgb.green * 1.2, 1), blue: min(rgb.blue * 1.2, 1))
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }
 
 extension Color {
@@ -119,6 +131,24 @@ extension Color {
     /// the row's tinted selection fill.
     static func derivedText(from id: String) -> Color {
         Color(hue: derivedHue(from: id), saturation: 0.72, brightness: 0.58)
+    }
+
+    /// The entity's identity tint — the cover-derived color when the cache
+    /// knows it, the id-derived hue otherwise.
+    @MainActor
+    static func entityTint(for id: String) -> Color {
+        EntityColorCache.shared.colors[id]?.color ?? derived(from: id)
+    }
+
+    /// Darker variant of `entityTint` for legible text on the tinted
+    /// selection fill.
+    @MainActor
+    static func entityTintText(for id: String) -> Color {
+        if let rgb = EntityColorCache.shared.colors[id] {
+            return Color(red: rgb.red * 0.62, green: rgb.green * 0.62, blue: rgb.blue * 0.62)
+        }
+
+        return derivedText(from: id)
     }
 
     /// djb2 hash over UTF-8 bytes → hue in 0..<1. Unlike `hashValue`, the

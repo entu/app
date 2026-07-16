@@ -29,7 +29,7 @@ struct EntityDetailContent: View {
     @State private var contentWidth: CGFloat = .infinity
 
     @State private var coverImage: Image?
-    @State private var coverRGB: (red: Double, green: Double, blue: Double)?
+    @State private var coverRGB: RGBColor?
 
     /// Below this width, fold to the tighter layout.
     private let compactThreshold: CGFloat = 500
@@ -81,13 +81,20 @@ struct EntityDetailContent: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         .task(id: entity._id) {
             coverImage = nil
-            coverRGB = nil
+            // Session cache first — the header paints its final color
+            // immediately when the list avatar (or a previous visit)
+            // already derived it.
+            coverRGB = EntityColorCache.shared.colors[entity._id]
             guard entity.hasPhoto,
                   let url = await api.entityThumbnailURL(entityId: entity._id, size: 400),
                   let platformImage = await loadPlatformImage(from: url) else { return }
             coverImage = platformToImage(platformImage)
-            withAnimation(.easeInOut(duration: 0.3)) {
-                coverRGB = dominantRGB(of: platformImage)
+
+            if coverRGB == nil, let rgb = dominantRGB(of: platformImage) {
+                EntityColorCache.shared.colors[entity._id] = rgb
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    coverRGB = rgb
+                }
             }
         }
     }
@@ -132,14 +139,7 @@ struct EntityDetailContent: View {
             return Color.derivedGradient(from: entity._id)
         }
 
-        return LinearGradient(
-            colors: [
-                Color(red: rgb.red * 0.55, green: rgb.green * 0.55, blue: rgb.blue * 0.55),
-                Color(red: min(rgb.red * 1.2, 1), green: min(rgb.green * 1.2, 1), blue: min(rgb.blue * 1.2, 1))
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        return coverHeaderGradient(rgb)
     }
 
     /// Square cover hanging over the band's bottom edge.
