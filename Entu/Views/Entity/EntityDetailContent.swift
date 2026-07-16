@@ -20,6 +20,10 @@ struct EntityDetailContent: View {
     let entity: EntityDetail
     let groupedProperties: [PropertyGroup]
 
+    /// Localized label of the entity's type — the raw type name fills in
+    /// until it resolves.
+    var typeLabel: String?
+
     /// Called when user taps a reference or child entity — navigates to it.
     var onNavigate: ((String) -> Void)?
 
@@ -55,9 +59,13 @@ struct EntityDetailContent: View {
                     .zIndex(1)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    badgeChips
-                        .padding(.leading, entity.hasPhoto ? coverSize + 20 : 0)
-                        .padding(.top, 14)
+                    HStack(spacing: 6) {
+                        parentChips
+                        Spacer()
+                        sharingChip
+                    }
+                    .padding(.leading, entity.hasPhoto ? coverSize + 20 : 0)
+                    .padding(.top, 14)
 
                     ForEach(groupedProperties) { group in
                         propertyGroupSection(group)
@@ -117,7 +125,7 @@ struct EntityDetailContent: View {
                     .lineLimit(2)
                     .textSelection(.enabled)
 
-                parentChips
+                badgeChips
             }
             .padding(.leading, titleLeading)
             .padding(.trailing, edgePadding)
@@ -160,7 +168,7 @@ struct EntityDetailContent: View {
         .shadow(color: .black.opacity(0.3), radius: 14, y: 8)
     }
 
-    /// Parent references as glass pills on the gradient.
+    /// Parent references as quiet pills below the band.
     @ViewBuilder
     private var parentChips: some View {
         let parents = (entity.parents ?? []).filter { $0.reference != nil }
@@ -180,10 +188,9 @@ struct EntityDetailContent: View {
                             }
                             .font(.caption)
                             .fontWeight(.medium)
-                            .foregroundStyle(.white)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 4)
-                            .background(.white.opacity(0.18), in: Capsule())
+                            .background(.fill.quaternary, in: Capsule())
                             .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -193,28 +200,28 @@ struct EntityDetailContent: View {
         }
     }
 
-    // MARK: - Type + sharing chips (below the band)
+    // MARK: - Type chip (glass pill on the gradient)
 
+    @ViewBuilder
     private var badgeChips: some View {
-        HStack(spacing: 6) {
-            if let typeName = entity.typeName, let typeId = entity.typeId {
-                Button {
-                    onNavigate?(typeId)
-                } label: {
-                    Text(typeName)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 4)
-                        .background(.fill.quaternary, in: Capsule())
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
+        if let typeId = entity.typeId, let label = typeLabel ?? entity.typeName {
+            Button {
+                onNavigate?(typeId)
+            } label: {
+                Text(verbatim: label)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 4)
+                    .background(.white.opacity(0.18), in: Capsule())
+                    .contentShape(Capsule())
             }
-
-            sharingChip
+            .buttonStyle(.plain)
         }
     }
+
+    // MARK: - Sharing chip (tinted pill below the band, trailing)
 
     @ViewBuilder
     private var sharingChip: some View {

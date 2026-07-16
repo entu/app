@@ -36,6 +36,7 @@ struct EntityDetailView: View {
                     EntityDetailContent(
                         entity: entity,
                         groupedProperties: model.groupedProperties,
+                        typeLabel: model.typeLabel,
                         onNavigate: onNavigate
                     )
                     .refreshable { await model.load(entityId: entityId) }

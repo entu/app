@@ -21,16 +21,30 @@ final class EntityDetailModel {
     /// Human-readable message from the last failed load, or nil on success.
     var errorMessage: String?
 
+    /// Localized label of the entity's type (the type entity's `label`),
+    /// shown on the detail header's type chip. Nil until resolved — the
+    /// chip falls back to the raw type name.
+    var typeLabel: String?
+
     private let api: APIClient
     private var definitions: [PropertyDefinition] = []
+
+    /// Everything type-scoped the detail needs: the property definitions
+    /// (the type's child entities) and the type's own display label. Two
+    /// API requests — the list query can't include its parent — fetched in
+    /// parallel and cached as one unit.
+    private struct TypeMetadata {
+        let definitions: [PropertyDefinition]
+        let label: String?
+    }
 
     /// Shared across navigations — avoids refetching type metadata for
     /// the same entity type. Keyed by `"<lang>:<typeId>"` so entries for
     /// different languages coexist; switching language hits the other
     /// language's cache without a refetch.
-    private static var typeCache: [String: [PropertyDefinition]] = [:]
+    private static var typeCache: [String: TypeMetadata] = [:]
 
-    /// Clears the type definition cache — call on database change.
+    /// Clears the type metadata cache — call on database change.
     static func clearCache() {
         typeCache = [:]
     }
@@ -63,15 +77,20 @@ final class EntityDetailModel {
 
             entity = fetchedEntity
 
-            // 2. Resolve type definitions (cached per language + typeId)
+            // 2. Resolve type definitions + type label (cached per language + typeId)
+            typeLabel = nil
             if let typeId = fetchedEntity.typeId {
                 let key = Self.cacheKey(typeId: typeId)
                 if let cached = Self.typeCache[key] {
-                    definitions = cached
+                    definitions = cached.definitions
+                    typeLabel = cached.label
                 } else {
-                    let defs = await fetchTypeDefinitions(typeId: typeId)
-                    Self.typeCache[key] = defs
-                    definitions = defs
+                    async let defs = fetchTypeDefinitions(typeId: typeId)
+                    async let label = fetchTypeLabel(typeId: typeId)
+                    let metadata = TypeMetadata(definitions: await defs, label: await label)
+                    Self.typeCache[key] = metadata
+                    definitions = metadata.definitions
+                    typeLabel = metadata.label
                 }
             }
         } catch APIError.serverError(_, let body) {
@@ -83,6 +102,19 @@ final class EntityDetailModel {
         }
 
         isLoading = false
+    }
+
+    /// Fetch the localized singular label from the type entity, name as
+    /// fallback.
+    private func fetchTypeLabel(typeId: String) async -> String? {
+        guard let response: EntityDetailResponse = try? await api.get(
+            "entity/\(typeId)",
+            params: ["props": "label,name"]
+        ) else { return nil }
+
+        let props = response.entity?.properties
+        return PropertyValue.localized(props?["label"])
+            ?? PropertyValue.localized(props?["name"])
     }
 
     /// Extracts `message` from a Nitro/h3 JSON error body, or nil if the body
