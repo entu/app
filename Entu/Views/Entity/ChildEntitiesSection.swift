@@ -1,13 +1,14 @@
-// Collapsible sections showing child and referencing entities grouped by type.
-// Each section header shows the type label and count (e.g. "Books — 3 childs").
-// Expanding a section loads the EntityTable with columns from the type definition.
+// Child and referencing entities grouped by type, presented as ONE card:
+// a segmented control (type label + count per segment) selects the visible
+// group, a pager on the same row pages the selected group's table, and the
+// table itself sits in a card below.
 //
 // Children are fetched via _parent.reference, references via _reference.reference.
 // Groups are sorted with children before references, then alphabetically by label.
 
 import SwiftUI
 
-/// One collapsible group per child/reference type, each lazily loading its table.
+/// Segmented child/reference tables — one visible group at a time in a card.
 struct ChildEntitiesSection: View {
     @Environment(APIClient.self) private var api
 
@@ -17,42 +18,153 @@ struct ChildEntitiesSection: View {
     var onNavigate: ((String) -> Void)?
 
     @State private var groups: [ChildGroup] = []
-    @State private var expandedGroups: [String: Bool] = [:]
+    @State private var selectedGroupId: String?
     @State private var isLoading = false
+    @Namespace private var segmentNamespace
+
+    /// Paging state for the selected group's table — lives here so the
+    /// pager can sit on the segment row, outside the table card.
+    @State private var page = 1
+    @State private var totalCount = 0
+    @AppStorage("ui.tablePageSize") private var pageSize = 25
+
+    /// Smallest selectable page size — the pager stays visible whenever the
+    /// rows exceed it, so a large page size can't hide the size selector.
+    private let minPageSize = 10
+
+    private var totalPages: Int {
+        max(1, Int(ceil(Double(totalCount) / Double(pageSize))))
+    }
+
+    private var selectedGroup: ChildGroup? {
+        groups.first { $0.id == selectedGroupId } ?? groups.first
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if isLoading {
                 childSkeleton
-            } else {
-                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                    DisclosureGroup(isExpanded: expansionBinding(for: group.id, isFirst: index == 0)) {
-                        EntityTable(
-                            entityId: entityId,
-                            typeId: group.typeId,
-                            referenceField: group.referenceField,
-                            onNavigate: onNavigate
-                        )
-                    } label: {
-                        HStack {
-                            Text(verbatim: group.label)
-                                .font(.headline)
-                            Spacer()
-                            group.countLabel
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+            } else if !groups.isEmpty {
+                HStack {
+                    segmentedControl
+                    Spacer()
+                    if totalCount > minPageSize {
+                        pager
                     }
-                    .padding(.vertical, 12)
+                }
+                .padding(.bottom, 12)
+
+                if let group = selectedGroup {
+                    EntityTable(
+                        entityId: entityId,
+                        typeId: group.typeId,
+                        referenceField: group.referenceField,
+                        page: $page,
+                        pageSize: pageSize,
+                        onNavigate: onNavigate,
+                        onTotalCount: { totalCount = $0 }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .cardSurface()
+                    // Fresh table state (columns, sort) per group.
+                    .id(group.id)
                 }
             }
+        }
+        .onChange(of: selectedGroupId) {
+            page = 1
+            totalCount = 0
+        }
+        .onChange(of: pageSize) {
+            page = 1
         }
         .task(id: entityId) { await loadGroups() }
     }
 
+    /// One segment per child/reference group — pill track with a quiet
+    /// fill; the selected segment is a card-colored capsule with hairline
+    /// and a soft shadow that slides between segments on selection.
+    private var segmentedControl: some View {
+        HStack(spacing: 2) {
+            ForEach(groups) { group in
+                let isSelected = group.id == selectedGroup?.id
+
+                Button {
+                    withAnimation(.snappy(duration: 0.25)) {
+                        selectedGroupId = group.id
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(verbatim: group.label)
+                            .fontWeight(isSelected ? .semibold : .medium)
+                        Text(verbatim: "\(group.count)")
+                            .font(.caption2)
+                            .foregroundStyle(isSelected ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background {
+                        if isSelected {
+                            Capsule()
+                                .fill(Color("CardBackground"))
+                                .overlay {
+                                    Capsule().strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+                                }
+                                .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                                // Slides the pill between segments.
+                                .matchedGeometryEffect(id: "selectedSegment", in: segmentNamespace)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(.fill.quaternary, in: Capsule())
+    }
+
+    /// ‹ page / total › plus the page-size picker, on the segment row.
+    private var pager: some View {
+        HStack(spacing: 8) {
+            Button {
+                if page > 1 { page -= 1 }
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(page <= 1)
+            .accessibilityLabel("previousPage")
+
+            Text(verbatim: "\(page) / \(totalPages)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+
+            Button {
+                if page < totalPages { page += 1 }
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(page >= totalPages)
+            .accessibilityLabel("nextPage")
+
+            Picker("", selection: $pageSize) {
+                Text("10").tag(10)
+                Text("25").tag(25)
+                Text("100").tag(100)
+            }
+            .frame(width: 70)
+            .accessibilityLabel("pageSize")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+    }
+
     /// Placeholder shown while the child/reference groups load. Their count
     /// and labels aren't known yet, so it's a single pulsing bar rather than
-    /// fabricated section headers.
+    /// fabricated segments.
     private var childSkeleton: some View {
         RoundedRectangle(cornerRadius: 6)
             .fill(.fill.secondary)
@@ -61,14 +173,6 @@ struct ChildEntitiesSection: View {
             .pulsePlaceholder()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-    }
-
-    // First group expanded by default, rest collapsed. Each can be toggled independently.
-    private func expansionBinding(for groupId: String, isFirst: Bool) -> Binding<Bool> {
-        Binding(
-            get: { expandedGroups[groupId] ?? isFirst },
-            set: { expandedGroups[groupId] = $0 }
-        )
     }
 
     // MARK: - Load
@@ -84,6 +188,9 @@ struct ChildEntitiesSection: View {
         allGroups.sort { "\($0.type) - \($0.label)".localizedCompare("\($1.type) - \($1.label)") == .orderedAscending }
 
         groups = allGroups
+        if selectedGroup == nil || !allGroups.contains(where: { $0.id == selectedGroupId }) {
+            selectedGroupId = allGroups.first?.id
+        }
         isLoading = false
     }
 
@@ -138,7 +245,7 @@ struct ChildEntitiesSection: View {
 
 // MARK: - Child group data
 
-// Represents one type group in the child/reference list (e.g. "Books — 3 childs").
+// Represents one type group in the child/reference segments (e.g. "Books 3").
 private struct ChildGroup: Identifiable {
     let typeId: String
     let label: String
@@ -147,14 +254,4 @@ private struct ChildGroup: Identifiable {
     let referenceField: String
 
     var id: String { "\(referenceField)-\(typeId)" }
-
-    // Count label matching webapp: "1 child" / "n childs" or "1 referrer" / "n referrers".
-    // Returned as `Text` so the `LocalizedStringKey` interpolation observes the env locale.
-    var countLabel: Text {
-        if type == "child" {
-            return count == 1 ? Text("childCount1") : Text("childCountN \(count)")
-        } else {
-            return count == 1 ? Text("referrerCount1") : Text("referrerCountN \(count)")
-        }
-    }
 }

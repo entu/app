@@ -25,8 +25,14 @@ final class ImageCache: @unchecked Sendable {
 
 /// Load an image from URL with optional Bearer token auth, caching the result.
 func loadImage(from url: URL, token: String? = nil) async -> Image? {
+    await loadPlatformImage(from: url, token: token).map(platformToImage)
+}
+
+/// Load the raw platform image (cached) — for callers that need pixel
+/// access, e.g. deriving the entity header color from the cover average.
+func loadPlatformImage(from url: URL, token: String? = nil) async -> PlatformImage? {
     if let cached = ImageCache.shared.get(url) {
-        return platformToImage(cached)
+        return cached
     }
 
     var request = URLRequest(url: url)
@@ -38,10 +44,10 @@ func loadImage(from url: URL, token: String? = nil) async -> Image? {
           let platformImage = PlatformImage(data: data) else { return nil }
 
     ImageCache.shared.set(platformImage, for: url)
-    return platformToImage(platformImage)
+    return platformImage
 }
 
-private func platformToImage(_ image: PlatformImage) -> Image {
+func platformToImage(_ image: PlatformImage) -> Image {
     #if os(macOS)
     Image(nsImage: image)
     #else

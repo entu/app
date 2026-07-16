@@ -308,7 +308,15 @@ struct MainView: View {
             // change also persists "where I left off" (`persist` is itself a
             // no-op while restoring).
             .onChange(of: session.selectedEntityId) {
-                if !session.isRestoring { session.entityHistory = [] }
+                if !session.isRestoring {
+                    session.entityHistory = []
+                    // Custom list rows set the selection directly (no
+                    // List(selection:) auto-push) — surface the detail
+                    // column on compact layouts ourselves.
+                    if session.selectedEntityId != nil {
+                        preferredColumn = .detail
+                    }
+                }
                 persistSession()
             }
             .onChange(of: search.text) {
@@ -378,6 +386,7 @@ struct MainView: View {
                     entityId: shownId,
                     menuId: session.selectedMenuId,
                     onNavigate: { session.entityHistory.append($0) },
+                    onBack: session.entityHistory.isEmpty ? nil : { session.entityHistory.removeLast() },
                     onDelete: { popOrClearPinnedDetail() },
                     onListChanged: { listRefreshToken &+= 1 }
                 )
@@ -393,7 +402,7 @@ struct MainView: View {
 
     private func threeColumnView(menu: MenuModel) -> some View {
         @Bindable var session = session
-        return NavigationSplitView {
+        return NavigationSplitView(preferredCompactColumn: $preferredColumn) {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
@@ -414,13 +423,14 @@ struct MainView: View {
                     entityId: currentEntityId,
                     menuId: session.selectedMenuId,
                     onNavigate: { session.entityHistory.append($0) },
+                    onBack: session.entityHistory.isEmpty ? nil : { session.entityHistory.removeLast() },
                     onDelete: { popOrClearListDetail() },
                     onListChanged: { listRefreshToken &+= 1 }
                 )
                 .entityHistoryBack($session.entityHistory)
             } else {
                 // Keeps the detail column alive when no entity is selected.
-                Color.clear
+                Color("WindowBackground").ignoresSafeArea()
             }
         }
         .environment(menu)
@@ -492,6 +502,11 @@ private struct EntityHistoryBackModifier: ViewModifier {
     @Binding var history: [String]
 
     func body(content: Content) -> some View {
+        #if os(macOS)
+        // macOS renders the back button as the entity toolbar's first pill
+        // (see `EntityToolbar`) — nothing to add here.
+        content
+        #else
         content
             .navigationBarBackButtonHidden(!history.isEmpty)
             .toolbar {
@@ -506,5 +521,6 @@ private struct EntityHistoryBackModifier: ViewModifier {
                     }
                 }
             }
+        #endif
     }
 }

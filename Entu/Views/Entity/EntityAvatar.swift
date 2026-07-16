@@ -1,13 +1,15 @@
 import SwiftUI
 
-/// Circular avatar — thumbnail image or colored letter fallback.
+/// Rounded identity tile — thumbnail image or a letter on the entity's
+/// derived gradient (hash of the id, so an entity keeps its color
+/// everywhere: list, tables, search results).
 struct EntityAvatar: View {
     @Environment(APIClient.self) private var api
 
     let name: String
     let entityId: String
     var hasPhoto: Bool = false
-    var size: CGFloat = 28
+    var size: CGFloat = 24
 
     @State private var image: Image?
 
@@ -16,11 +18,11 @@ struct EntityAvatar: View {
             if let image {
                 image.resizable().scaledToFill()
             } else {
-                letterCircle
+                letterTile
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
+        .clipShape(RoundedRectangle(cornerRadius: size / 4))
         // Decorative — the avatar always sits next to the entity's name
         // text, so VoiceOver reading it would only duplicate the row.
         .accessibilityHidden(true)
@@ -33,20 +35,13 @@ struct EntityAvatar: View {
         }
     }
 
-    private var letterCircle: some View {
-        Circle()
-            .fill(avatarColor)
+    private var letterTile: some View {
+        RoundedRectangle(cornerRadius: size / 4)
+            .fill(Color.derivedGradient(from: entityId))
             .overlay {
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.caption).fontWeight(.bold)
+                Text(verbatim: String(name.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.45, weight: .bold))
                     .foregroundStyle(.white)
             }
-    }
-
-    /// Deterministic colour from `name` — same name always produces the same colour.
-    private var avatarColor: Color {
-        let colors: [Color] = [.red, .orange, .yellow, .green, .mint, .teal, .cyan, .blue, .indigo, .purple, .pink]
-        let hash = name.unicodeScalars.reduce(0) { $0 + Int($1.value) }
-        return colors[hash % colors.count]
     }
 }

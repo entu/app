@@ -52,7 +52,7 @@ struct PropertyRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(definition.displayLabel(valueCount: displayValues.count))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
 
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(Array(displayValues.enumerated()), id: \.offset) { _, value in
@@ -65,7 +65,7 @@ struct PropertyRow: View {
                     HStack(alignment: .top, spacing: 16) {
                         Text(definition.displayLabel(valueCount: displayValues.count))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                             .frame(minWidth: 80, idealWidth: 140, alignment: .trailing)
                             .fixedSize(horizontal: true, vertical: false)
 
@@ -238,16 +238,21 @@ struct PropertyRow: View {
             Button {
                 Task { previewURL = await api.downloadFileForPreview(propertyId: propId, filename: value.filename) }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc").foregroundStyle(.secondary)
-                    Text(value.filename ?? propId).foregroundStyle(.tint)
-
+                // Accent file chip — "name · size" pill per the design.
+                Group {
                     if let filesize = value.filesize {
-                        Text(filesize.fileSizeString)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(verbatim: "\(value.filename ?? propId) · \(filesize.fileSizeString)")
+                    } else {
+                        Text(verbatim: value.filename ?? propId)
                     }
                 }
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.tint)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 2)
+                .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
         }

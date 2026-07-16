@@ -30,6 +30,99 @@ func entityAddChildTypes(for entity: EntityDetail, menu: MenuModel) -> [AddFromT
     return []
 }
 
+/// Menu-level Add button — shared by the live toolbar and the loading
+/// placeholder, since its visibility depends only on the active menu, not
+/// the entity. `onCreate == nil` renders the disabled placeholder variant.
+private struct MenuLevelAddButton: View {
+    @Environment(AuthModel.self) private var auth
+    @Environment(MenuModel.self) private var menu
+
+    let menuId: String?
+    var onCreate: ((AddFromType) -> Void)?
+
+    private var types: [AddFromType] {
+        guard let menuId else { return [] }
+        return menu.addFromTypes[menuId] ?? []
+    }
+
+    var body: some View {
+        // Hidden in public-database mode (currentUserId == nil) — the API
+        // would reject the POST anyway.
+        if auth.currentUserId != nil && !types.isEmpty {
+            Group {
+                if types.count == 1, let only = types.first {
+                    Button {
+                        onCreate?(only)
+                    } label: {
+                        Label {
+                            Text("addOne \(only.label.lowercased())")
+                        } icon: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                    }
+                } else {
+                    Menu {
+                        ForEach(types) { type in
+                            Button(type.label.lowercased()) {
+                                onCreate?(type)
+                            }
+                        }
+                    } label: {
+                        Label("add", systemImage: "square.and.pencil")
+                    }
+                }
+            }
+            .disabled(onCreate == nil)
+        }
+    }
+}
+
+#if os(macOS)
+/// Disabled stand-in shown while an entity loads — keeps the window
+/// toolbar's layout stable (without it the section collapses or narrows:
+/// the list's advanced-search item jumps next to the search field, the
+/// buttons flicker, and the cluster drifts). Mirrors the live toolbar's
+/// structure; back stays functional so a slow load can be escaped.
+struct EntityToolbarPlaceholder: ToolbarContent {
+    var onBack: (() -> Void)?
+    var menuId: String?
+
+    var body: some ToolbarContent {
+        if let onBack {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: onBack) {
+                    Label("back", systemImage: "chevron.left")
+                }
+            }
+        }
+        ToolbarSpacer(.flexible, placement: .primaryAction)
+        ToolbarItem(placement: .primaryAction) {
+            MenuLevelAddButton(menuId: menuId)
+        }
+        // No add-child stand-in: its visibility needs the loaded entity's
+        // rights, and a phantom "+" that may vanish reads worse than the
+        // small cluster shift when the real one appears.
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+        ToolbarItem(placement: .primaryAction) {
+            Button {} label: {
+                Label("edit", systemImage: "pencil")
+            }
+            .disabled(true)
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {} label: { Label("duplicate", systemImage: "doc.on.doc") }
+                .disabled(true)
+            Button {} label: { Label("parents", systemImage: "arrow.up.folder") }
+                .disabled(true)
+            Button {} label: { Label("rights", systemImage: "person.2") }
+                .disabled(true)
+            Button {} label: { Label("history", systemImage: "clock.arrow.circlepath") }
+                .disabled(true)
+        }
+    }
+}
+#endif
+
 /// Edit / Add / Duplicate / Parents / Rights / History buttons. Each
 /// opens a feature sheet via its corresponding `@Binding` flag, set
 /// from `EntityToolbarHost`.
@@ -44,6 +137,9 @@ private struct EntityToolbar: ToolbarContent {
 
     let entity: EntityDetail
     let menuId: String?
+    /// Pops the entity drill-down history — the toolbar's first (leading)
+    /// pill on macOS; iOS uses the nav-bar back position instead.
+    var onBack: (() -> Void)?
     @Binding var editMode: EntityEditMode?
     @Binding var showingRights: Bool
     @Binding var showingParents: Bool
@@ -64,13 +160,6 @@ private struct EntityToolbar: ToolbarContent {
         entity.rights(for: auth.currentUserId)
     }
 
-    /// Types that can be added at the top of the active menu — same data
-    /// the list-column toolbar's Add uses, surfaced here too.
-    private var menuLevelAddTypes: [AddFromType] {
-        guard let menuId else { return [] }
-        return menu.addFromTypes[menuId] ?? []
-    }
-
     /// Types that can be added under this entity. Mirrors webapp's
     /// `addChildOptions`: prefer `addFromTypes[entity._id]`, skipping the
     /// `entity`/`menu` meta-types, then fall back to the type's allow-list.
@@ -82,6 +171,19 @@ private struct EntityToolbar: ToolbarContent {
         // Order mirrors webapp's `entity/toolbar.vue`. `ToolbarSpacer(.fixed)`
         // keeps the groups visually distinct on macOS — without it they merge
         // into one pill.
+        #if os(macOS)
+        if let onBack {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: onBack) {
+                    Label("back", systemImage: "chevron.left")
+                }
+            }
+        }
+        // Back stays at the section's leading edge; the flexible spacer
+        // pushes the action pills right, next to the search field, keeping
+        // the header's left side clear like the design.
+        ToolbarSpacer(.flexible, placement: .primaryAction)
+        #endif
         ToolbarItem(placement: .primaryAction) {
             menuLevelAddButton
         }
@@ -103,32 +205,9 @@ private struct EntityToolbar: ToolbarContent {
 
     // MARK: - Buttons
 
-    @ViewBuilder
     private var menuLevelAddButton: some View {
-        // Hidden in public-database mode (currentUserId == nil) — the API
-        // would reject the POST anyway.
-        if auth.currentUserId != nil && !menuLevelAddTypes.isEmpty {
-            if menuLevelAddTypes.count == 1, let only = menuLevelAddTypes.first {
-                Button {
-                    editMode = .create(parentId: nil, typeId: only._id, typeLabel: only.label)
-                } label: {
-                    Label {
-                        Text("addOne \(only.label.lowercased())")
-                    } icon: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                }
-            } else {
-                Menu {
-                    ForEach(menuLevelAddTypes) { type in
-                        Button(type.label.lowercased()) {
-                            editMode = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
-                        }
-                    }
-                } label: {
-                    Label("add", systemImage: "square.and.pencil")
-                }
-            }
+        MenuLevelAddButton(menuId: menuId) { type in
+            editMode = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
         }
     }
 
@@ -189,7 +268,7 @@ private struct EntityToolbar: ToolbarContent {
             Button {
                 showingParents = true
             } label: {
-                Label("parents", systemImage: "arrow.triangle.branch")
+                Label("parents", systemImage: "arrow.up.folder")
             }
         }
     }
@@ -223,6 +302,7 @@ extension View {
     func entityToolbarHost(
         entity: EntityDetail,
         menuId: String? = nil,
+        onBack: (() -> Void)? = nil,
         onEdited: (() -> Void)? = nil,
         onCreated: ((String) -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
@@ -231,6 +311,7 @@ extension View {
         modifier(EntityToolbarHost(
             entity: entity,
             menuId: menuId,
+            onBack: onBack,
             onEdited: onEdited,
             onCreated: onCreated,
             onDelete: onDelete,
@@ -247,6 +328,7 @@ private struct EntityToolbarHost: ViewModifier {
 
     let entity: EntityDetail
     let menuId: String?
+    let onBack: (() -> Void)?
     let onEdited: (() -> Void)?
     let onCreated: ((String) -> Void)?
     let onDelete: (() -> Void)?
@@ -279,6 +361,7 @@ private struct EntityToolbarHost: ViewModifier {
                 EntityToolbar(
                     entity: entity,
                     menuId: menuId,
+                    onBack: onBack,
                     editMode: $editMode,
                     showingRights: $showingRights,
                     showingParents: $showingParents,

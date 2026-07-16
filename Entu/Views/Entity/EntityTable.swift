@@ -22,7 +22,10 @@ struct EntityTableColumn: Identifiable {
     var id: String { name }
 }
 
-/// Paginated, sortable list for child/referencing entity groups.
+/// Sortable table for one child/referencing entity group. Paging state is
+/// owned by `ChildEntitiesSection` (the pager sits on its segment row);
+/// the table reloads on page/pageSize changes and reports the row count
+/// back via `onTotalCount`.
 struct EntityTable: View {
     @Environment(APIClient.self) private var api
     @Environment(\.locale) private var locale
@@ -30,13 +33,14 @@ struct EntityTable: View {
     let entityId: String
     let typeId: String
     let referenceField: String
+    @Binding var page: Int
+    var pageSize: Int = 25
     var onNavigate: ((String) -> Void)?
+    var onTotalCount: ((Int) -> Void)?
 
     @State private var columns: [EntityTableColumn] = []
     @State private var entities: [EntitySummary] = []
     @State private var totalCount = 0
-    @State private var page = 1
-    @AppStorage("ui.tablePageSize") private var pageSize = 25
     @State private var sortColumn = "name"
     @State private var sortAscending = true
     @State private var isLoading = false
@@ -49,8 +53,13 @@ struct EntityTable: View {
                 EntityRowsPlaceholder(count: 5, avatarSize: 18)
             } else {
                 grid
-                pagination
             }
+        }
+        .onChange(of: page) {
+            Task { await loadEntities() }
+        }
+        .onChange(of: pageSize) {
+            Task { await loadEntities() }
         }
         .task {
             await loadColumns()
@@ -63,7 +72,6 @@ struct EntityTable: View {
     private var grid: some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 0) {
             headerRow
-            Divider().gridCellUnsizedAxes(.horizontal)
             ForEach(entities) { entity in
                 GridRow {
                     EntityAvatar(name: entity.displayName, entityId: entity._id, hasPhoto: entity.hasPhoto, size: 18)
@@ -75,7 +83,10 @@ struct EntityTable: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onNavigate?(entity._id) }
 
-                Divider().gridCellUnsizedAxes(.horizontal)
+                // Hairline between rows, none after the last.
+                if entity.id != entities.last?.id {
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                }
             }
         }
     }
@@ -94,8 +105,13 @@ struct EntityTable: View {
                         sortColumn = column.name
                         sortAscending = true
                     }
-                    page = 1
-                    Task { await loadEntities() }
+                    // Writing page triggers the reload via onChange; when
+                    // already on page 1 reload directly.
+                    if page == 1 {
+                        Task { await loadEntities() }
+                    } else {
+                        page = 1
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Text(column.label.isEmpty ? column.name : column.label)
@@ -180,54 +196,6 @@ struct EntityTable: View {
         }
     }
 
-    // MARK: - Pagination
-
-    @ViewBuilder
-    private var pagination: some View {
-        if totalCount > pageSize {
-            HStack {
-                Spacer()
-
-                Button {
-                    if page > 1 { page -= 1; Task { await loadEntities() } }
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .controlSize(.small)
-                .disabled(page <= 1)
-                .accessibilityLabel("previousPage")
-
-                Text("\(page) / \(totalPages)")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .padding(.horizontal, 8)
-
-                Button {
-                    if page < totalPages { page += 1; Task { await loadEntities() } }
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .controlSize(.small)
-                .disabled(page >= totalPages)
-                .accessibilityLabel("nextPage")
-
-                Picker("", selection: $pageSize) {
-                    Text("10").tag(10)
-                    Text("25").tag(25)
-                    Text("100").tag(100)
-                }
-                .controlSize(.small)
-                .frame(width: 70)
-                .accessibilityLabel("pageSize")
-                .onChange(of: pageSize) {
-                    page = 1
-                    Task { await loadEntities() }
-                }
-            }
-            .padding(.top, 8)
-        }
-    }
-
     // MARK: - Data loading
 
     /// Fetch column definitions — properties with `table` flag set, sorted by ordinal.
@@ -278,6 +246,7 @@ struct EntityTable: View {
         if let response: EntityListResponse = try? await api.get("entity", params: params) {
             entities = response.entities
             totalCount = response.count ?? 0
+            onTotalCount?(totalCount)
         }
         isLoading = false
     }

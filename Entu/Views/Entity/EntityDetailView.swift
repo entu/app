@@ -14,6 +14,10 @@ struct EntityDetailView: View {
     /// Called when user taps a reference or child entity — navigates to it.
     var onNavigate: ((String) -> Void)?
 
+    /// Pops the drill-down history — non-nil while there is history to pop;
+    /// rendered as the entity toolbar's first pill on macOS.
+    var onBack: (() -> Void)?
+
     /// Called after the entity is deleted — parent pops navigation.
     var onDelete: (() -> Void)?
 
@@ -40,6 +44,7 @@ struct EntityDetailView: View {
                     .entityToolbarHost(
                         entity: entity,
                         menuId: menuId,
+                        onBack: onBack,
                         onEdited: {
                             Task { await model.load(entityId: entityId) }
                             // Edited values can change the row's display name
@@ -75,6 +80,7 @@ struct EntityDetailView: View {
                 detailSkeleton
             }
         }
+        .background(Color("WindowBackground").ignoresSafeArea())
         .animation(.easeInOut(duration: 0.2), value: model?.entity?._id)
         .task(id: entityId) {
             let m = model ?? EntityDetailModel(api: api)
@@ -83,33 +89,25 @@ struct EntityDetailView: View {
         }
     }
 
-    /// Redacted placeholder mirroring the detail layout (title + property
-    /// rows) — shown while the entity loads so content resolves in place
-    /// instead of flashing from a spinner.
+    /// Placeholder shown while the entity loads: only the colored header
+    /// band (the entity's derived id color — the same one the loaded header
+    /// starts from, so nothing jumps) over the plain window background.
+    /// Title, cover, and rows appear together once the entity arrives.
     private var detailSkeleton: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(verbatim: "Entity name placeholder")
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .pulsePlaceholder()
-
-                ForEach(0..<6, id: \.self) { index in
-                    HStack(alignment: .top, spacing: 16) {
-                        Text(verbatim: "label")
-                            .font(.subheadline)
-                            .frame(minWidth: 80, alignment: .trailing)
-                        Text(verbatim: String(repeating: "value ", count: 2 + index % 4))
-                            .font(.subheadline)
-                        Spacer()
-                    }
-                    // +1 so the title (delay 0) leads the property rows.
-                    .pulsePlaceholder(delay: Double(index + 1) * 0.12)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(Color.derivedGradient(from: entityId))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 172)
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .placeholderContainer()
+        .background(Color("WindowBackground"))
+        #if os(macOS)
+        .ignoresSafeArea(edges: .top)
+        // Disabled toolbar stand-in — keeps the window toolbar layout
+        // stable while the entity loads.
+        .toolbar { EntityToolbarPlaceholder(onBack: onBack, menuId: menuId) }
+        #endif
     }
 }

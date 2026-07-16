@@ -1,6 +1,10 @@
 import SwiftUI
 
 /// Scrollable entity list with search, infinite scroll, and pull-to-refresh.
+/// Custom rows instead of `List(selection:)` — the selected row is tinted
+/// with the entity's derived color (rounded fill + ring), which the system
+/// list highlight cannot do. Arrow-key selection is reimplemented via
+/// `onKeyPress` on the focused scroll container.
 struct EntityListView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
@@ -40,10 +44,9 @@ struct EntityListView: View {
     @State private var showNewTypePicker = false
     @State private var pendingNewType: EntityCreateOption?
 
-    /// Hardware keyboard arrow-key navigation. SwiftUI's `List(selection:)`
-    /// moves selection on Up/Down once it has focus — we just need to
-    /// surrender focus to it on appear. Mirrors webapp's `onKeyStroke`
-    /// in `layout/entity-list.vue`.
+    /// Hardware keyboard arrow-key navigation over the custom rows.
+    /// Focus is handed to the scroll container on appear; Up/Down move the
+    /// selection. Mirrors webapp's `onKeyStroke` in `layout/entity-list.vue`.
     @FocusState private var isListFocused: Bool
 
     /// Captured during a create-mode commit, surfaced after the sheet
@@ -56,59 +59,44 @@ struct EntityListView: View {
     private var hasMore: Bool { items.count < totalCount }
 
     var body: some View {
-        List(selection: $selectedEntityId) {
-            ForEach(items) { item in
-                HStack(spacing: 12) {
-                    EntityAvatar(name: item.name, entityId: item._id, hasPhoto: item.hasPhoto)
-                    Text(item.name).lineLimit(1)
-                }
-                .tag(item._id)
-                .onAppear {
-                    if item.id == items.last?.id && hasMore && !isLoadingMore {
-                        Task { await loadMore() }
-                    }
-                }
-            }
-
-            if isLoadingMore {
-                HStack { Spacer(); ProgressView(); Spacer() }
-                    .listRowSeparator(.hidden)
-            }
-        }
-        .listStyle(.plain)
-        .clipped()
-        // List header — entity count as the list title, with the round
-        // advanced-search button (the sheet's only opener) on the right.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(spacing: 0) {
+            #if os(macOS)
+            // Count on the toolbar line — the column ignores the top safe
+            // area so the text occupies the strip the (hidden-background)
+            // window toolbar floats over. Text only: the strip belongs to
+            // the window (drag region), so nothing interactive lives here —
+            // the advanced-search button is a real toolbar item instead.
             HStack {
-                Text("entityCount \(totalCount)")
-                    .font(.subheadline.bold())
-                    .monospacedDigit()
-                    .opacity(isLoading && items.isEmpty ? 0 : 1)
-
+                countTitle
                 Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 6)
+            #endif
 
-                if auth.currentUserId != nil, let onOpenAdvancedSearch {
+            listRows
+        }
+        #if os(macOS)
+        .ignoresSafeArea(edges: .top)
+        .toolbar {
+            if auth.currentUserId != nil, let onOpenAdvancedSearch {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         onOpenAdvancedSearch()
                     } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(.fill.quaternary, in: Circle())
-                            .contentShape(Circle())
+                        Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("advancedSearch")
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
         }
-        .focused($isListFocused)
-        .refreshable { await loadEntities() }
+        #else
+        .safeAreaInset(edge: .top, spacing: 0) {
+            listHeader
+                .padding(.top, 2)
+                .padding(.bottom, 6)
+        }
+        #endif
         .overlay {
             if isLoading && items.isEmpty {
                 EntityRowsPlaceholder(count: 8)
@@ -126,7 +114,7 @@ struct EntityListView: View {
             await loadEntities()
             // Hand focus to the list so arrow keys move selection without
             // requiring a click first. Harmless when no hardware keyboard
-            // is attached — focused state on a List is invisible on touch.
+            // is attached — focused state is invisible on touch.
             isListFocused = true
         }
         .onChange(of: refreshToken) {
@@ -183,6 +171,142 @@ struct EntityListView: View {
             }
             .presentationDetents([.large])
         }
+    }
+
+    // MARK: - Header (count + advanced search)
+
+    private var countTitle: some View {
+        Text("entityCount \(totalCount)")
+            .font(.headline)
+            .monospacedDigit()
+            .opacity(isLoading && items.isEmpty ? 0 : 1)
+    }
+
+    /// iOS in-column header — count plus the round advanced-search button.
+    private var listHeader: some View {
+        HStack {
+            countTitle
+
+            Spacer()
+
+            if auth.currentUserId != nil, let onOpenAdvancedSearch {
+                Button {
+                    onOpenAdvancedSearch()
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(.fill.quaternary, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("advancedSearch")
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Rows
+
+    private var listRows: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 1) {
+                    ForEach(items) { item in
+                        row(item)
+                            .id(item._id)
+                            .onAppear {
+                                if item.id == items.last?.id && hasMore && !isLoadingMore {
+                                    Task { await loadMore() }
+                                }
+                            }
+                    }
+
+                    if isLoadingMore {
+                        HStack { Spacer(); ProgressView(); Spacer() }
+                            .padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+            }
+            .refreshable { await loadEntities() }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($isListFocused)
+            #if os(macOS)
+            // onMoveCommand instead of onKeyPress — onKeyPress handlers can
+            // go stale on macOS between focus changes, resuming from the
+            // selection they last saw instead of the current one.
+            .onMoveCommand { direction in
+                switch direction {
+                case .up: moveSelection(-1, proxy: proxy)
+                case .down: moveSelection(1, proxy: proxy)
+                default: break
+                }
+            }
+            #else
+            .onKeyPress(.upArrow) {
+                moveSelection(-1, proxy: proxy)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                moveSelection(1, proxy: proxy)
+                return .handled
+            }
+            #endif
+        }
+    }
+
+    private func row(_ item: EntityListItem) -> some View {
+        let isSelected = selectedEntityId == item._id
+        let tint = Color.derived(from: item._id)
+
+        return Button {
+            selectedEntityId = item._id
+            // Keep keyboard focus on the list so the next arrow press moves
+            // from this row, not from wherever the keyboard last was.
+            isListFocused = true
+        } label: {
+            HStack(spacing: 9) {
+                EntityAvatar(name: item.name, entityId: item._id, hasPhoto: item.hasPhoto, size: 24)
+
+                Text(item.name)
+                    .lineLimit(1)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.derivedText(from: item._id)) : AnyShapeStyle(.primary))
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(tint.opacity(0.14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(tint.opacity(0.3), lineWidth: 1)
+                        }
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Move the selection by `delta` rows and keep it visible.
+    private func moveSelection(_ delta: Int, proxy: ScrollViewProxy) {
+        guard !items.isEmpty else { return }
+
+        let currentIndex = items.firstIndex { $0._id == selectedEntityId }
+        let fallback = delta > 0 ? -1 : 0
+        let newIndex = min(max((currentIndex ?? fallback) + delta, 0), items.count - 1)
+
+        selectedEntityId = items[newIndex]._id
+        proxy.scrollTo(items[newIndex]._id)
     }
 
     // MARK: - New-entity command
