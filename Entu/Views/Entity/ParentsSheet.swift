@@ -33,7 +33,9 @@ struct ParentsSheet: View {
     /// only appears after an actual save, not on a freshly opened sheet.
     @State private var hasSavedChanges = false
     @State private var loadError: String?
-    @State private var showingPicker = false
+
+    /// True while the ghost row is swapped for the inline reference picker.
+    @State private var pickerActive = false
 
     private var parents: [PropertyValue] {
         (entity?.properties["_parent"] ?? [])
@@ -130,24 +132,23 @@ struct ParentsSheet: View {
                     parentRow(parent)
                 }
 
-                addParentRow
+                if pickerActive {
+                    InlineReferencePicker(
+                        query: parentQuery,
+                        onSelect: { id, _ in
+                            Task { await addParent(reference: id) }
+                        },
+                        onDismiss: { pickerActive = false }
+                    )
+                } else {
+                    addParentRow
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)
             .padding(.bottom, 16)
         }
         .background(Color("WindowBackground"))
-        .sheet(isPresented: $showingPicker) {
-            NavigationStack {
-                ReferencePickerView(
-                    query: parentQuery,
-                    subtitle: String(localized: "parents", bundle: .currentLocalized)
-                ) { id, _ in
-                    showingPicker = false
-                    Task { await addParent(reference: id) }
-                }
-            }
-        }
     }
 
     /// One parent as a white card row — folder icon, name, remove ×
@@ -190,10 +191,10 @@ struct ParentsSheet: View {
         }
     }
 
-    /// Dashed ghost row — opens the reference picker.
+    /// Dashed ghost row — swaps to the inline reference picker.
     private var addParentRow: some View {
         Button {
-            showingPicker = true
+            pickerActive = true
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "plus")
