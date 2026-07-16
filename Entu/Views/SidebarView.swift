@@ -107,15 +107,19 @@ struct SidebarView: View {
                             Image(systemName: "sparkles")
                         }
                         .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 8)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        // Same content height + uniform inset as the user
+                        // pill beside it, so the two pills match exactly.
+                        .frame(height: 26)
+                        .padding(4)
                         // Never truncate the label — the user pill beside it
                         // is the one that compresses in a narrow sidebar.
                         .fixedSize()
+                        .contentShape(Capsule())
                     }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .tint(.accentColor)
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.tint(.accentColor).interactive(), in: Capsule())
                 }
             }
             .padding(.horizontal, 10)
