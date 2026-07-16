@@ -22,6 +22,10 @@ struct MainView: View {
     @State private var menu: MenuModel?
     @State private var preferredColumn: NavigationSplitViewColumn = .detail
 
+    /// Shared across the two/three-column swap so a collapsed sidebar stays
+    /// collapsed.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
     /// Bumped by detail-side operations (currently: duplicate) to force
     /// `EntityListView` to refetch its rows even when `query` is unchanged.
     @State private var listRefreshToken: Int = 0
@@ -375,7 +379,7 @@ struct MainView: View {
 
     private func twoColumnView(menu: MenuModel) -> some View {
         @Bindable var session = session
-        return NavigationSplitView(preferredCompactColumn: $preferredColumn) {
+        return NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)
@@ -403,7 +407,7 @@ struct MainView: View {
 
     private func threeColumnView(menu: MenuModel) -> some View {
         @Bindable var session = session
-        return NavigationSplitView(preferredCompactColumn: $preferredColumn) {
+        return NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
             SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
                 .environment(menu)
                 .navigationSplitViewColumnWidth(min: 180, ideal: sidebarWidth, max: 400)

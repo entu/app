@@ -26,6 +26,13 @@ struct EntityListView: View {
     /// `EntityToolbarHost`'s `onListChanged`.
     var refreshToken: Int = 0
 
+    /// Window-space x-origin of this column (macOS). When the sidebar is
+    /// collapsed the list becomes the leftmost column and the window
+    /// controls + sidebar toggle sit over it — the header's count then
+    /// shifts right to clear them. Measured instead of derived from the
+    /// split view's visibility so it can't go stale.
+    @State private var columnOriginX: CGFloat = .infinity
+
     /// Opens the advanced-search sheet (owned by `MainView`) — wired to the
     /// round button in the list header on all platforms.
     var onOpenAdvancedSearch: (() -> Void)? = nil
@@ -70,15 +77,23 @@ struct EntityListView: View {
                 countTitle
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 20)
-            .padding(.bottom, 6)
+            .padding(.leading, columnOriginX < 50 ? 150 : 16)
+            .padding(.trailing, 16)
+            .padding(.top, 22)
+            .padding(.bottom, 12)
+            // Bar material behind the title — rows scrolling up would
+            // otherwise show through it.
+            .background(.bar)
+            .zIndex(1)
             #endif
 
             listRows
         }
         #if os(macOS)
         .ignoresSafeArea(edges: .top)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .global).minX
+        } action: { columnOriginX = $0 }
         .toolbar {
             if auth.currentUserId != nil, let onOpenAdvancedSearch {
                 ToolbarItem(placement: .primaryAction) {
@@ -93,8 +108,9 @@ struct EntityListView: View {
         #else
         .safeAreaInset(edge: .top, spacing: 0) {
             listHeader
-                .padding(.top, 2)
-                .padding(.bottom, 6)
+                .padding(.top, 6)
+                .padding(.bottom, 12)
+                .background(.bar)
         }
         #endif
         .overlay {
