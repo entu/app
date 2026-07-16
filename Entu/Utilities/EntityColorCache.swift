@@ -16,6 +16,12 @@ struct RGBColor: Equatable {
     var color: Color {
         Color(red: red, green: green, blue: blue)
     }
+
+    /// Perceived luminance above 0.6 — light colors need darker selection
+    /// chrome to stay visible on light backgrounds.
+    var isLight: Bool {
+        0.299 * red + 0.587 * green + 0.114 * blue > 0.6
+    }
 }
 
 /// In-memory cover-color cache, keyed by entity id. Session-scoped.

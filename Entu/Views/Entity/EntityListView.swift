@@ -261,7 +261,6 @@ struct EntityListView: View {
 
     private func row(_ item: EntityListItem) -> some View {
         let isSelected = selectedEntityId == item._id
-        let tint = Color.entityTint(for: item._id)
 
         return Button {
             selectedEntityId = item._id
@@ -285,10 +284,10 @@ struct EntityListView: View {
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(tint.opacity(0.14))
+                        .fill(Color.entityTintFill(for: item._id))
                         .overlay {
                             RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(tint.opacity(0.3), lineWidth: 1)
+                                .strokeBorder(Color.entityTintBorder(for: item._id), lineWidth: 1)
                         }
                 }
             }

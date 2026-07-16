@@ -151,6 +151,33 @@ extension Color {
         return derivedText(from: id)
     }
 
+    /// Selection-ring variant of `entityTint` — light cover colors get
+    /// darkened and more opaque so the ring never fades into the row
+    /// background. (Id-derived hues have capped brightness and keep the
+    /// quiet ring.)
+    @MainActor
+    static func entityTintBorder(for id: String) -> Color {
+        guard let rgb = EntityColorCache.shared.colors[id], rgb.isLight else {
+            return entityTint(for: id).opacity(0.3)
+        }
+
+        return Color(red: rgb.red * 0.6, green: rgb.green * 0.6, blue: rgb.blue * 0.6)
+            .opacity(0.5)
+    }
+
+    /// Selection-fill variant of `entityTint` — light cover colors get a
+    /// slightly darkened, more opaque fill so the selected row still reads
+    /// as tinted against the row background.
+    @MainActor
+    static func entityTintFill(for id: String) -> Color {
+        guard let rgb = EntityColorCache.shared.colors[id], rgb.isLight else {
+            return entityTint(for: id).opacity(0.14)
+        }
+
+        return Color(red: rgb.red * 0.75, green: rgb.green * 0.75, blue: rgb.blue * 0.75)
+            .opacity(0.22)
+    }
+
     /// djb2 hash over UTF-8 bytes → hue in 0..<1. Unlike `hashValue`, the
     /// result is stable across launches, which is the whole point.
     private static func derivedHue(from id: String) -> Double {
