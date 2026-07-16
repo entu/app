@@ -1,5 +1,5 @@
 // Scrollable content layout for the entity detail view.
-// Cover header band: gradient derived from the cover thumbnail's average
+// Cover header band: gradient derived from the cover thumbnail's dominant
 // color (derived id color while it loads / when there is no image), white
 // title and glass parent chips on the band, the square cover hanging over
 // its bottom edge. Below: type + sharing chips, kicker-headed property
@@ -87,7 +87,7 @@ struct EntityDetailContent: View {
                   let platformImage = await loadPlatformImage(from: url) else { return }
             coverImage = platformToImage(platformImage)
             withAnimation(.easeInOut(duration: 0.3)) {
-                coverRGB = averageRGB(of: platformImage)
+                coverRGB = dominantRGB(of: platformImage)
             }
         }
     }
@@ -124,7 +124,7 @@ struct EntityDetailContent: View {
         }
     }
 
-    /// Header gradient — cover average color darkened toward the leading
+    /// Header gradient — cover dominant color darkened toward the leading
     /// stop; the entity's derived id color while the cover loads or when
     /// there is no image (so an entity keeps its color everywhere).
     private var headerGradient: LinearGradient {
