@@ -81,6 +81,10 @@ struct EntityDetailView: View {
                 detailSkeleton
             }
         }
+        // Fill the pane before painting the background — states that don't
+        // stretch on their own (the error view) would otherwise carry a
+        // content-sized gray box.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color("WindowBackground").ignoresSafeArea())
         .animation(.easeInOut(duration: 0.2), value: model?.entity?._id)
         .task(id: entityId) {
