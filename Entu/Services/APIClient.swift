@@ -118,6 +118,19 @@ final class APIClient {
         return URL(string: urlString)
     }
 
+    /// Resolve a file property's thumbnail (image + PDF sources) to a signed
+    /// S3 URL via `GET /property/{id}/thumbnail/{size}`. Returns `nil` when
+    /// the file isn't previewable (the API answers 400) or the request fails.
+    func propertyThumbnailURL(propertyId: String, size: Int = 50) async -> URL? {
+        struct ThumbnailResponse: Decodable { let url: String? }
+        guard let response: ThumbnailResponse = try? await get(
+            "property/\(propertyId)/thumbnail/\(size)"
+        ), let urlString = response.url else {
+            return nil
+        }
+        return URL(string: urlString)
+    }
+
     /// Stream a file from disk to an S3 presigned URL described by an
     /// `UploadIntent`. `Content-Length` is stripped — URLSession derives
     /// it from the file's size, and S3 rejects a duplicate. `onProgress`

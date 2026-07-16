@@ -235,26 +235,64 @@ struct PropertyRow: View {
     @ViewBuilder
     private func fileValue(_ value: PropertyValue) -> some View {
         if let propId = value._id {
-            Button {
+            FileChip(propertyId: propId, filename: value.filename, filesize: value.filesize) {
                 Task { previewURL = await api.downloadFileForPreview(propertyId: propId, filename: value.filename) }
-            } label: {
-                // Accent file chip — "name · size" pill per the design.
+            }
+        }
+    }
+}
+
+// MARK: - File chip
+
+/// Accent file chip — "name · size" pill per the design, with a circular
+/// thumbnail for previewable files (images, PDFs), mirroring the webapp.
+private struct FileChip: View {
+    @Environment(APIClient.self) private var api
+
+    let propertyId: String
+    let filename: String?
+    let filesize: Int?
+    let action: () -> Void
+
+    @State private var thumbnail: Image?
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let thumbnail {
+                    thumbnail
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 16, height: 16)
+                        .clipShape(Circle())
+                }
+
                 Group {
-                    if let filesize = value.filesize {
-                        Text(verbatim: "\(value.filename ?? propId) · \(filesize.fileSizeString)")
+                    if let filesize {
+                        Text(verbatim: "\(filename ?? propertyId) · \(filesize.fileSizeString)")
                     } else {
-                        Text(verbatim: value.filename ?? propId)
+                        Text(verbatim: filename ?? propertyId)
                     }
                 }
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 2)
-                .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .buttonStyle(.plain)
+            .font(.caption)
+            .fontWeight(.medium)
+            .foregroundStyle(.tint)
+            // Pin the content row to the thumbnail's height so the uniform
+            // inset is truly uniform — the text's own line height would
+            // otherwise stretch the capsule and unbalance top/bottom vs left.
+            .frame(height: 16)
+            .padding(2)
+            .padding(.leading, thumbnail == nil ? 6 : 0)
+            .padding(.trailing, 6)
+            .background(Color.accentColor.opacity(0.1), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .task(id: propertyId) {
+            // Non-previewable files simply return no URL — chip stays text-only.
+            guard let url = await api.propertyThumbnailURL(propertyId: propertyId, size: 50) else { return }
+            thumbnail = await loadImage(from: url)
         }
     }
 }
