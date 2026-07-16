@@ -494,6 +494,16 @@ private struct ChatPresentation: ViewModifier {
     @Bindable var chat: AIChatModel
     let onOpenEntity: (String) -> Void
 
+    /// Persisted panel width, like the sidebar and list columns.
+    @AppStorage("ui.chatWidth") private var chatWidth: Double = 300
+
+    /// Width at drag start — deltas apply against it so the drag doesn't
+    /// compound.
+    @State private var dragBaseWidth: Double?
+
+    /// No max — same policy as the sidebar and list columns.
+    private static let minWidth: Double = 260
+
     func body(content: Content) -> some View {
         #if os(macOS)
         // A custom trailing column — `.inspector` doesn't coordinate with the
@@ -506,7 +516,28 @@ private struct ChatPresentation: ViewModifier {
             if chat.isOpen {
                 Divider()
                 AIChatView(onOpenEntity: onOpenEntity)
-                    .frame(width: 380)
+                    .frame(width: chatWidth)
+                    // Invisible grab strip on the panel's leading edge —
+                    // drag to resize, persisted via ui.chatWidth.
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 8)
+                            .contentShape(Rectangle())
+                            .pointerStyle(.columnResize)
+                            .gesture(
+                                // Global space — the handle itself moves as
+                                // the panel resizes, so local translations
+                                // feed back into the drag and jitter.
+                                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                                    .onChanged { value in
+                                        let base = dragBaseWidth ?? chatWidth
+                                        dragBaseWidth = base
+                                        chatWidth = max(base - value.translation.width, Self.minWidth)
+                                    }
+                                    .onEnded { _ in dragBaseWidth = nil }
+                            )
+                    }
                     .transition(.move(edge: .trailing))
             }
         }
@@ -514,7 +545,10 @@ private struct ChatPresentation: ViewModifier {
         #else
         content.inspector(isPresented: $chat.isOpen) {
             AIChatView(onOpenEntity: onOpenEntity)
-                .inspectorColumnWidth(min: 320, ideal: 380, max: 520)
+                .inspectorColumnWidth(min: Self.minWidth, ideal: chatWidth)
+                .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: {
+                    if $0 != chatWidth { chatWidth = $0 }
+                }
         }
         #endif
     }

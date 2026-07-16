@@ -50,6 +50,47 @@ enum JSONValue: Codable, Sendable, Hashable {
         }
     }
 
+    /// Short single-line rendering for proposal property rows — scalars
+    /// verbatim, arrays joined with "·", property-value objects reduced to
+    /// their display field. Nil when there's nothing row-friendly (the raw
+    /// JSON disclosure handles those).
+    var displayString: String? {
+        switch self {
+        case .null:
+            return nil
+        case .bool(let value):
+            return value ? "true" : "false"
+        case .number(let value):
+            return value == value.rounded() ? String(Int(value)) : String(value)
+        case .string(let value):
+            return value.isEmpty ? nil : value
+        case .array(let values):
+            let parts = values.compactMap { $0.displayString }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        case .object(let dict):
+            // Entity property payloads: {"string": …} / {"reference": …, "string": …} etc.
+            return dict["string"]?.displayString
+                ?? dict["number"]?.displayString
+                ?? dict["boolean"]?.displayString
+                ?? dict["date"]?.displayString
+                ?? dict["datetime"]?.displayString
+                ?? dict["reference"]?.displayString
+        }
+    }
+
+    /// True when the value carries an entity reference — rendered as an
+    /// accent chip in the proposal card.
+    var isReference: Bool {
+        switch self {
+        case .object(let dict):
+            return dict["reference"] != nil
+        case .array(let values):
+            return values.contains { $0.isReference }
+        default:
+            return false
+        }
+    }
+
     /// Pretty-printed JSON for the proposal detail preview — sorted keys so
     /// the same operation always renders identically.
     var prettyText: String? {

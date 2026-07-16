@@ -119,7 +119,9 @@ struct SidebarView: View {
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.tint(.accentColor).interactive(), in: Capsule())
+                    // AI purple — same identity color as the chat's sparkle
+                    // icons (design's #5856d6 ≈ system indigo).
+                    .glassEffect(.regular.tint(.indigo).interactive(), in: Capsule())
                 }
             }
             .padding(.horizontal, 10)

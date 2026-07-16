@@ -16,7 +16,7 @@ struct AIChatView: View {
     @FocusState private var inputFocused: Bool
 
     /// Example prompt keys — displayed localized and sent as resolved text.
-    private let examplePromptKeys = ["aiExample1", "aiExample2", "aiExample3"]
+    private let examplePromptKeys = ["aiExample1", "aiExample2", "aiExample3", "aiExample4", "aiExample5"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,19 +28,44 @@ struct AIChatView: View {
         // messages scroll under it, per the Liquid Glass controls-layer
         // guidance.
         .safeAreaBar(edge: .bottom) { bottomBar }
+        // Panel tone — a step lighter than the window background (the
+        // design's sidebar/panel surface), covering the toolbar strip too.
+        .background(Color("PanelBackground").ignoresSafeArea())
+        // The assistant links entities as relative URLs ("/{db}/{id}", per
+        // the API's system prompt). The OS can't open those — route them to
+        // in-app navigation instead.
+        .environment(\.openURL, OpenURLAction { url in
+            if let entityId = entityId(from: url) {
+                openEntity(entityId)
+                return .handled
+            }
+            return .systemAction
+        })
         .appLanguageScoped()
         .onAppear { inputFocused = true }
     }
 
+    /// Extracts the entity id from an AI-generated entity link — the last
+    /// path component when it looks like a MongoDB ObjectId.
+    private func entityId(from url: URL) -> String? {
+        guard url.scheme == nil || url.scheme == "https" || url.scheme == "entu" else { return nil }
+
+        let last = url.lastPathComponent
+        guard last.count == 24, last.allSatisfy(\.isHexDigit) else { return nil }
+
+        return last
+    }
+
     // MARK: - Messages
 
+    @ViewBuilder
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                if chat.visibleMessages.isEmpty {
-                    emptyState
-                        .padding(.top, 40)
-                } else {
+        if chat.visibleMessages.isEmpty {
+            emptyState
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(chat.visibleMessages) { message in
                             ChatMessageView(
@@ -57,10 +82,9 @@ struct AIChatView: View {
                         if chat.isLoading {
                             HStack {
                                 Image(systemName: "sparkles")
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(.indigo)
                                     .symbolEffect(.pulse, options: .repeating)
                                 Text("aiThinking")
-                                    .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                             .id(loadingAnchor)
@@ -68,46 +92,48 @@ struct AIChatView: View {
                     }
                     .padding(16)
                 }
-            }
-            .onChange(of: chat.messages.count) {
-                scrollToBottom(proxy)
-            }
-            .onChange(of: chat.isLoading) {
-                scrollToBottom(proxy)
+                .onChange(of: chat.messages.count) {
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: chat.isLoading) {
+                    scrollToBottom(proxy)
+                }
             }
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             Image(systemName: "sparkles")
-                .font(.largeTitle)
-                .imageScale(.large)
-                .foregroundStyle(.tint)
+                .font(.title)
+                .foregroundStyle(.indigo)
 
             Text("aiEmptyHint")
-                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            VStack(spacing: 8) {
+            // Suggestion pills flow inline, wrapping as needed.
+            FlowLayout(spacing: 6, centered: true) {
                 ForEach(examplePromptKeys, id: \.self) { key in
                     Button {
                         send(String(localized: String.LocalizationValue(key), bundle: .currentLocalized))
                     } label: {
                         Text(LocalizedStringKey(key))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, 13)
                             .padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+                            .background(Color("CardBackground"), in: Capsule())
+                            .overlay {
+                                Capsule().strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+                            }
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .frame(maxWidth: 340)
+            .padding(.top, 8)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 18)
     }
 
     // MARK: - Input
@@ -157,7 +183,13 @@ struct AIChatView: View {
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
-            .glassEffect(.regular, in: .rect(cornerRadius: 20))
+            // White input pill on the panel, per the design.
+            .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 20))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
     }
 
     // MARK: - Actions

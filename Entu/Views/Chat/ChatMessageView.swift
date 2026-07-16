@@ -40,9 +40,18 @@ struct ChatMessageView: View {
                         .textSelection(.enabled)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 13)
             .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Color.entuBrand))
+            // Accent bubble with a tucked bottom-trailing corner, per the design.
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 15,
+                    bottomLeadingRadius: 15,
+                    bottomTrailingRadius: 4,
+                    topTrailingRadius: 15
+                )
+                .fill(Color.accentColor)
+            )
             .foregroundStyle(.white)
         }
     }
