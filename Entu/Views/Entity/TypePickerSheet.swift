@@ -19,7 +19,7 @@ import SwiftUI
 /// itself; the caller runs the create in the sheet's `onDismiss` so the
 /// editor sheet doesn't try to present while this one is still closing.
 struct TypePickerSheet: View {
-    let title: LocalizedStringKey
+    let title: String.LocalizationValue
     let options: [EntityCreateOption]
     let onSelect: (EntityCreateOption) -> Void
 
@@ -31,7 +31,7 @@ struct TypePickerSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 #if os(macOS)
-                sheetHeader
+                SheetHeader(title: headerTitle)
                 #endif
 
                 List(options, selection: $selection) { option in
@@ -46,10 +46,7 @@ struct TypePickerSheet: View {
                 // insets on iOS — clean full-width rows on both.
                 .listStyle(.plain)
             }
-            #if os(iOS)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
+            .sheetNavigationTitle(headerTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     CloseButton { dismiss() }
@@ -82,18 +79,11 @@ struct TypePickerSheet: View {
         }
     }
 
-    #if os(macOS)
-    /// In-content title bar for the macOS sheet. Mirrors `EntityEditView` —
-    /// macOS sheets don't render the toolbar's principal slot.
-    private var sheetHeader: some View {
-        Text(title)
-            .font(.headline)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+    private var headerTitle: String {
+        String(localized: title, bundle: .currentLocalized)
     }
 
+    #if os(macOS)
     /// macOS sheet min height — one row per type (capped) plus the header +
     /// toolbar chrome, so the window fits its content.
     private var sheetHeight: CGFloat {

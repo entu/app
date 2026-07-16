@@ -27,12 +27,16 @@ struct ReferencePickerView: View {
 
     /// Sheet title — overridable for non-reference uses (e.g. the advanced
     /// search entity-type picker).
-    var titleKey: LocalizedStringKey = "selectReference"
+    var titleKey: String.LocalizationValue = "selectReference"
 
     /// Extra property fetched and preferred for row display (e.g. `label`
     /// on entity-type definitions — webapp shows label || name). The
     /// `onSelect`/`isSelected` name stays the entity's `name` property.
     var labelProperty: String?
+
+    private var headerTitle: String {
+        String(localized: titleKey, bundle: .currentLocalized)
+    }
 
     /// Trailing type badge on rows — turn off when every result shares the
     /// same type and the badge is just noise.
@@ -138,29 +142,14 @@ struct ReferencePickerView: View {
             scheduleSearch()
         }
         .task { await runSearch() }
-        #if os(iOS)
-        .navigationTitle(Text(titleKey))
-        .navigationSubtitle(subtitle ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        #else
+        .sheetNavigationTitle(headerTitle, subtitle: subtitle)
+        #if os(macOS)
         // macOS sheets don't render the NavigationStack's principal toolbar
         // slot, and `.navigationTitle()` on sheet content leaks to the parent
         // window. Pin the title above the list via `.safeAreaInset` so it
         // lives inside the sheet's locale override and stays scoped here.
         .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(titleKey)
-                    .font(.headline)
-                if let subtitle, !subtitle.isEmpty {
-                    Text(verbatim: subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+            SheetHeader(title: headerTitle, subtitle: subtitle)
         }
         #endif
         .toolbar {

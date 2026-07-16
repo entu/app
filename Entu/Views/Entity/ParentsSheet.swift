@@ -43,7 +43,7 @@ struct ParentsSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            sheetHeader
+            SheetHeader(title: headerTitle, subtitle: headerSubtitle)
             #endif
             Group {
                 if isLoading {
@@ -55,11 +55,7 @@ struct ParentsSheet: View {
                 }
             }
         }
-        #if os(iOS)
-        .navigationTitle(Text("parents"))
-        .navigationSubtitle(headerSubtitle ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .sheetNavigationTitle(headerTitle, subtitle: headerSubtitle)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 CloseButton(isDisabled: isUpdating) { dismiss() }
@@ -69,30 +65,13 @@ struct ParentsSheet: View {
         .appLanguageScoped()
     }
 
-    #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditView.swift —
-    /// macOS sheets don't render the toolbar's principal slot.
-    private var sheetHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("parents")
-                .font(.headline)
-            if let headerSubtitle, !headerSubtitle.isEmpty {
-                Text(verbatim: headerSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
+    private var headerTitle: String {
+        String(localized: "parents", bundle: .currentLocalized)
     }
-    #endif
 
-    /// Subtitle: entity name (preferred), fall back to type label.
+    /// Subtitle: the entity's name, nil when it has none.
     private var headerSubtitle: String? {
-        if let entityName, !entityName.isEmpty { return entityName }
-        return entity?.typeName
+        (entityName?.isEmpty == false) ? entityName : nil
     }
 
     // MARK: - Form

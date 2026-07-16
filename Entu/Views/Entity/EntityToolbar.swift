@@ -432,8 +432,7 @@ private struct EntityToolbarHost: ViewModifier {
                 HistorySheet(
                     entityId: entity._id,
                     typeId: entity.typeId,
-                    entityName: entity.displayName,
-                    typeLabel: entity.typeName
+                    entityName: entity.displayName
                 )
             }
             .sheet(

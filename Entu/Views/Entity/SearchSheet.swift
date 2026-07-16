@@ -34,7 +34,7 @@ struct SearchSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            sheetHeader
+            SheetHeader(title: headerTitle)
             #endif
             Group {
                 if let model {
@@ -44,10 +44,7 @@ struct SearchSheet: View {
                 }
             }
         }
-        #if os(iOS)
-        .navigationTitle(Text("searchTitle"))
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .sheetNavigationTitle(headerTitle)
         .toolbar {
             #if os(macOS)
             // Reset bottom-left — mirrors the webapp's footer-left placement.
@@ -84,18 +81,9 @@ struct SearchSheet: View {
         .appLanguageScoped()
     }
 
-    #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditView.swift —
-    /// macOS sheets don't render the toolbar's principal slot.
-    private var sheetHeader: some View {
-        Text("searchTitle")
-            .font(.headline)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+    private var headerTitle: String {
+        String(localized: "searchTitle", bundle: .currentLocalized)
     }
-    #endif
 
     // MARK: - Form
 

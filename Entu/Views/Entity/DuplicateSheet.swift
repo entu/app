@@ -39,7 +39,7 @@ struct DuplicateSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            sheetHeader
+            SheetHeader(title: headerTitle, subtitle: headerSubtitle)
             #endif
             Group {
                 if isLoading {
@@ -51,11 +51,7 @@ struct DuplicateSheet: View {
                 }
             }
         }
-        #if os(iOS)
-        .navigationTitle(Text("duplicate"))
-        .navigationSubtitle(headerSubtitle ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .sheetNavigationTitle(headerTitle, subtitle: headerSubtitle)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 CloseButton(isDisabled: isUpdating) { dismiss() }
@@ -85,43 +81,15 @@ struct DuplicateSheet: View {
         .appLanguageScoped()
     }
 
-    /// Subtitle: entity name, fall back to type label.
+    private var headerTitle: String {
+        String(localized: "duplicate", bundle: .currentLocalized)
+    }
+
+    /// Subtitle: the entity's name, nil when it has none.
     private var headerSubtitle: String? {
-        if let name = PropertyValue.localized(entity?.properties["name"]), !name.isEmpty {
-            return name
-        }
-        return entity?.typeName
+        let name = PropertyValue.localized(entity?.properties["name"])
+        return (name?.isEmpty == false) ? name : nil
     }
-
-    #if os(macOS)
-    /// In-content title bar for macOS sheets — kicker ("DUPLICATE · BOOK")
-    /// over the entity name, hairline below, per the design.
-    private var sheetHeader: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: [
-                    String(localized: "duplicate", bundle: .currentLocalized),
-                    entity?.typeName
-                ].compactMap(\.self).joined(separator: " · "))
-                .textCase(.uppercase)
-                .font(.caption2.weight(.semibold))
-                .kerning(0.8)
-                .foregroundStyle(.tertiary)
-
-                if let headerSubtitle, !headerSubtitle.isEmpty {
-                    Text(verbatim: headerSubtitle)
-                        .font(.headline)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 10)
-
-            Divider()
-        }
-    }
-    #endif
 
     private var submitTitle: LocalizedStringKey {
         count == 1 ? "createDuplicate" : "createDuplicates \(count)"

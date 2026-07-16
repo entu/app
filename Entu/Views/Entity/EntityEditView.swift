@@ -88,12 +88,7 @@ struct EntityEditView: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            // macOS sheets don't render the NavigationStack toolbar's
-            // principal slot, and `.navigationTitle()` on the sheet content
-            // leaks to the parent NavigationSplitView's window title. Render
-            // the title in-content so it lives inside the sheet's locale
-            // override and stays scoped to the sheet.
-            sheetHeader
+            SheetHeader(title: headerTitle, subtitle: headerSubtitle)
             #endif
             Group {
                 if isLoading {
@@ -107,11 +102,7 @@ struct EntityEditView: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        #if os(iOS)
-        .navigationTitle(headerTitle)
-        .navigationSubtitle(headerSubtitle ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .sheetNavigationTitle(headerTitle, subtitle: headerSubtitle)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 CloseButton(isDisabled: isDeleting) { dismiss() }
@@ -155,12 +146,14 @@ struct EntityEditView: View {
     /// renders one line below in a secondary style. Mirrors
     /// `components/entity/drawer/edit.vue` (`titleAdd` / `titleChild` /
     /// `titleEdit`).
-    private var headerTitle: LocalizedStringKey {
+    private var headerTitle: String {
         switch mode {
         case .edit:
-            return "edit"
+            return String(localized: "edit", bundle: .currentLocalized)
         case .create(let parentId, _, _):
-            return parentId == nil ? "titleAddBare" : "titleChildBare"
+            return parentId == nil
+                ? String(localized: "titleAddBare", bundle: .currentLocalized)
+                : String(localized: "titleChildBare", bundle: .currentLocalized)
         }
     }
 
@@ -179,28 +172,6 @@ struct EntityEditView: View {
     }
 
     // MARK: - macOS header
-
-    #if os(macOS)
-    /// In-content title bar for macOS sheets. macOS sheets don't render the
-    /// NavigationStack's principal toolbar slot, and `.navigationTitle()` on
-    /// the sheet content leaks to the parent window — so the title lives
-    /// here, inside the sheet's content tree (and thus its locale override).
-    private var sheetHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(headerTitle)
-                .font(.headline)
-            if let headerSubtitle, !headerSubtitle.isEmpty {
-                Text(verbatim: headerSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-    }
-    #endif
 
     /// True when editing an existing entity (drives the plugin slot choice).
     var isEditMode: Bool {

@@ -20,19 +20,16 @@ struct HistorySheet: View {
     let entityId: String
     let typeId: String?
 
-    /// Subtitle inputs — entity's display name (preferred) and type label
-    /// (fallback). Passed by the caller so we don't need to fetch the entity
-    /// just to render the header.
+    /// Header subtitle — the entity's display name. Passed by the caller so
+    /// we don't need to fetch the entity just to render the header.
     let entityName: String?
-    let typeLabel: String?
 
     /// Explicit init so the `@State` properties below stay out of the init
-    /// surface (the caller supplies only these four inputs).
-    init(entityId: String, typeId: String?, entityName: String?, typeLabel: String?) {
+    /// surface (the caller supplies only these three inputs).
+    init(entityId: String, typeId: String?, entityName: String?) {
         self.entityId = entityId
         self.typeId = typeId
         self.entityName = entityName
-        self.typeLabel = typeLabel
     }
 
     @State private var rawChanges: [HistoryChange.Raw] = []
@@ -50,7 +47,7 @@ struct HistorySheet: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            sheetHeader
+            SheetHeader(title: headerTitle, subtitle: headerSubtitle)
             #endif
             Group {
                 if isLoading && groups.isEmpty {
@@ -65,11 +62,7 @@ struct HistorySheet: View {
             }
         }
         .background(Color("WindowBackground"))
-        #if os(iOS)
-        .navigationTitle(Text("history"))
-        .navigationSubtitle(headerSubtitle ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .sheetNavigationTitle(headerTitle, subtitle: headerSubtitle)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 CloseButton { dismiss() }
@@ -79,31 +72,14 @@ struct HistorySheet: View {
         .appLanguageScoped()
     }
 
-    /// Subtitle: entity name (preferred), fall back to type label.
-    private var headerSubtitle: String? {
-        if let entityName, !entityName.isEmpty { return entityName }
-        return typeLabel
+    private var headerTitle: String {
+        String(localized: "history", bundle: .currentLocalized)
     }
 
-    #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditView.swift —
-    /// macOS sheets don't render the toolbar's principal slot.
-    private var sheetHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("history")
-                .font(.headline)
-            if let headerSubtitle, !headerSubtitle.isEmpty {
-                Text(verbatim: headerSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
+    /// Subtitle: the entity's name, nil when it has none.
+    private var headerSubtitle: String? {
+        (entityName?.isEmpty == false) ? entityName : nil
     }
-    #endif
 
     /// Timeline: per group an avatar + editor + timestamp header, then the
     /// property rows on a left rule (design 8d). `LazyVStack` keeps the
