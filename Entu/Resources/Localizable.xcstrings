@@ -818,6 +818,23 @@
         }
       }
     },
+    "allChangesSaved" : {
+      "comment" : "Parents sheet header pill: autosave status when idle.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All changes saved"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kõik muudatused salvestatud"
+          }
+        }
+      }
+    },
     "apply" : {
       "comment" : "A button that applies a proposal.",
       "extractionState" : "stale",
@@ -2053,22 +2070,6 @@
         }
       }
     },
-    "noParents" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This entity has no parents"
-          }
-        },
-        "et" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "See objekt ei kuulu ühegi objekti alla"
-          }
-        }
-      }
-    },
     "noResults" : {
       "localizations" : {
         "en" : {
@@ -2634,6 +2635,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Salvesta"
+          }
+        }
+      }
+    },
+    "saving" : {
+      "comment" : "Parents sheet header pill: autosave status while a change is committing.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvestan…"
           }
         }
       }

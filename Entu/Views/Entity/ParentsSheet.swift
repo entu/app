@@ -28,6 +28,10 @@ struct ParentsSheet: View {
     @State private var canRemoveParents: Set<String> = []
     @State private var isLoading = true
     @State private var isUpdating = false
+
+    /// True once a change has committed — the "All changes saved" pill
+    /// only appears after an actual save, not on a freshly opened sheet.
+    @State private var hasSavedChanges = false
     @State private var loadError: String?
     @State private var showingPicker = false
 
@@ -43,7 +47,12 @@ struct ParentsSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            SheetHeader(title: headerTitle, subtitle: headerSubtitle)
+            // Changes autosave — the pill replaces a confirm button.
+            SheetHeader(title: headerTitle, subtitle: headerSubtitle) {
+                if isUpdating || hasSavedChanges {
+                    autosavePill
+                }
+            }
             #endif
             Group {
                 if isLoading {
@@ -65,6 +74,31 @@ struct ParentsSheet: View {
         .appLanguageScoped()
     }
 
+    /// Autosave status — green "All changes saved" once idle, a quiet
+    /// "Saving…" while a mutation is in flight.
+    private var autosavePill: some View {
+        HStack(spacing: 5) {
+            if isUpdating {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("saving")
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "checkmark")
+                    .font(.caption2.weight(.bold))
+                Text("allChangesSaved")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(Color("SuccessText"))
+        .padding(.horizontal, 11)
+        .padding(.vertical, 3)
+        .background(
+            (isUpdating ? Color.secondary : Color.green).opacity(0.14),
+            in: Capsule()
+        )
+    }
+
     private var headerTitle: String {
         String(localized: "parents", bundle: .currentLocalized)
     }
@@ -77,59 +111,110 @@ struct ParentsSheet: View {
     // MARK: - Form
 
     private var formBody: some View {
-        Form {
-            Section {
-                if parents.isEmpty {
-                    Text("noParents")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(parents, id: \.self.uniqueId) { parent in
-                        parentRow(parent)
+        ScrollView {
+            VStack(spacing: 6) {
+                #if os(iOS)
+                // No in-content header on iOS (the nav bar carries the
+                // title), so the pill sits above the rows instead. Toolbar
+                // placement is out — toolbar items get button chrome.
+                if isUpdating || hasSavedChanges {
+                    HStack {
+                        Spacer()
+                        autosavePill
                     }
+                    .padding(.bottom, 4)
                 }
+                #endif
+
+                ForEach(parents, id: \.self.uniqueId) { parent in
+                    parentRow(parent)
+                }
+
+                addParentRow
             }
-            Section {
-                Button {
-                    showingPicker = true
-                } label: {
-                    Label("selectNewParent", systemImage: "plus")
-                }
-                .disabled(isUpdating)
-                .sheet(isPresented: $showingPicker) {
-                    NavigationStack {
-                        ReferencePickerView(
-                            query: parentQuery,
-                            subtitle: String(localized: "parents", bundle: .currentLocalized)
-                        ) { id, _ in
-                            showingPicker = false
-                            Task { await addParent(reference: id) }
-                        }
-                    }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+        }
+        .background(Color("WindowBackground"))
+        .sheet(isPresented: $showingPicker) {
+            NavigationStack {
+                ReferencePickerView(
+                    query: parentQuery,
+                    subtitle: String(localized: "parents", bundle: .currentLocalized)
+                ) { id, _ in
+                    showingPicker = false
+                    Task { await addParent(reference: id) }
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
+    /// One parent as a white card row — folder icon, name, remove ×
+    /// (shown only for parents the user holds `_expander` on).
     @ViewBuilder
     private func parentRow(_ parent: PropertyValue) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.up.folder")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+
             Text(verbatim: parent.string ?? parent.reference ?? "")
                 .lineLimit(1)
-            Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             if let propertyId = parent._id,
                let parentId = parent.reference,
                canRemoveParents.contains(parentId) {
                 Button(role: .destructive) {
                     Task { await deleteParent(propertyId: propertyId) }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        // Small glyph, comfortable target.
+                        .padding(4)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isUpdating)
+                .accessibilityLabel(Text("delete"))
             }
         }
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 11))
+        .overlay {
+            RoundedRectangle(cornerRadius: 11)
+                .strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+        }
+    }
+
+    /// Dashed ghost row — opens the reference picker.
+    private var addParentRow: some View {
+        Button {
+            showingPicker = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "plus")
+                    .font(.footnote.weight(.medium))
+                Text("selectNewParent")
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 9)
+            .padding(.horizontal, 12)
+            .overlay {
+                RoundedRectangle(cornerRadius: 11)
+                    .strokeBorder(
+                        .quaternary,
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 11))
+        }
+        .buttonStyle(.plain)
+        .disabled(isUpdating)
     }
 
     // MARK: - Picker query
@@ -215,6 +300,7 @@ struct ParentsSheet: View {
             change.reference = reference
             let _: EntityUpsertResponse = try await api.post("entity/\(entityId)", body: [change])
             await load(silent: true)
+            hasSavedChanges = true
             onChanged?()
         } catch {
             await load(silent: true)
@@ -227,6 +313,7 @@ struct ParentsSheet: View {
         do {
             let _: DeleteResponse = try await api.delete("property/\(propertyId)")
             await load(silent: true)
+            hasSavedChanges = true
             onChanged?()
         } catch {
             await load(silent: true)
