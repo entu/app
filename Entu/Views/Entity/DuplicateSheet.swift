@@ -22,6 +22,11 @@ struct DuplicateSheet: View {
     @State private var entity: EntityDetail?
     @State private var definitions: [PropertyDefinition] = []
     @State private var count: Int = 1
+
+    /// Raw text of the count field — lets an emptied field fall back to 1
+    /// on focus loss instead of silently keeping the previous value.
+    @State private var countText = "1"
+    @FocusState private var countFocused: Bool
     @State private var ignored: Set<String> = []
     @State private var isLoading = true
     @State private var isUpdating = false
@@ -89,22 +94,32 @@ struct DuplicateSheet: View {
     }
 
     #if os(macOS)
-    /// In-content title bar for macOS sheets. See EntityEditView.swift —
-    /// macOS sheets don't render the toolbar's principal slot.
+    /// In-content title bar for macOS sheets — kicker ("DUPLICATE · BOOK")
+    /// over the entity name, hairline below, per the design.
     private var sheetHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("duplicate")
-                .font(.headline)
-            if let headerSubtitle, !headerSubtitle.isEmpty {
-                Text(verbatim: headerSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: [
+                    String(localized: "duplicate", bundle: .currentLocalized),
+                    entity?.typeName
+                ].compactMap(\.self).joined(separator: " · "))
+                .textCase(.uppercase)
+                .font(.caption2.weight(.semibold))
+                .kerning(0.8)
+                .foregroundStyle(.tertiary)
+
+                if let headerSubtitle, !headerSubtitle.isEmpty {
+                    Text(verbatim: headerSubtitle)
+                        .font(.headline)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
+
+            Divider()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
     }
     #endif
 
@@ -115,28 +130,75 @@ struct DuplicateSheet: View {
     // MARK: - Form
 
     private var formBody: some View {
-        Form {
-            Section("numberOfCopies") {
-                // Manual HStack — `Stepper`'s label slot rendered the count
-                // text in its own baseline-shifted frame which left more
-                // bottom padding than top inside the form row.
-                HStack {
-                    Text("\(count)")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Count row — label column + editable count + native stepper.
+                HStack(spacing: 8) {
+                    Text("numberOfCopies")
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 140, alignment: .trailing)
+                        .padding(.trailing, 8)
+
+                    TextField("", text: $countText)
+                        .textFieldStyle(.plain)
                         .monospacedDigit()
-                    Spacer()
+                        .multilineTextAlignment(.center)
+                        .focused($countFocused)
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        #endif
+                        .frame(width: 48)
+                        .padding(.vertical, 5)
+                        .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+                        }
+                        .onChange(of: countText) {
+                            // Digits only; valid input updates the count live.
+                            let digits = countText.filter(\.isNumber)
+                            if digits != countText { countText = digits }
+                            if let value = Int(digits), value >= 1 {
+                                count = min(value, Self.maxCount)
+                                if count != value { countText = "\(count)" }
+                            }
+                        }
+                        .onChange(of: countFocused) {
+                            // Leaving the field empty (or invalid) means 1.
+                            guard !countFocused else { return }
+                            if (Int(countText) ?? 0) < 1 { count = 1 }
+                            countText = "\(count)"
+                        }
+
                     Stepper("", value: $count, in: 1...Self.maxCount)
                         .labelsHidden()
-                }
-                .disabled(isUpdating)
-            }
+                        .onChange(of: count) { countText = "\(count)" }
 
-            Section("propertiesToInclude") {
-                ForEach(availableProperties, id: \.name) { property in
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 7)
+                .disabled(isUpdating)
+
+                Text("propertiesToInclude")
+                    .textCase(.uppercase)
+                    .font(.caption.weight(.semibold))
+                    .kerning(0.8)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 14)
+                    .padding(.bottom, 4)
+
+                ForEach(Array(availableProperties.enumerated()), id: \.element.name) { index, property in
                     propertyRow(property)
+
+                    if index < availableProperties.count - 1 {
+                        Divider()
+                    }
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .formStyle(.grouped)
+        .background(Color("WindowBackground"))
     }
 
     @ViewBuilder
@@ -146,38 +208,57 @@ struct DuplicateSheet: View {
         // server requires at least one property to differentiate the copy.
         let lockedOn = !isIgnored && (availableProperties.count - ignored.count) == 1
 
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle(isOn: Binding(
+        HStack(alignment: .center, spacing: 16) {
+            Text(verbatim: property.label)
+                .foregroundStyle(.tertiary)
+                .frame(width: 140, alignment: .trailing)
+
+            // Value preview — reference values as accent chips, others as
+            // plain text, per the design.
+            Group {
+                if property.isReference {
+                    FlowLayout(spacing: 5) {
+                        ForEach(Array(property.previews.enumerated()), id: \.offset) { _, preview in
+                            Text(verbatim: preview)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.tint)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.1), in: Capsule())
+                        }
+
+                        if property.extraCount > 0 {
+                            Text("more \(property.extraCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text(verbatim: property.previews.joined(separator: " · ")
+                        + (property.extraCount > 0 ? " …" : ""))
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("", isOn: Binding(
                 get: { !isIgnored },
                 set: { include in
                     if include { ignored.remove(property.name) }
                     else { ignored.insert(property.name) }
                 }
-            )) {
-                Text(verbatim: property.label)
-            }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(.green)
+            .controlSize(.small)
             .disabled(isUpdating || lockedOn)
-
-            if !property.previews.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(property.previews.enumerated()), id: \.offset) { _, preview in
-                        Text(verbatim: preview)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.gray.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    if property.extraCount > 0 {
-                        Text("more \(property.extraCount)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .opacity(isIgnored ? 0.5 : 1)
-            }
+            .accessibilityLabel(Text(verbatim: property.label))
         }
+        .padding(.vertical, 7)
+        // Off rows dim, toggle included (still tappable).
+        .opacity(isIgnored ? 0.45 : 1)
     }
 
     // MARK: - Property catalog
@@ -189,6 +270,7 @@ struct DuplicateSheet: View {
         let ordinal: Double
         let previews: [String]   // up to 3 short previews
         let extraCount: Int      // values beyond the first 3
+        let isReference: Bool    // reference previews render as accent chips
     }
 
     /// Properties the user can choose to include in the copy. Skips
@@ -217,7 +299,8 @@ struct DuplicateSheet: View {
                 label: label,
                 ordinal: ordinal,
                 previews: previews,
-                extraCount: extra
+                extraCount: extra,
+                isReference: def?.type == "reference"
             ))
         }
         return rows.sorted { lhs, rhs in
