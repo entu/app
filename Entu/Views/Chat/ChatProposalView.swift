@@ -79,7 +79,9 @@ struct ChatProposalView: View {
                     .padding(.vertical, 10)
                 }
             }
-            .cardSurface()
+            // The edit form's quiet-input fill instead of the white card
+            // surface, which would vanish on the panel's white background.
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: CardMetrics.cornerRadius))
 
             if isPending && !declined {
                 Text("aiNothingSaved")

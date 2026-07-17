@@ -216,13 +216,14 @@ struct AdvancedSearchSheet: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "plus")
-                                .font(.caption2.weight(.medium))
+                                .font(Self.typePillIconFont)
                             Text("entityTypesPlaceholder")
                         }
-                        .font(.caption)
+                        .font(Self.typePillFont)
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
                         .padding(.horizontal, 10)
+                        .frame(minHeight: Self.typePillHeight)
                         .overlay {
                             Capsule().strokeBorder(
                                 .quaternary,
@@ -269,27 +270,59 @@ struct AdvancedSearchSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel("removeValue")
         }
-        .font(ValueChipMetrics.font)
+        .font(Self.typePillFont)
         .fontWeight(.medium)
         .foregroundStyle(.tint)
         .frame(height: ValueChipMetrics.contentHeight)
         .padding(2)
         .padding(.leading, 8)
         .padding(.trailing, 6)
+        .frame(minHeight: Self.typePillHeight)
         .background(Color.accentColor.opacity(0.1), in: Capsule())
+    }
+
+    /// On touch platforms the type pills match the chromed value fields'
+    /// height (22pt body line + 2 × 6pt `editFieldChrome` padding) so the
+    /// row lines up with the inputs around it. macOS keeps the compact
+    /// chips (nil = hug content).
+    private static var typePillHeight: CGFloat? {
+        #if os(iOS)
+        34
+        #else
+        nil
+        #endif
+    }
+
+    /// Pill text at the value inputs' body size on touch platforms; the
+    /// compact chip font on macOS.
+    private static var typePillFont: Font {
+        #if os(iOS)
+        .body
+        #else
+        ValueChipMetrics.font
+        #endif
+    }
+
+    private static var typePillIconFont: Font {
+        #if os(iOS)
+        .footnote.weight(.medium)
+        #else
+        .caption2.weight(.medium)
+        #endif
     }
 
     /// Label column width — the design's 11a uses a narrower column than
     /// the property sheets.
     private static let labelWidth: CGFloat = 110
 
-    /// Vertical padding per filter row — iPhone's stacked rows need more
-    /// separation than the single-line rows on macOS/iPad.
+    /// Vertical padding per filter row — matches the edit form's 7pt
+    /// property-row padding (`PropertyEditor`); iPhone's stacked rows need
+    /// more separation than the single-line rows on macOS/iPad.
     private var filterRowPadding: CGFloat {
         #if os(iOS)
-        horizontalSizeClass == .compact ? 12 : 4
+        horizontalSizeClass == .compact ? 12 : 7
         #else
-        4
+        7
         #endif
     }
 
@@ -362,11 +395,12 @@ private struct SearchFilterRow: View {
             }
         } else {
             // One aligned line per filter — field / operator / value /
-            // delete, same column order as the webapp's filter row.
+            // delete, same column order as the webapp's filter row. Field and
+            // operator hug their content; only the value input stretches.
             HStack(spacing: 10) {
                 fieldControl
                     .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize()
 
                 operatorPicker
                     .labelsHidden()

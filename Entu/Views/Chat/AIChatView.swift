@@ -28,9 +28,9 @@ struct AIChatView: View {
         // messages scroll under it, per the Liquid Glass controls-layer
         // guidance.
         .safeAreaBar(edge: .bottom) { bottomBar }
-        // Panel tone — a step lighter than the window background (the
-        // design's sidebar/panel surface), covering the toolbar strip too.
-        .background(Color("PanelBackground").ignoresSafeArea())
+        // Panel tone — the white card surface, a step lighter than the
+        // window background, covering the toolbar strip too.
+        .background(Color("CardBackground").ignoresSafeArea())
         // The assistant links entities as relative URLs ("/{db}/{id}", per
         // the API's system prompt). The OS can't open those — route them to
         // in-app navigation instead.
@@ -121,10 +121,9 @@ struct AIChatView: View {
                         Text(LocalizedStringKey(key))
                             .padding(.horizontal, 13)
                             .padding(.vertical, 8)
-                            .background(Color("CardBackground"), in: Capsule())
-                            .overlay {
-                                Capsule().strokeBorder(Color("CardHairline"), lineWidth: 0.5)
-                            }
+                            // The edit form's quiet-input fill — reads as a
+                            // chip on the panel's white.
+                            .background(Color.primary.opacity(0.05), in: Capsule())
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -183,13 +182,9 @@ struct AIChatView: View {
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
-            // White input pill on the panel, per the design.
-            .background(Color("CardBackground"), in: RoundedRectangle(cornerRadius: 20))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(Color("CardHairline"), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
+            // Standard glass surface — blends with the glass close button
+            // via the shared GlassEffectContainer.
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
 
     // MARK: - Actions
