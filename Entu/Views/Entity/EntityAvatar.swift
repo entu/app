@@ -1,3 +1,7 @@
+// Entity identity tile — thumbnail when the entity has a photo,
+// otherwise its initial on the id-derived gradient, so an entity keeps
+// one color everywhere.
+
 import SwiftUI
 
 /// Rounded identity tile — thumbnail image or a letter on the entity's

@@ -1,3 +1,7 @@
+// Menu-bar command groups — File > New (entity / child / window) and the
+// View-menu reload commands. All driven by focused values published from
+// the on-screen views, so shortcuts track the current context and rights.
+
 import SwiftUI
 
 /// File > New section — create commands for entities and children, plus the

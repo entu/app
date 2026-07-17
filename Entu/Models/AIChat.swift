@@ -1,3 +1,7 @@
+// Entu AI wire + UI models — chat messages, proposals and their
+// operations, execution results, and the /ai/chat + /ai/execute
+// request/response shapes. Mirrors the webapp's `stores/chat.js`.
+
 import Foundation
 
 /// A single message in the Entu AI conversation. Mirrors the webapp store's

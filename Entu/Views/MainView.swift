@@ -28,7 +28,7 @@ struct MainView: View {
     @Environment(AIChatModel.self) private var chat
     @Environment(SessionState.self) private var session
     @Environment(DeepLinkRouter.self) private var router
-    @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var menu: MenuModel?
     @State private var preferredColumn: NavigationSplitViewColumn = .detail
@@ -54,6 +54,14 @@ struct MainView: View {
     #else
     private let sidebarMinWidth: CGFloat? = nil
     private let listMinWidth: CGFloat? = nil
+    #endif
+
+    #if os(iOS)
+    /// Placement decisions use the device idiom, not the size class — an
+    /// iPad column can be compact-width yet must keep iPad behavior.
+    private var isPhone: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
     #endif
 
     /// Resolves the selected menu item ID to its API query string.
@@ -85,7 +93,7 @@ struct MainView: View {
     /// Hide the search field on compact-size sidebar (iPhone, iPad split) when no menu is selected.
     /// Matches Mail.app behaviour — search appears on the list view, not the root sidebar.
     private var showSearchField: Bool {
-        hSizeClass != .compact || session.selectedMenuId != nil || search.isActive
+        horizontalSizeClass != .compact || session.selectedMenuId != nil || search.isActive
     }
 
     /// Binding that resets search, selection, and history in the same tick as the menu change,
@@ -113,7 +121,7 @@ struct MainView: View {
                 // iPhone: close the sidebar on selection. In landscape
                 // (regular width) it overlays the list and would stay
                 // floating on top; iPad keeps its persistent sidebar.
-                if newValue != nil, UIDevice.current.userInterfaceIdiom == .phone {
+                if newValue != nil, isPhone {
                     columnVisibility = .doubleColumn
                     preferredColumn = .content
                 }
@@ -427,7 +435,7 @@ struct MainView: View {
 
     private var advancedSearchSheet: some View {
         NavigationStack {
-            SearchSheet(
+            AdvancedSearchSheet(
                 currentQuery: activeQuery.parseURLQueryItems(),
                 currentText: search.text,
                 onSearch: applyAdvancedSearch
@@ -467,9 +475,9 @@ struct MainView: View {
                     // iPhone: the split view collapses to a stack and would
                     // show a back chevron to the sidebar — replace it with
                     // a sidebar toggle so the stats view reads as the root.
-                    .navigationBarBackButtonHidden(hSizeClass == .compact)
+                    .navigationBarBackButtonHidden(horizontalSizeClass == .compact)
                     .toolbar {
-                        if hSizeClass == .compact {
+                        if horizontalSizeClass == .compact {
                             ToolbarItem(placement: .topBarLeading) {
                                 Button {
                                     preferredColumn = .sidebar
@@ -514,7 +522,7 @@ struct MainView: View {
             .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
             #if os(iOS)
             .toolbar {
-                if hSizeClass == .compact {
+                if horizontalSizeClass == .compact {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
                             preferredColumn = .detail
@@ -550,9 +558,9 @@ struct MainView: View {
                 // same as the dashboard. The list is a pushed stack entry
                 // here, so the toggle pops it (`dismiss`) — flipping
                 // `preferredColumn` alone doesn't pop a pushed column.
-                .navigationBarBackButtonHidden(hSizeClass == .compact)
+                .navigationBarBackButtonHidden(horizontalSizeClass == .compact)
                 .toolbar {
-                    if hSizeClass == .compact {
+                    if horizontalSizeClass == .compact {
                         ToolbarItem(placement: .topBarLeading) {
                             CompactSidebarToggle {
                                 preferredColumn = .sidebar

@@ -14,7 +14,7 @@
 import SwiftUI
 
 /// Advanced-search form sheet — builds a query and hands it to `onSearch`.
-struct SearchSheet: View {
+struct AdvancedSearchSheet: View {
     @Environment(APIClient.self) private var api
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)

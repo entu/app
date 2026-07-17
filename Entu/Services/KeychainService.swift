@@ -1,3 +1,6 @@
+// Keychain storage — the JWT token and database list live here (never in
+// UserDefaults), using the data-protection keychain.
+
 import Foundation
 import Security
 

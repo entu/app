@@ -1,3 +1,6 @@
+// Markdown rendering — `Text(markdown:)` with a verbatim fallback, used
+// for entity and type description blocks.
+
 import SwiftUI
 
 extension Text {

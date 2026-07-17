@@ -1,3 +1,6 @@
+// Type-erased JSON value — round-trips AI proposal payloads verbatim
+// between /ai/chat and /ai/execute without dropping unknown fields.
+
 import Foundation
 
 /// A type-erased JSON value used to round-trip AI proposal operation

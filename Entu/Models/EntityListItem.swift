@@ -1,3 +1,6 @@
+// Entity list row model — the clean UI item (id, localized name, photo
+// flag) converted from a raw `EntitySummary`.
+
 import Foundation
 
 /// Clean UI type for entity list rows — id, name, and whether a thumbnail

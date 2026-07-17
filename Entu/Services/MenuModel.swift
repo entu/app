@@ -1,3 +1,6 @@
+// Sidebar menu loading — fetches menu entities, groups and sorts them,
+// resolves each menu's addable types, and caches the result per database.
+
 import Foundation
 
 /// Type entity that can be added under a menu (or under another type).

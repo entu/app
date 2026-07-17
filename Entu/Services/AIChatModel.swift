@@ -1,3 +1,6 @@
+// Entu AI conversation state — message list, the chat + execute API
+// calls, and the proposal review flow. Mirrors webapp's `stores/chat.js`.
+
 import Foundation
 
 /// Conversation state for the Entu AI assistant. Mirrors the webapp store

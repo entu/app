@@ -1,3 +1,7 @@
+// Property-value model — one element of an entity property's value array,
+// covering every value column the API can return (string, number,
+// boolean, reference, date, file, …) plus the display helpers built on it.
+
 import Foundation
 
 /// A single value within an entity property array.

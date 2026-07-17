@@ -1,3 +1,6 @@
+// Sign-in method catalog — the OAuth / passkey / Estonian-ID providers
+// shown on the auth screen, with their labels, icons, and API paths.
+
 import SwiftUI
 
 /// Available sign-in methods (Apple, Google, email, Estonian ID).

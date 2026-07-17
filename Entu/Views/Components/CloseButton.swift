@@ -1,3 +1,6 @@
+// Standard sheet close button — "Close" text on macOS, the system close
+// glyph on iOS.
+
 import SwiftUI
 
 /// The standard sheet close button — a text "Close" on macOS, the system close

@@ -1,3 +1,6 @@
+// OAuth sign-in — runs the provider flows through
+// `ASWebAuthenticationSession` and exchanges the callback for an API token.
+
 import AuthenticationServices
 import Foundation
 #if os(iOS)

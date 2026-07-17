@@ -1,3 +1,6 @@
+// UI-plugin host — renders a plugin's page in SwiftUI's native `WebView`
+// inside the edit sheet, mirroring the webapp's iframe contract.
+
 import SwiftUI
 import WebKit
 

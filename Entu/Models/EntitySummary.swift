@@ -1,3 +1,6 @@
+// Entity list models — the GET /entity response wrapper and the raw
+// per-entity summary with its dynamic property keys.
+
 import Foundation
 
 /// API response from GET /entity — list of entities with total count.

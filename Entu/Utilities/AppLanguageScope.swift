@@ -1,3 +1,7 @@
+// In-app language switching — a modifier every presentation root applies
+// so sheets and popovers (which don't inherit the app-root locale) render
+// in the chosen language, plus the language preference itself.
+
 import SwiftUI
 
 /// Re-applies the in-app language to a view tree.

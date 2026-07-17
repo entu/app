@@ -1,3 +1,6 @@
+// Restorable navigation state — selected menu, open entity, history, and
+// pinned entity, snapshotted per database and restored on relaunch.
+
 import Foundation
 import Observation
 

@@ -1,7 +1,7 @@
 // Alert that adds a public database by name: validates the input,
 // probes the API to confirm it's publicly readable, then registers and
 // selects it via `AuthModel`. Used from AuthView, DatabaseListView, and
-// UserSheet via the `.publicDatabaseEntry(...)` modifier.
+// AccountSheet via the `.publicDatabaseEntry(...)` modifier.
 
 import SwiftUI
 

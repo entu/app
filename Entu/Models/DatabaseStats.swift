@@ -1,3 +1,7 @@
+// Database stats model — the GET /{db} usage response (entities,
+// properties, files, AI tokens) shown on the dashboard and the
+// database picker.
+
 import Foundation
 
 /// Usage statistics for a database.

@@ -1,3 +1,6 @@
+// Human-readable file sizes — Finder-style byte-count formatting for
+// file properties and stats.
+
 import Foundation
 
 extension Int {

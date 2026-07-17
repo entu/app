@@ -1,3 +1,6 @@
+// Skeleton loading placeholders — redacted mock layouts (list rows,
+// form, stats) with a staggered pulse while real content loads.
+
 import SwiftUI
 
 extension View {

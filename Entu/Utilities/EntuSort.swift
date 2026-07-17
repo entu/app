@@ -1,3 +1,6 @@
+// Ordinal-then-name sort shared by menus and property lists — matches
+// the webapp's `menuSorter` / `propsSorter`.
+
 import Foundation
 
 /// Sort matching the webapp's `menuSorter` / `propsSorter`.

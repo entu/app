@@ -1,3 +1,7 @@
+// Entity list column — search, infinite scroll, pull-to-refresh, and
+// derived-color row selection. iPhone moves filter · search · New into
+// the bottom bar; macOS/iPad keep them in the top toolbar.
+
 import SwiftUI
 
 /// Scrollable entity list with search, infinite scroll, and pull-to-refresh.

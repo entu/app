@@ -1,5 +1,5 @@
 // Local-cache mirroring and wire-shape encoding for `EntityEditView`. Split
-// out of `EntityEditViewCommit.swift`: after each commit these keep the
+// out of `EntityEditView+Commit.swift`: after each commit these keep the
 // in-memory `entity.properties` in sync — so the next commit can short-circuit
 // unchanged rows without a refetch — and build the API change payloads.
 

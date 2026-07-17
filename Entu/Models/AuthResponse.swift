@@ -1,3 +1,6 @@
+// Auth response models — token, accessible databases, user info, and
+// expiry returned by the auth endpoints after sign-in.
+
 import Foundation
 
 /// API response from the auth endpoint after sign-in.

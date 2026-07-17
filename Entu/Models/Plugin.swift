@@ -1,3 +1,6 @@
+// UI-plugin model — a plugin entity attached to an entity type, rendered
+// as an extra web-view tab in the edit sheet.
+
 import Foundation
 
 /// A UI plugin attached to an entity type. Plugins are themselves entities

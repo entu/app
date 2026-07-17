@@ -1,6 +1,6 @@
 // Loading + initial-state seeding for `EntityEditView`. Split out of
 // `EntityEditView.swift` to keep the view file focused on rendering and
-// the commit machinery (`EntityEditViewCommit.swift`) on writes.
+// the commit machinery (`EntityEditView+Commit.swift`) on writes.
 //
 // Sequence on present:
 //   load() → fetch entity (edit) or take type from mode (create)

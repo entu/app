@@ -1,3 +1,6 @@
+// Sidebar menu models — a single menu item (with its entity-list query)
+// and the section group that collects items under one label.
+
 import Foundation
 
 /// Clean UI type for a sidebar menu item.

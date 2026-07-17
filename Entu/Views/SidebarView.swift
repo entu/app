@@ -1,7 +1,12 @@
+// Sidebar — menu groups as expandable sections. macOS/iPad add a bottom
+// bar with the user pill and the Entu AI button; iPhone draws the design's
+// header (database name, user name, avatar button) in the list content
+// and keeps only a prominent AI capsule at the bottom.
+
 import SwiftUI
 
 /// Sidebar with menu groups as expandable sections and a bottom row holding
-/// the user pill (opens `UserSheet`) and the Entu AI button.
+/// the user pill (opens `AccountSheet`) and the Entu AI button.
 struct SidebarView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
@@ -10,7 +15,7 @@ struct SidebarView: View {
 
     @Binding var selectedMenuId: String?
     let openPinnedEntity: (String) -> Void
-    @State private var showUserSheet = false
+    @State private var showAccountSheet = false
     @State private var userThumbnail: String?
 
 
@@ -117,8 +122,8 @@ struct SidebarView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
         }
-        .sheet(isPresented: $showUserSheet) {
-            UserSheet(openPinnedEntity: openPinnedEntity)
+        .sheet(isPresented: $showAccountSheet) {
+            AccountSheet(openPinnedEntity: openPinnedEntity)
         }
         .task(id: currentDatabase?.user?._id) {
             await loadUserThumbnail()
@@ -145,7 +150,7 @@ struct SidebarView: View {
     /// Avatar + name + database id in a glass capsule (macOS, iPad).
     private var fullUserPill: some View {
         Button {
-            showUserSheet = true
+            showAccountSheet = true
         } label: {
             HStack(spacing: 8) {
                 UserAvatar(thumbnail: userThumbnail, size: 26, fallback: .personIcon)
@@ -182,7 +187,7 @@ struct SidebarView: View {
     /// reliably fire on iOS.
     private var avatarButton: some View {
         Button {
-            showUserSheet = true
+            showAccountSheet = true
         } label: {
             AsyncImage(url: userThumbnail.flatMap { URL(string: $0) }) { image in
                 image

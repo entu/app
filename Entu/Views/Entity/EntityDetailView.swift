@@ -1,3 +1,6 @@
+// Entity detail container — owns loading / error states and data
+// fetching, then hands the loaded entity to `EntityDetailContent`.
+
 import SwiftUI
 
 /// Container for entity detail — manages loading, error states, and data fetching.

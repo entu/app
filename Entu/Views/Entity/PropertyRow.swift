@@ -1,3 +1,7 @@
+// Read-only property row for the entity detail view — label column plus
+// type-specific value rendering (references as tappable pills, files as
+// QuickLook chips, markdown text, …).
+
 import QuickLook
 import SwiftUI
 

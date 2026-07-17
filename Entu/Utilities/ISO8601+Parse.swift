@@ -1,3 +1,6 @@
+// ISO 8601 parsing — tolerates both fractional-second and plain
+// datetime strings, which the API returns interchangeably.
+
 import Foundation
 
 extension ISO8601DateFormatter {

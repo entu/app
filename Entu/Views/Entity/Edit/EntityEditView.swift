@@ -12,7 +12,7 @@
 //
 // Mirrors `components/property/edit.vue::updateValue`. In create mode the
 // first commit promotes the sheet into edit mode by storing the response id.
-// Whole-entity delete sits in `.destructiveAction` (mirrors `UserSheet`).
+// Whole-entity delete sits in `.destructiveAction` (mirrors `AccountSheet`).
 
 import SwiftUI
 
@@ -34,7 +34,7 @@ enum EntityEditMode: Hashable, Identifiable {
 /// Modal sheet that creates or edits a single entity, autosaving per-field.
 struct EntityEditView: View {
     // Internal (non-private) so extensions in companion files
-    // (`EntityEditViewLoading.swift`, `EntityEditViewCommit.swift`) can read state.
+    // (`EntityEditView+Loading.swift`, `EntityEditView+Commit.swift`) can read state.
     @Environment(AuthModel.self) var auth
     @Environment(APIClient.self) var api
     @Environment(DeepLinkRouter.self) var router
@@ -443,5 +443,5 @@ struct EntityEditView: View {
     }
 
     // Per-value commit, file upload, delete and `manageEmptyFields`
-    // housekeeping live in `EntityEditViewCommit.swift`.
+    // housekeeping live in `EntityEditView+Commit.swift`.
 }

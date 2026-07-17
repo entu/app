@@ -1,3 +1,6 @@
+// Root router — shows sign-in, the database picker, or the main split
+// view depending on auth state, and owns the transitions between them.
+
 import SwiftUI
 
 /// Root router — picks between auth, database picker, or main view based on state.

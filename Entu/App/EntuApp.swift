@@ -1,3 +1,8 @@
+// App entry point — creates the shared models once (API client, auth,
+// chat, search, session, deep-link router), injects them into the
+// environment, and hosts the main window with its menu-bar commands and
+// the entu:// URL handler.
+
 import SwiftUI
 #if os(macOS)
 import AppKit

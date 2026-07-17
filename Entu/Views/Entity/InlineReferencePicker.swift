@@ -1,13 +1,14 @@
 // Inline entity picker — the design's "Reference picker (inline)": the
 // add-trigger row swaps to a text field in place, a compact results panel
-// opens beneath it, and Esc / blur / selection collapses back. Used by the
-// Parents sheet ("Select new parent"); Rights ("Add user") and the edit
-// form's reference properties adopt it with their redesigns.
+// opens beneath it, and Esc / blur / click-outside / selection collapses
+// back. The app's only reference-picking UI: Parents ("Select new
+// parent"), Rights ("Add user"), advanced search (entity types), and the
+// edit form's reference properties.
 //
-// Search mirrors `ReferencePickerView` (and webapp's
-// `my-select-reference.vue`): the caller's scope `query` plus free-text
-// `q`, sorted by name, limit 100. The design's "+ Create new …" row is
-// not implemented yet — tracked in TODO-new-features.md.
+// Search mirrors webapp's `my-select-reference.vue`: the caller's scope
+// `query` plus free-text `q`, sorted by name, limit 100. The design's
+// "+ Create new …" row is not implemented — tracked in
+// TODO-new-features.md.
 
 import SwiftUI
 
@@ -15,7 +16,8 @@ import SwiftUI
 struct InlineReferencePicker: View {
     @Environment(APIClient.self) private var api
 
-    /// Scope filter — same format as `ReferencePickerView.query`.
+    /// Scope filter — URL-query formatted API filters (e.g. a property
+    /// definition's `reference_query`). nil ⇒ unscoped.
     let query: String?
 
     /// Extra property fetched and preferred for row display (e.g. `label`

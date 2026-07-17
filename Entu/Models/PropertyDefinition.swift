@@ -1,3 +1,7 @@
+// Property-definition model — the per-type metadata (label, value type,
+// group, ordinal, display rules) that drives how a property renders and
+// edits. Decoded from the entity-type response.
+
 import Foundation
 
 /// Property metadata — label, type, group, ordinal, display rules. Converted from API.

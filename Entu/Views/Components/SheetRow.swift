@@ -1,5 +1,5 @@
 // Reusable row used in sheet-style pickers — currently DatabaseListView
-// (database picker) and UserSheet (account picker rows). A 24pt SF Symbol on
+// (database picker) and AccountSheet (account rows). A 24pt SF Symbol on
 // the leading edge, a bold title with an optional caption-sized subtitle, and
 // a chevron on the trailing edge inside a rounded translucent background.
 

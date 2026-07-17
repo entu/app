@@ -1,3 +1,6 @@
+// Entity detail models — the GET /entity/{id} response wrapper and the
+// full entity with its properties as a dynamic name → values dictionary.
+
 import Foundation
 
 /// API response wrapper from GET /entity/{id}.

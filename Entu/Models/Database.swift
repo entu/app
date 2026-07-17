@@ -1,3 +1,6 @@
+// Database (tenant) models — the databases the auth API grants access
+// to, plus the signed-in user's identity within each.
+
 import Foundation
 
 /// A database (tenant) returned by the auth API.

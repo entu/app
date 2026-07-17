@@ -1,3 +1,6 @@
+// Entity detail loading — fetches one entity and its type definition and
+// exposes the properties grouped and sorted for display.
+
 import Foundation
 
 /// A group of properties sharing the same group label, sorted by ordinal.

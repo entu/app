@@ -1,3 +1,6 @@
+// Global authentication state — the JWT token, accessible databases, and
+// current user, persisted to the keychain and shared app-wide.
+
 import Foundation
 
 /// Global authentication state — token, databases, current user.

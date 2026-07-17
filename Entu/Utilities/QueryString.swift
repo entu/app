@@ -1,3 +1,6 @@
+// URL query-string decoding — parses "a=1&b=x" API query strings (menu
+// and scope filters) into key → value dictionaries.
+
 import Foundation
 
 extension String {

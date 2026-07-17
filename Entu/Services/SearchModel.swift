@@ -1,3 +1,7 @@
+// Shared search state — the toolbar query text plus the serialized
+// advanced-search filter, kept outside the view tree so search survives
+// layout switches.
+
 import Foundation
 
 /// Holds the current search query text, accessible from any view.

@@ -1,3 +1,7 @@
+// Type-aware editor row for one property value in the edit form — each
+// control commits on blur / value change and the parent maps that to the
+// right API call.
+
 import SwiftUI
 #if os(iOS)
 import PhotosUI

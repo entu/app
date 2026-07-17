@@ -1,3 +1,7 @@
+// Type chooser for create shortcuts — when ⌘N / ⌃⌘N could create several
+// types, this keyboard-navigable sheet stands in for the toolbar's Add
+// menu (which can't be opened programmatically).
+
 import SwiftUI
 
 /// Keyboard-navigable "pick a type" chooser shown when a create shortcut

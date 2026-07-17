@@ -1,3 +1,6 @@
+// Scroll-edge fade — masks a scroll container so content fades out at
+// the top and bottom edges.
+
 import SwiftUI
 
 extension View {

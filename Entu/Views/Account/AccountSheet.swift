@@ -18,7 +18,7 @@
 import SwiftUI
 
 /// Sheet presented when the user taps the sidebar user bar.
-struct UserSheet: View {
+struct AccountSheet: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
     @Environment(\.dismiss) private var dismiss

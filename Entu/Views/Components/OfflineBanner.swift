@@ -1,3 +1,6 @@
+// Offline pill — compact banner the parent shows while the network
+// monitor reports no connectivity.
+
 import SwiftUI
 
 /// Compact pill that signals offline state to the user. The view itself
