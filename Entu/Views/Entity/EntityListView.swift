@@ -115,8 +115,11 @@ struct EntityListView: View {
         .navigationTitle(Text("entityCount \(totalCount)"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // iPhone bottom bar, Mail/Notes-style: filter · search · New.
+            // The filter is declared before the search item so it sits
+            // leading; New (`addToolbarContent`) follows trailing.
             if auth.currentUserId != nil, let onOpenAdvancedSearch {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: isPhone ? .bottomBar : .topBarTrailing) {
                     Button {
                         onOpenAdvancedSearch()
                     } label: {
@@ -125,6 +128,24 @@ struct EntityListView: View {
                     // iOS toolbar buttons ignore the label's foreground
                     // style — tint the button itself when filtering.
                     .tint(search.advancedQuery != nil ? Color.accentColor : nil)
+                }
+            }
+
+            // Custom bottom-bar items would evict the docked search field
+            // to the top — explicitly keep it in the bottom bar. Fixed
+            // spacers split the glass groups so filter / search / New stay
+            // individual capsules, in Mail/Notes order: filter · search ·
+            // New. New must be declared HERE (after the search item) —
+            // in its own `.toolbar` block it would group with the filter.
+            if isPhone {
+                ToolbarSpacer(.fixed, placement: .bottomBar)
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+
+                if let types = availableAddTypes {
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        addButton(types: types)
+                    }
                 }
             }
         }
@@ -387,45 +408,70 @@ struct EntityListView: View {
     // MARK: - Add toolbar
 
     /// Menu-level Add button. Mirrors the webapp's left-most
+    /// Addable types for the New button, or nil when it must not show:
+    /// hidden while an entity is open (the detail toolbar has its own Add),
+    /// and in read-only public-database mode.
+    private var availableAddTypes: [AddFromType]? {
+        guard auth.currentUserId != nil,
+              selectedEntityId == nil,
+              let menuId,
+              let types = menu.addFromTypes[menuId],
+              !types.isEmpty else { return nil }
+
+        return types
+    }
+
+    /// The New button/menu — shared between the iPad/macOS top toolbar and
+    /// the iPhone bottom bar.
+    @ViewBuilder
+    private func addButton(types: [AddFromType]) -> some View {
+        if types.count == 1, let only = types.first {
+            Button {
+                pendingCreate = .create(parentId: nil, typeId: only._id, typeLabel: only.label)
+            } label: {
+                Label {
+                    Text("addOne \(only.label.lowercased())")
+                } icon: {
+                    Image(systemName: "square.and.pencil")
+                }
+            }
+        } else {
+            Menu {
+                ForEach(types) { type in
+                    Button(type.label.lowercased()) {
+                        pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+                    }
+                }
+            } label: {
+                Label("add", systemImage: "square.and.pencil")
+            }
+        }
+    }
+
     /// `<entity-toolbar-add>` in `entity/toolbar.vue` — visible whenever
     /// the active menu has any types declaring it as an `add_from`.
     /// Single type: direct button with the type label. Multiple: a Menu.
+    /// On iPhone (compact) the button lives in the bottom bar instead —
+    /// declared next to the search item so the order stays filter ·
+    /// search · New.
     @ToolbarContentBuilder
     private var addToolbarContent: some ToolbarContent {
-        // Hidden when an entity is open — the entity detail toolbar
-        // renders the same Add button there to avoid visual duplication.
-        // Also hidden in public-database mode (no authenticated user) —
-        // creating top-level entities requires write access, which a
-        // read-only public session never has.
-        if auth.currentUserId != nil,
-           selectedEntityId == nil,
-           let menuId,
-           let types = menu.addFromTypes[menuId],
-           !types.isEmpty {
+        if let types = availableAddTypes, !isPhone {
             ToolbarItem(placement: .primaryAction) {
-                if types.count == 1, let only = types.first {
-                    Button {
-                        pendingCreate = .create(parentId: nil, typeId: only._id, typeLabel: only.label)
-                    } label: {
-                        Label {
-                            Text("addOne \(only.label.lowercased())")
-                        } icon: {
-                            Image(systemName: "square.and.pencil")
-                        }
-                    }
-                } else {
-                    Menu {
-                        ForEach(types) { type in
-                            Button(type.label.lowercased()) {
-                                pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
-                            }
-                        }
-                    } label: {
-                        Label("add", systemImage: "square.and.pencil")
-                    }
-                }
+                addButton(types: types)
             }
         }
+    }
+
+    /// True on iPhone — placement decisions use the device idiom, NOT the
+    /// size class: an iPad's list column is narrow enough to report
+    /// compact, but its toolbar buttons belong on top.
+    private var isPhone: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
     }
 
     // MARK: - Data loading

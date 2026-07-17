@@ -328,14 +328,15 @@ struct UserSheet: View {
         userTypeLabel = nil
         guard let userId = activeDatabase?.user?._id else { return }
 
+        // No photo pre-check — the thumbnail endpoint returns nothing for
+        // photo-less entities.
+        userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 200)?.absoluteString
+
         guard let userResponse: EntityDetailResponse = try? await api.get(
             "entity/\(userId)",
-            params: ["props": "photo,_type"]
+            params: ["props": "_type"]
         ) else { return }
 
-        if userResponse.entity?.hasPhoto == true {
-            userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 200)?.absoluteString
-        }
         // Apply the inlined fallback first — any later failure leaves it in place.
         userTypeLabel = userResponse.entity?.typeName
 

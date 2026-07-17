@@ -260,7 +260,9 @@ struct RightsSheet: View {
                     Task { await updateInheritRights(to: new) }
                 }
         }
-        .padding(.top, 38)
+        // Full 44 here — the sharing cards above carry no row padding
+        // (the entity-rights kicker uses 38 + the rows' 6).
+        .padding(.top, 44)
         .padding(.bottom, 2)
 
         if inheritRights {

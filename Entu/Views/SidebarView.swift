@@ -13,6 +13,7 @@ struct SidebarView: View {
     @State private var showUserSheet = false
     @State private var userThumbnail: String?
 
+
     /// Ids of expanded groups. Seeded once when groups first arrive
     /// (first group expanded, rest collapsed). Stored as a `Set` so
     /// each section's binding only writes its own id; SwiftUI's
@@ -25,8 +26,43 @@ struct SidebarView: View {
         auth.databases.first { $0._id == api.databaseId }
     }
 
+    #if os(iOS)
+    private var isPhone: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
+    #endif
+
+
     var body: some View {
         List(selection: $selectedMenuId) {
+            #if os(iOS)
+            // iPhone: the design's header (24a) lives in the content — the
+            // nav bar stays inline with just the toggle. (A real large
+            // title gets stuck collapsed after popping back from the list
+            // column.) iPad mirrors macOS: no header, bottom user pill.
+            if isPhone {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: currentDatabase?.name ?? "Entu")
+                            .font(.largeTitle.bold())
+
+                        if let userName = currentDatabase?.user?.name {
+                            Text(verbatim: userName)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    userPill
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
+            }
+            #endif
+
             ForEach(menu.groups) { group in
                 Section(isExpanded: expansionBinding(for: group.id)) {
                     ForEach(group.items) { item in
@@ -50,86 +86,184 @@ struct SidebarView: View {
             seedExpansionIfNeeded()
         }
         #if os(iOS)
-        .navigationTitle("Entu")
-        .navigationSubtitle(currentDatabase?.name ?? "")
+        // The header lives in the list content (see above) — keep the nav
+        // bar empty and pull the content up under it.
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .contentMargins(.top, 0, for: .scrollContent)
         #endif
-        // Bottom row: user pill (name + database) and the Entu AI button
-        // side by side. Both are Liquid Glass pills floating over the list.
+        // Bottom bar. macOS + iPad: compact user pill + AI side by side.
+        // iPhone: only the prominent AI capsule, trailing (24a) — the user
+        // lives in the header.
         .safeAreaBar(edge: .bottom) {
             HStack(spacing: 8) {
-                Button {
-                    showUserSheet = true
-                } label: {
-                    HStack(spacing: 8) {
-                        UserAvatar(thumbnail: userThumbnail, size: 26, fallback: .personIcon)
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(1)
-
-                            if let databaseId = api.databaseId {
-                                Text(verbatim: databaseId)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                            }
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-                    // Uniform 4pt inset — the avatar sits as close to the
-                    // pill's left edge as to its top and bottom. A glass
-                    // *effect* instead of the glass button style, whose own
-                    // content padding would widen the leading gap.
-                    .padding(4)
-                    .contentShape(Capsule())
+                #if os(macOS)
+                userPill
+                #else
+                if isPhone {
+                    Spacer(minLength: 0)
+                } else {
+                    userPill
                 }
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: Capsule())
-                .sheet(isPresented: $showUserSheet) {
-                    UserSheet(openPinnedEntity: openPinnedEntity)
-                }
+                #endif
 
                 // Entu AI entry point — gated on a signed-in user (hidden in
                 // public-database mode, matching the webapp) and hidden while
-                // the chat panel is open to avoid redundancy. Accent-tinted
-                // glass per the design's AI pill.
+                // the chat panel is open to avoid redundancy.
                 if auth.currentUserId != nil && !chat.isOpen {
-                    Button {
-                        chat.isOpen = true
-                    } label: {
-                        Label {
-                            Text("aiButton")
-                                .textCase(.uppercase)
-                                .kerning(0.5)
-                        } icon: {
-                            Image(systemName: "sparkles")
-                        }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        // Same content height + uniform inset as the user
-                        // pill beside it, so the two pills match exactly.
-                        .frame(height: 26)
-                        .padding(4)
-                        // Never truncate the label — the user pill beside it
-                        // is the one that compresses in a narrow sidebar.
-                        .fixedSize()
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    // AI purple — same identity color as the chat's sparkle
-                    // icons (design's #5856d6 ≈ system indigo).
-                    .glassEffect(.regular.tint(.indigo).interactive(), in: Capsule())
+                    aiButton
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
         }
+        .sheet(isPresented: $showUserSheet) {
+            UserSheet(openPinnedEntity: openPinnedEntity)
+        }
         .task(id: currentDatabase?.user?._id) {
             await loadUserThumbnail()
         }
+    }
+
+    /// Opens the account sheet. macOS + iPad: bottom glass pill with the
+    /// user's name and database id. iPhone: avatar-only button in the
+    /// content header.
+    private var userPill: some View {
+        #if os(macOS)
+        fullUserPill
+        #else
+        Group {
+            if isPhone {
+                avatarButton
+            } else {
+                fullUserPill
+            }
+        }
+        #endif
+    }
+
+    /// Avatar + name + database id in a glass capsule (macOS, iPad).
+    private var fullUserPill: some View {
+        Button {
+            showUserSheet = true
+        } label: {
+            HStack(spacing: 8) {
+                UserAvatar(thumbnail: userThumbnail, size: 26, fallback: .personIcon)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+
+                    if let databaseId = api.databaseId {
+                        Text(verbatim: databaseId)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            // Uniform 4pt inset — the avatar sits as close to the
+            // pill's left edge as to its top and bottom. A glass
+            // *effect* instead of the glass button style, whose own
+            // content padding would widen the leading gap.
+            .padding(4)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Capsule())
+    }
+
+    #if os(iOS)
+    /// Round thumbnail-only button (iPhone header). AsyncImage, not a
+    /// `.task`-loading avatar — task modifiers in bar contexts don't
+    /// reliably fire on iOS.
+    private var avatarButton: some View {
+        Button {
+            showUserSheet = true
+        } label: {
+            AsyncImage(url: userThumbnail.flatMap { URL(string: $0) }) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                Circle()
+                    .fill(.fill.quaternary)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                    }
+            }
+            .frame(width: 44, height: 44)
+            .clipShape(Circle())
+            .overlay {
+                Circle().strokeBorder(.separator, lineWidth: 1)
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Circle())
+        .accessibilityLabel("user")
+    }
+    #endif
+
+    /// AI purple — same identity color as the chat's sparkle icons
+    /// (design's #5856d6 ≈ system indigo). Prominent 24a capsule on touch
+    /// platforms, the compact pill on macOS.
+    private var aiButton: some View {
+        Button {
+            chat.isOpen = true
+        } label: {
+            Label {
+                Text("aiButton")
+                    .textCase(.uppercase)
+                    .kerning(0.5)
+            } icon: {
+                Image(systemName: "sparkles")
+            }
+            .font(pillFont)
+            .foregroundStyle(.white)
+            .padding(.horizontal, aiHorizontalPadding)
+            // Same content height + uniform inset as the user
+            // pill beside it, so the two pills match exactly.
+            .frame(height: pillContentHeight)
+            .padding(4)
+            // Never truncate the label — the user pill beside it
+            // is the one that compresses in a narrow sidebar.
+            .fixedSize()
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.tint(.indigo).interactive(), in: Capsule())
+    }
+
+    /// AI-pill metrics — the design's prominent 24a sizing on iPhone,
+    /// the compact pill on macOS and iPad.
+    private var pillContentHeight: CGFloat {
+        #if os(macOS)
+        26
+        #else
+        isPhone ? 40 : 26
+        #endif
+    }
+
+    private var pillFont: Font {
+        #if os(macOS)
+        .caption.weight(.semibold)
+        #else
+        isPhone ? .subheadline.weight(.semibold) : .caption.weight(.semibold)
+        #endif
+    }
+
+    private var aiHorizontalPadding: CGFloat {
+        #if os(macOS)
+        8
+        #else
+        isPhone ? 16 : 8
+        #endif
     }
 
     /// Resolves the active database user's thumbnail for the bottom bar
@@ -139,12 +273,10 @@ struct SidebarView: View {
         userThumbnail = nil
         guard let userId = currentDatabase?.user?._id else { return }
 
-        guard let response: EntityDetailResponse = try? await api.get(
-            "entity/\(userId)",
-            params: ["props": "photo"]
-        ), response.entity?.hasPhoto == true else { return }
-
-        // Small 26pt bottom-bar avatar — the 50px thumbnail is plenty.
+        // No photo pre-check — the thumbnail endpoint itself returns
+        // nothing for photo-less entities, and a `props=photo` probe
+        // false-negatives on slim payloads.
+        // Small bar-button avatar — the 50px thumbnail is plenty.
         userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 50)?.absoluteString
     }
 

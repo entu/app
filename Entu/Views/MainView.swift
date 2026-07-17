@@ -85,7 +85,7 @@ struct MainView: View {
     /// Hide the search field on compact-size sidebar (iPhone, iPad split) when no menu is selected.
     /// Matches Mail.app behaviour — search appears on the list view, not the root sidebar.
     private var showSearchField: Bool {
-        hSizeClass != .compact || session.selectedMenuId != nil
+        hSizeClass != .compact || session.selectedMenuId != nil || search.isActive
     }
 
     /// Binding that resets search, selection, and history in the same tick as the menu change,
@@ -202,7 +202,12 @@ struct MainView: View {
 
         search.text = q
         search.advancedQuery = query.buildURLQuery()
-        session.clearNavigation()
+        // Keep the selected menu — `activeQuery` prefers the advanced query
+        // for the list anyway, and dropping the menu would also hide the
+        // menu-scoped Add button and (on iPhone) the search field.
+        session.selectedEntityId = nil
+        session.entityHistory = []
+        session.pinnedEntityId = nil
         // Guarantees a refetch even when the serialized query is unchanged.
         listRefreshToken &+= 1
     }
