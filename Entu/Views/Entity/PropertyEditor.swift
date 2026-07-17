@@ -159,7 +159,11 @@ struct PropertyEditor: View {
     /// (`text`, `file`) anchor the label to the first line; single-line
     /// controls centre it. On iPhone the label stacks above the value.
     private var rowBody: some View {
+        // Reference rows become tall while the inline picker is open — the
+        // label must stay on the first line instead of centering against
+        // the grown content.
         let isTallContent = definition.type == "text" || definition.type == "file"
+            || (definition.type == "reference" && pickerActive)
 
         return LabeledRow(alignment: isTallContent ? .top : .center) {
             if showsLabel {

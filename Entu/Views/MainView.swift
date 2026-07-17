@@ -402,7 +402,9 @@ struct MainView: View {
                 onSearch: applyAdvancedSearch
             )
         }
-        .presentationDetents([.large])
+        // Wider page-sheet sizing on iPad, same as the edit and Rights
+        // sheets.
+        .presentationSizing(.page)
         #if os(macOS)
         // macOS sheets size to content — pin a frame so pushing the
         // entity-type picker (NavigationLink) doesn't collapse the sheet.

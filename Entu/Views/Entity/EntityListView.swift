@@ -100,7 +100,7 @@ struct EntityListView: View {
                     Button {
                         onOpenAdvancedSearch()
                     } label: {
-                        Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
+                        advancedSearchLabel
                     }
                 }
             }
@@ -119,6 +119,9 @@ struct EntityListView: View {
                     } label: {
                         Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
                     }
+                    // iOS toolbar buttons ignore the label's foreground
+                    // style — tint the button itself when filtering.
+                    .tint(search.advancedQuery != nil ? Color.accentColor : nil)
                 }
             }
         }
@@ -274,6 +277,18 @@ struct EntityListView: View {
                 return .handled
             }
             #endif
+        }
+    }
+
+    /// Filter icon — accent-tinted while an advanced search is applied,
+    /// so the active filter is visible at a glance.
+    @ViewBuilder
+    private var advancedSearchLabel: some View {
+        if search.advancedQuery != nil {
+            Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
+                .foregroundStyle(Color.accentColor)
+        } else {
+            Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
         }
     }
 

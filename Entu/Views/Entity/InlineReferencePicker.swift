@@ -18,7 +18,16 @@ struct InlineReferencePicker: View {
     /// Scope filter — same format as `ReferencePickerView.query`.
     let query: String?
 
-    /// Called with the picked entity's id and display name.
+    /// Extra property fetched and preferred for row display (e.g. `label`
+    /// on entity-type definitions — webapp shows label || name). The
+    /// `onSelect` name stays the entity's `name` property.
+    var labelProperty: String?
+
+    /// Entity `name`s to hide from the results — used by multi-select
+    /// hosts (advanced search types) so picked items don't repeat.
+    var excludeNames: [String] = []
+
+    /// Called with the picked entity's id and name.
     let onSelect: (String, String) -> Void
 
     /// Collapse back to the trigger row (Esc, blur, or selection).
@@ -47,9 +56,12 @@ struct InlineReferencePicker: View {
     private struct Match: Identifiable {
         let _id: String
         let name: String
+        let label: String?
         let typeLabel: String?
         let hasPhoto: Bool
         var id: String { _id }
+
+        var displayName: String { label ?? name }
     }
 
     var body: some View {
@@ -214,9 +226,9 @@ struct InlineReferencePicker: View {
             pick(match)
         } label: {
             HStack(spacing: Self.rowSpacing) {
-                EntityAvatar(name: match.name, entityId: match._id, hasPhoto: match.hasPhoto, size: Self.rowAvatarSize)
+                EntityAvatar(name: match.displayName, entityId: match._id, hasPhoto: match.hasPhoto, size: Self.rowAvatarSize)
 
-                Text(highlightedName(match.name))
+                Text(highlightedName(match.displayName))
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
@@ -275,7 +287,7 @@ struct InlineReferencePicker: View {
         if !text.isEmpty {
             params["q"] = text
         }
-        params["props"] = "_type.string,name,photo"
+        params["props"] = ["_type.string,name,photo", labelProperty].compactMap(\.self).joined(separator: ",")
         params["sort"] = "name.string"
         params["limit"] = "\(Self.pageLimit)"
 
@@ -285,10 +297,13 @@ struct InlineReferencePicker: View {
             return
         }
 
-        results = response.entities.map { entity in
-            Match(
+        results = response.entities.compactMap { entity in
+            if excludeNames.contains(entity.displayName) { return nil }
+
+            return Match(
                 _id: entity._id,
                 name: entity.displayName,
+                label: labelProperty.flatMap { PropertyValue.localized(entity.additionalProperties?[$0]) },
                 typeLabel: PropertyValue.localized(entity.additionalProperties?["_type"]),
                 hasPhoto: entity.hasPhoto
             )

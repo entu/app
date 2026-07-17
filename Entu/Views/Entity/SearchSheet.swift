@@ -5,11 +5,11 @@
 // Localization key deviations from the webapp (flat catalog vs
 // component-scoped keys): webapp `title` → `searchTitle`; webapp `search`
 // (submit button) → `searchAction` (`search` is the toolbar field prompt).
-// HIG deviations: the type multi-select reuses `ReferencePickerView` in
-// multi-select mode (nested sheet) instead of an inline tag select; filter
-// rows delete via a trailing trash button; `fieldNamePlaceholderText` is
-// shortened to "Property name" (webapp: "Input property name and field")
-// to fit the single-line macOS filter row.
+// HIG deviations: the type multi-select is chips + the inline reference
+// picker instead of the design's segmented pills (real databases have too
+// many types for a segment track); filter rows delete via a trailing ×;
+// `fieldNamePlaceholderText` is shortened to "Property name" (webapp:
+// "Input property name and field") to fit the single-line macOS filter row.
 
 import SwiftUI
 
@@ -29,12 +29,14 @@ struct SearchSheet: View {
     let onSearch: ([(String, String)]) -> Void
 
     @State private var model: AdvancedSearchModel?
-    @State private var showTypesPicker = false
+
+    /// True while the add-type chip is swapped for the inline picker.
+    @State private var typesPickerActive = false
 
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            SheetHeader(title: headerTitle)
+            SheetHeader(title: headerKicker, subtitle: headerTitle)
             #endif
             Group {
                 if let model {
@@ -44,18 +46,32 @@ struct SearchSheet: View {
                 }
             }
         }
-        .sheetNavigationTitle(headerTitle)
+        .sheetNavigationTitle(headerKicker, subtitle: headerTitle)
         .toolbar {
+            // Reset stays apart from the primary Search action — mirrors
+            // the webapp's footer-left placement. On iOS the trailing
+            // corner would visually merge it into one capsule with Search,
+            // so it sits leading, next to Close.
             #if os(macOS)
-            // Reset bottom-left — mirrors the webapp's footer-left placement.
             ToolbarItem(placement: .destructiveAction) {
                 Button("reset") { model?.reset() }
                     .disabled(model == nil)
             }
-            #endif
             ToolbarItem(placement: .cancellationAction) {
                 CloseButton { dismiss() }
             }
+            #else
+            // Same placement for both so declaration order holds —
+            // cancellationAction and topBarLeading would sort Reset
+            // before the Close.
+            ToolbarItem(placement: .topBarLeading) {
+                CloseButton { dismiss() }
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button("reset") { model?.reset() }
+                    .disabled(model == nil)
+            }
+            #endif
             ToolbarItem(placement: .confirmationAction) {
                 Button {
                     if let model { onSearch(model.buildQuery()) }
@@ -81,6 +97,10 @@ struct SearchSheet: View {
         .appLanguageScoped()
     }
 
+    private var headerKicker: String {
+        String(localized: "searchAction", bundle: .currentLocalized)
+    }
+
     private var headerTitle: String {
         String(localized: "searchTitle", bundle: .currentLocalized)
     }
@@ -90,28 +110,35 @@ struct SearchSheet: View {
     private func formBody(_ model: AdvancedSearchModel) -> some View {
         @Bindable var model = model
 
-        return Form {
-            Section {
-                TextField("searchQuery", text: $model.q, prompt: Text("searchQueryPlaceholder"))
-
-                Button {
-                    showTypesPicker = true
-                } label: {
-                    LabeledContent("entityTypes") {
-                        HStack(spacing: 6) {
-                            Text(verbatim: selectedTypesLabel(model))
-                                .lineLimit(1)
-                                .foregroundStyle(model.types.isEmpty ? .secondary : .primary)
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                LabeledRow(labelWidth: Self.labelWidth) {
+                    Text("searchQuery")
+                } content: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                        TextField("", text: $model.q, prompt: Text("searchQueryPlaceholder"))
+                            .textFieldStyle(.plain)
                     }
-                    .contentShape(Rectangle())
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 7)
 
-                LabeledContent("sortBy") {
+                LabeledRow(labelWidth: Self.labelWidth, alignment: .top) {
+                    Text("entityTypes")
+                        .padding(.top, 4)
+                } content: {
+                    typesEditor(model)
+                }
+                .padding(.vertical, 7)
+
+                LabeledRow(labelWidth: Self.labelWidth) {
+                    Text("sortBy")
+                } content: {
                     HStack(spacing: 8) {
                         Picker("sortBy", selection: $model.sortField) {
                             ForEach(AdvancedSearchModel.sortOptions, id: \.value) { option in
@@ -134,9 +161,18 @@ struct SearchSheet: View {
                         .fixedSize()
                     }
                 }
-            }
+                .padding(.vertical, 7)
 
-            Section("propertyFilters") {
+                // 37 + the previous row's 7pt padding = the canonical 44pt
+                // section gap; 3 + row padding = the 10pt kicker→row.
+                Text("propertyFilters")
+                    .textCase(.uppercase)
+                    .font(.caption.weight(.semibold))
+                    .kerning(0.8)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 37)
+                    .padding(.bottom, 3)
+
                 ForEach($model.filters) { $filter in
                     // Capture the id up front — reading `filter.id` inside the
                     // removeAll predicate would read `model.filters` through
@@ -144,56 +180,131 @@ struct SearchSheet: View {
                     SearchFilterRow(filter: $filter, model: model) { [id = filter.id] in
                         model.filters.removeAll { $0.id == id }
                     }
+                    .padding(.vertical, 4)
                 }
 
-                Button {
-                    model.addFilter()
-                } label: {
-                    Label("addFilter", systemImage: "plus")
-                }
+                addFilterChip(model)
+                    .padding(.top, 8)
             }
-
-            #if os(iOS)
-            Section {
-                Button("reset") { model.reset() }
-            }
-            #endif
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .formStyle(.grouped)
+        .background(Color("WindowBackground"))
         .onChange(of: model.types) {
             Task { await model.loadProperties() }
         }
-        .sheet(isPresented: $showTypesPicker) {
-            NavigationStack {
-                ReferencePickerView(
+    }
+
+    /// Selected types as accent chips with ×; the dashed add chip flows on
+    /// the same line and swaps to the inline reference picker (one pick
+    /// per open).
+    private func typesEditor(_ model: AdvancedSearchModel) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FlowLayout(spacing: 6) {
+                ForEach(model.types, id: \.self) { name in
+                    typeChip(name, model: model)
+                }
+
+                if !typesPickerActive {
+                    Button {
+                        typesPickerActive = true
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus")
+                                .font(.caption2.weight(.medium))
+                            Text("entityTypesPlaceholder")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 10)
+                        .overlay {
+                            Capsule().strokeBorder(
+                                .quaternary,
+                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                            )
+                        }
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if typesPickerActive {
+                InlineReferencePicker(
                     query: "_type.string=entity",
-                    titleKey: "entityTypes",
                     labelProperty: "label",
-                    showsTypeBadge: false,
-                    multiSelect: true,
-                    isSelected: { _, name in model.types.contains(name) },
+                    excludeNames: model.types,
                     onSelect: { _, name in
-                        if let index = model.types.firstIndex(of: name) {
-                            model.types.remove(at: index)
-                        } else {
+                        if !model.types.contains(name) {
                             model.types.append(name)
                         }
-                    }
+                    },
+                    onDismiss: { typesPickerActive = false }
                 )
             }
         }
     }
 
-    /// Joined labels of the selected types, or the placeholder.
-    private func selectedTypesLabel(_ model: AdvancedSearchModel) -> String {
-        if model.types.isEmpty {
-            return String(localized: "entityTypesPlaceholder", bundle: .currentLocalized)
-        }
+    /// One selected type as an accent chip with a remove ×.
+    private func typeChip(_ name: String, model: AdvancedSearchModel) -> some View {
+        HStack(spacing: 6) {
+            Text(verbatim: model.entityTypeOptions.first { $0.value == name }?.label ?? name)
+                .lineLimit(1)
 
-        return model.types
-            .map { value in model.entityTypeOptions.first { $0.value == value }?.label ?? value }
-            .joined(separator: ", ")
+            Button {
+                model.types.removeAll { $0 == name }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .opacity(0.6)
+                    .padding(2)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("removeValue")
+        }
+        .font(ValueChipMetrics.font)
+        .fontWeight(.medium)
+        .foregroundStyle(.tint)
+        .frame(height: ValueChipMetrics.contentHeight)
+        .padding(2)
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .background(Color.accentColor.opacity(0.1), in: Capsule())
     }
+
+    /// Label column width — the design's 11a uses a narrower column than
+    /// the property sheets.
+    private static let labelWidth: CGFloat = 110
+
+    /// Dashed "+ Add filter" chip.
+    private func addFilterChip(_ model: AdvancedSearchModel) -> some View {
+        Button {
+            model.addFilter()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.medium))
+                Text("addFilter")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 12)
+            .overlay {
+                Capsule().strokeBorder(
+                    .quaternary,
+                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                )
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
 }
 
 // MARK: - Filter row
@@ -209,38 +320,51 @@ private struct SearchFilterRow: View {
         AdvancedSearchModel.fieldType(of: filter.field)
     }
 
-    var body: some View {
-        #if os(macOS)
-        // One aligned line per filter — field / operator / value / delete,
-        // same column order as the webapp's filter row.
-        HStack(spacing: 10) {
-            fieldControl
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
-            operatorPicker
-                .labelsHidden()
-                .fixedSize()
-
-            valueControl
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            removeButton
-        }
+    /// iPhone stacks the controls; macOS and iPad keep one aligned line.
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
         #else
-        VStack(spacing: 8) {
-            HStack {
+        false
+        #endif
+    }
+
+    var body: some View {
+        if isCompact {
+            VStack(spacing: 8) {
+                HStack {
+                    fieldControl
+                    Spacer(minLength: 8)
+                    removeButton
+                }
+
+                operatorPicker
+
+                valueControl
+            }
+        } else {
+            // One aligned line per filter — field / operator / value /
+            // delete, same column order as the webapp's filter row.
+            HStack(spacing: 10) {
                 fieldControl
-                Spacer(minLength: 8)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                operatorPicker
+                    .labelsHidden()
+                    .fixedSize()
+
+                valueControl
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 removeButton
             }
-
-            operatorPicker
-
-            valueControl
         }
-        #endif
     }
 
     private var operatorPicker: some View {
@@ -255,9 +379,13 @@ private struct SearchFilterRow: View {
         Button(role: .destructive) {
             onRemove()
         } label: {
-            Image(systemName: "trash")
+            Image(systemName: "xmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(4)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .accessibilityLabel("delete")
     }
 
@@ -299,9 +427,8 @@ private struct SearchFilterRow: View {
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #else
-                .textFieldStyle(.roundedBorder)
                 #endif
+                .editFieldChrome()
         } else if model.isLoadingProperties {
             ProgressView()
         } else {
@@ -327,9 +454,8 @@ private struct SearchFilterRow: View {
             TextField("value", value: numberBinding, format: .number, prompt: Text("valuePlaceholder"))
                 #if os(iOS)
                 .keyboardType(.decimalPad)
-                #else
-                .textFieldStyle(.roundedBorder)
                 #endif
+                .editFieldChrome()
         } else if fieldType == .date {
             dateControl(showsTime: false)
         } else if fieldType == .datetime {
@@ -339,9 +465,8 @@ private struct SearchFilterRow: View {
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #else
-                .textFieldStyle(.roundedBorder)
                 #endif
+                .editFieldChrome()
         }
     }
 
@@ -368,10 +493,13 @@ private struct SearchFilterRow: View {
                 Button {
                     filter.value = .date(nil)
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(4)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .accessibilityLabel("removeValue")
             }
         } else {
