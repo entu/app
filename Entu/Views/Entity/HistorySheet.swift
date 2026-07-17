@@ -158,11 +158,9 @@ struct HistorySheet: View {
     }
 
     private func changeRow(_ change: HistoryChange) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        LabeledRow(labelWidth: 110, alignment: .firstTextBaseline) {
             Text(verbatim: change.label)
-                .foregroundStyle(.tertiary)
-                .frame(width: 110, alignment: .trailing)
-
+        } content: {
             // Old values (struck through) flow inline before the new ones,
             // so a replacement reads "old  new" on one line. A change with
             // no new values is a pure deletion — marked dark red.
@@ -174,8 +172,6 @@ struct HistorySheet: View {
                     valueView(value, kind: .new, isAddition: change.oldValues.isEmpty)
                 }
             }
-
-            Spacer(minLength: 0)
         }
         .padding(.vertical, 5)
     }

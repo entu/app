@@ -479,7 +479,9 @@ private struct EntityToolbarHost: ViewModifier {
                     // matches the screen width and rows don't clip.
                     .sheetMinSize(width: 640, height: 600)
                 }
-                .presentationDetents([.large])
+                // Wider page-sheet sizing on iPad (same as Rights) — the
+                // two-column rows need the room.
+                .presentationSizing(.page)
             }
             // A plugin redirect to `entu.app/{db}/{id}#edit` opens the entity
             // in edit mode (webapp parity). The deep link already navigated

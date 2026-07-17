@@ -192,29 +192,29 @@ private struct OperationSection: View {
                     // "old → new".
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(rows) { row in
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            LabeledRow(labelWidth: 88, alignment: .firstTextBaseline, spacing: 10) {
                                 Text(verbatim: row.label)
-                                    .foregroundStyle(.tertiary)
-                                    .frame(width: 88, alignment: .trailing)
+                            } content: {
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    if let valueId = row.valueId, let old = oldValues[valueId] {
+                                        Text(verbatim: old)
+                                            .foregroundStyle(.secondary)
+                                        Image(systemName: "arrow.right")
+                                            .font(.caption)
+                                            .foregroundStyle(.tertiary)
+                                    }
 
-                                if let valueId = row.valueId, let old = oldValues[valueId] {
-                                    Text(verbatim: old)
-                                        .foregroundStyle(.secondary)
-                                    Image(systemName: "arrow.right")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-
-                                if row.isReference {
-                                    Text(verbatim: row.value)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.tint)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 1)
-                                        .background(Color.accentColor.opacity(0.1), in: Capsule())
-                                } else {
-                                    Text(verbatim: row.value)
-                                        .textSelection(.enabled)
+                                    if row.isReference {
+                                        Text(verbatim: row.value)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.tint)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 1)
+                                            .background(Color.accentColor.opacity(0.1), in: Capsule())
+                                    } else {
+                                        Text(verbatim: row.value)
+                                            .textSelection(.enabled)
+                                    }
                                 }
                             }
                         }

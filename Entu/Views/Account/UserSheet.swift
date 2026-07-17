@@ -141,7 +141,9 @@ struct UserSheet: View {
                 }
             }
             .padding(.horizontal, 32)
-            .padding(.bottom, 14)
+            // 28 + the rows' 16pt fade inset = the canonical 44pt gap
+            // between the profile header and the rows group.
+            .padding(.bottom, 28)
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -157,7 +159,10 @@ struct UserSheet: View {
                     .padding(.top, 16)
 
                     deleteRow
-                        .padding(.vertical, 32)
+                        // Canonical 44pt gap above; 32 keeps the sheet-end
+                        // breathing room below.
+                        .padding(.top, 44)
+                        .padding(.bottom, 32)
                 }
                 .padding(.horizontal, 32)
                 .frame(maxWidth: 360)

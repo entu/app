@@ -10,10 +10,6 @@ import PhotosUI
 struct PropertyEditor: View {
     @Environment(APIClient.self) var api
     @Environment(\.locale) private var locale
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #endif
 
     let definition: PropertyDefinition
 
@@ -27,8 +23,25 @@ struct PropertyEditor: View {
     /// `labelPlural` logic in `property/list.vue`.
     var valueCount: Int = 1
 
+    /// Saved list-row values show a trailing × that fires `onDelete` —
+    /// the flat ScrollView form has no swipe actions.
+    var showsRowDelete: Bool = false
+
+    /// True for the second and later rows of the same property — they sit
+    /// tighter under the first (half the between-properties gap).
+    var isContinuationRow: Bool = false
+
     /// Fires when the user finishes with this row; parent runs autosave.
     var onCommit: () async -> Void = {}
+
+    /// Fires when this row's input gains focus — the parent scrolls the
+    /// row into view so tabbing through a long form keeps the active
+    /// field visible.
+    var onFocused: () -> Void = {}
+
+    /// Fires on every text edit (before commit) — list properties use it
+    /// to grow their trailing empty row as soon as the user starts typing.
+    var onValueEdited: () -> Void = {}
 
     /// File-property only — fires after the user picks one or more files.
     /// Parent appends rows / starts uploads. The editor itself never owns
@@ -57,20 +70,22 @@ struct PropertyEditor: View {
     /// trash button on a saved file row.
     @State var showingDeleteFileConfirm = false
 
-    /// Red when mandatory + empty (mirrors webapp's `text-red-700`).
-    private var labelColor: Color {
+    /// Red when mandatory + empty (mirrors webapp's `text-red-700`);
+    /// otherwise the design's muted label tier.
+    private var labelStyle: AnyShapeStyle {
         if definition.mandatory && isEmpty {
-            return .red
+            return AnyShapeStyle(.red)
         }
-        return .primary
+        return AnyShapeStyle(.tertiary)
     }
 
     /// Webapp's `<label>`-tap-activates-input behaviour. Boolean / counter /
-    /// file rows ignore the tap — those would misfire on an accidental hit.
+    /// file / reference rows ignore the tap — those would misfire on an
+    /// accidental hit (reference rows open the picker only from the pill).
     private func activate() {
         switch definition.type {
         case "reference":
-            showingPicker = true
+            break
         case "date", "datetime":
             if value.dateValue == nil {
                 value.dateValue = Date()
@@ -96,13 +111,7 @@ struct PropertyEditor: View {
     }
 
     var body: some View {
-        Group {
-            if isCompact {
-                compactBody
-            } else {
-                wideBody
-            }
-        }
+        rowBody
         // Tapping the gap between label and editor (or anywhere not on a
         // child control) routes through `activate()` — same behaviour as
         // tapping the label. Child controls (TextField, Toggle, Picker,
@@ -110,6 +119,10 @@ struct PropertyEditor: View {
         // for the inert background area.
         .contentShape(Rectangle())
         .onTapGesture { activate() }
+        .onChange(of: isFocused) { _, focused in
+            if focused { onFocused() }
+        }
+        .onChange(of: value.stringValue) { onValueEdited() }
         .disabled(definition.readonly || definition.formula != nil)
         .task {
             // Slight delay so the sheet's present animation finishes before
@@ -141,87 +154,92 @@ struct PropertyEditor: View {
         }
     }
 
-    /// True on iPhone (compact horizontal size class) — narrow rows can't
-    /// fit a 160pt label column + value column without clipping. Also true
-    /// at accessibility Dynamic Type sizes on every platform: the fixed
-    /// label column would clip the scaled-up label, so the row stacks.
-    private var isCompact: Bool {
-        if dynamicTypeSize.isAccessibilitySize { return true }
-
-        #if os(iOS)
-        return horizontalSizeClass == .compact
-        #else
-        return false
-        #endif
-    }
-
-    /// Wide layout (iPad / macOS / regular size class) — fixed-width label
-    /// column on the left, editor on the right. Tall types (`text`, `file`)
-    /// anchor the label to the first line; single-line controls centre it.
-    private var wideBody: some View {
+    /// Shared row chrome (`LabeledRow`): right-aligned 140pt label column,
+    /// editor in the middle, language pills / row × trailing. Tall types
+    /// (`text`, `file`) anchor the label to the first line; single-line
+    /// controls centre it. On iPhone the label stacks above the value.
+    private var rowBody: some View {
         let isTallContent = definition.type == "text" || definition.type == "file"
-        let rowAlignment: VerticalAlignment = isTallContent ? .top : .center
-        return HStack(alignment: rowAlignment, spacing: 12) {
-            // 160pt left column. For multilingual rows the language picker
-            // shares this column with the label so the value column starts
-            // at the same leading edge across all rows in the form.
+
+        return LabeledRow(alignment: isTallContent ? .top : .center) {
+            if showsLabel {
+                labelView
+            } else {
+                Color.clear.frame(height: 1)
+            }
+        } content: {
+            // Tighter gap between the value and its trailing accessories
+            // (language pills / delete ×) than the label↔value gap.
             HStack(spacing: 8) {
-                Group {
-                    if showsLabel {
-                        labelView
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: isTallContent ? .topLeading : .leading)
+                editor
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if definition.multilingual {
-                    languagePicker
+                    languagePills
+                }
+
+                if showsRowDelete {
+                    rowDeleteButton
                 }
             }
-            .frame(width: 160, alignment: isTallContent ? .topLeading : .leading)
-
-            editor
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.top, isContinuationRow ? 0 : 7)
+        .padding(.bottom, 7)
     }
 
-    /// Compact layout (iPhone) — label on top, editor below, full row width.
-    /// Multilingual language picker sits next to the label; for hidden-label
-    /// rows in a list, the picker still shows (so EN/ET stays user-changeable).
-    private var compactBody: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if showsLabel || definition.multilingual {
-                HStack(spacing: 8) {
-                    if showsLabel { labelView }
-                    if definition.multilingual { languagePicker }
-                }
-            }
-            editor
-                .frame(maxWidth: .infinity, alignment: .leading)
+    /// Trailing × on saved list-row values.
+    private var rowDeleteButton: some View {
+        Button(role: .destructive) {
+            Task { await onDelete() }
+        } label: {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(4)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("removeValue")
     }
 
-    /// Per-row EN/ET selector for multilingual properties. Mirrors webapp's
+    /// Per-row EN/ET pills for multilingual properties — the active
+    /// language as a raised capsule, per the design. Mirrors webapp's
     /// `<n-select v-if="isMultilingual">` in `property/edit.vue`. Changing
     /// the language fires `onCommit` — for saved rows that re-saves with
     /// the new tag; for empty unsaved rows the parent's `manageEmptyFields`
     /// rebalances per-language empty rows.
-    private var languagePicker: some View {
-        Picker("", selection: Binding(
-            get: { value.language ?? "en" },
-            set: { newLang in
-                guard newLang != value.language else { return }
-                value.language = newLang
-                Task { await onCommit() }
+    private var languagePills: some View {
+        HStack(spacing: 2) {
+            ForEach(EntityEditView.multilingualLanguages, id: \.self) { lang in
+                let isActive = (value.language ?? "en") == lang
+
+                Button {
+                    guard value.language != lang else { return }
+
+                    value.language = lang
+                    Task { await onCommit() }
+                } label: {
+                    Text(verbatim: lang.uppercased())
+                        .font(.caption2.weight(isActive ? .semibold : .medium))
+                        .foregroundStyle(isActive ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background {
+                            if isActive {
+                                Capsule()
+                                    .fill(Color("CardBackground"))
+                                    .overlay {
+                                        Capsule().strokeBorder(Color("CardHairline"), lineWidth: 0.5)
+                                    }
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-        )) {
-            Text(verbatim: "EN").tag("en")
-            Text(verbatim: "ET").tag("et")
         }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .frame(width: 60)
+        .padding(2)
+        .background(.fill.tertiary, in: Capsule())
     }
 
     /// Bold property label + info-icon popover when a description exists.
@@ -230,8 +248,8 @@ struct PropertyEditor: View {
     private var labelView: some View {
         HStack(spacing: 4) {
             Text(definition.displayLabel(valueCount: valueCount))
-                .fontWeight(.bold)
-                .foregroundStyle(labelColor)
+                .foregroundStyle(labelStyle)
+                .multilineTextAlignment(.trailing)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 // Webapp's `<label>`-tap-activates-input behaviour. The
@@ -284,7 +302,6 @@ struct PropertyEditor: View {
     private var stringEditor: some View {
         if !definition.set.isEmpty {
             HStack {
-                Spacer(minLength: 0)
                 Picker("", selection: $value.stringValue) {
                     Text(verbatim: "").tag("")
                     ForEach(definition.set.sorted(), id: \.self) { option in
@@ -292,9 +309,12 @@ struct PropertyEditor: View {
                     }
                 }
                 .labelsHidden()
+                .fixedSize()
                 .onChange(of: value.stringValue) { _, _ in
                     Task { await onCommit() }
                 }
+
+                Spacer(minLength: 0)
             }
         } else {
             TextField("", text: $value.stringValue)
@@ -305,20 +325,27 @@ struct PropertyEditor: View {
                     if !focused { Task { await onCommit() } }
                 }
                 .onSubmit { Task { await onCommit() } }
+                .editFieldChrome()
         }
     }
 
     private var textEditor: some View {
         // `scrollContentBackground(.hidden)` hides TextEditor's white
-        // scroll backdrop on macOS so the Form row colour shows through;
+        // scroll backdrop on macOS so the field chrome shows through;
         // no-op on iOS.
         TextEditor(text: $value.stringValue)
+            // TextEditor doesn't inherit the row's text style — pin it to
+            // body so it matches the single-line fields.
+            .font(.body)
             .scrollContentBackground(.hidden)
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
             .focused($isFocused)
             .onChange(of: isFocused) { _, focused in
                 if !focused { Task { await onCommit() } }
             }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 6)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
     }
 
     // MARK: - Number / boolean
@@ -339,24 +366,41 @@ struct PropertyEditor: View {
         let format: FloatingPointFormatStyle<Double> = .number
             .precision(.fractionLength(decimals))
             .locale(locale)
-        return TextField("", value: $value.numberValue, format: format)
-            .multilineTextAlignment(.leading)
-            .labelsHidden()
-            #if os(iOS)
-            // Whole-number fields hide the `.`/`,` key so users can't enter
-            // a decimal separator that the formatter would just strip.
-            .keyboardType(decimals == 0 ? .numberPad : .decimalPad)
-            #endif
-            .focused($isFocused)
-            .onChange(of: isFocused) { _, focused in
-                if !focused { Task { await onCommit() } }
+        return HStack(spacing: 8) {
+            TextField("", value: $value.numberValue, format: format)
+                .multilineTextAlignment(.leading)
+                .labelsHidden()
+                #if os(iOS)
+                // Whole-number fields hide the `.`/`,` key so users can't enter
+                // a decimal separator that the formatter would just strip.
+                .keyboardType(decimals == 0 ? .numberPad : .decimalPad)
+                #endif
+                .focused($isFocused)
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { Task { await onCommit() } }
+                }
+                .onSubmit { Task { await onCommit() } }
+                .editFieldChrome()
+                .frame(width: 100)
+
+            // −/+ next to the field, per the design. Commits when the
+            // press interaction ends, not per step.
+            Stepper("", value: Binding(
+                get: { value.numberValue ?? 0 },
+                set: { value.numberValue = $0 }
+            ), step: 1) { editing in
+                if !editing { Task { await onCommit() } }
             }
-            .onSubmit { Task { await onCommit() } }
+            .labelsHidden()
+
+            Spacer(minLength: 0)
+        }
     }
 
     private var booleanEditor: some View {
         Toggle("", isOn: $value.boolValue)
             .labelsHidden()
+            .tint(.green)
             .onChange(of: value.boolValue) { _, _ in
                 Task { await onCommit() }
             }
@@ -390,8 +434,12 @@ struct PropertyEditor: View {
                     value.dateValue = nil
                     Task { await onCommit() }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                    // Same × as the list rows' trailing delete.
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(4)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("removeValue")
@@ -414,37 +462,58 @@ struct PropertyEditor: View {
 
     // MARK: - Reference
 
-    @State private var showingPicker = false
+    @State private var pickerActive = false
 
-    /// `Button` + `.sheet` — `NavigationLink` would make the whole row
-    /// (including the label column) the tap target; the button confines
-    /// it to the value column.
+    /// Saved value → accent chip (tap to replace, × clears / deletes);
+    /// empty → dashed "+ Add" chip. Either opens the inline reference
+    /// picker in place, per the design.
+    @ViewBuilder
     private var referenceEditor: some View {
-        Button {
-            showingPicker = true
-        } label: {
-            HStack {
-                if let label = value.referenceLabel ?? value.referenceId {
-                    Text(verbatim: label)
-                        .foregroundStyle(.primary)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $showingPicker) {
-            NavigationStack {
-                ReferencePickerView(query: definition.query, subtitle: definition.label ?? definition.name) { id, label in
+        if pickerActive {
+            InlineReferencePicker(
+                query: definition.query,
+                onSelect: { id, label in
                     value.referenceId = id
                     value.referenceLabel = label
-                    showingPicker = false
+                    Task { await onCommit() }
+                },
+                onDismiss: { pickerActive = false }
+            )
+        } else if let referenceId = value.referenceId {
+            ReferenceChip(
+                entityId: referenceId,
+                name: value.referenceLabel,
+                action: { pickerActive = true },
+                onDelete: {
+                    // Clearing a saved value routes through the commit's
+                    // empty-value branch → DELETE /property/{id}.
+                    value.referenceId = nil
+                    value.referenceLabel = nil
                     Task { await onCommit() }
                 }
+            )
+        } else {
+            Button {
+                pickerActive = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus")
+                        .font(.caption2.weight(.medium))
+                    Text("selectReference")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .overlay {
+                    Capsule().strokeBorder(
+                        .quaternary,
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    )
+                }
+                .contentShape(Capsule())
             }
+            .buttonStyle(.plain)
         }
     }
 
@@ -467,7 +536,6 @@ struct PropertyEditor: View {
     private var counterEditor: some View {
         if value._id == nil {
             HStack(spacing: 12) {
-                Spacer(minLength: 0)
                 Button {
                     Task { await onCommit() }
                 } label: {
@@ -476,6 +544,8 @@ struct PropertyEditor: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+
+                Spacer(minLength: 0)
             }
         } else {
             TextField("", text: $value.stringValue)
@@ -486,6 +556,24 @@ struct PropertyEditor: View {
                     if !focused { Task { await onCommit() } }
                 }
                 .onSubmit { Task { await onCommit() } }
+                .editFieldChrome()
         }
+    }
+}
+
+/// The design's quiet filled input — plain field on a faint rounded fill.
+private struct EditFieldChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .textFieldStyle(.plain)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+extension View {
+    func editFieldChrome() -> some View {
+        modifier(EditFieldChrome())
     }
 }

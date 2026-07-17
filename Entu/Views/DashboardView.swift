@@ -58,7 +58,9 @@ struct DashboardView: View {
     private func content(_ stats: DatabaseStats) -> some View {
         GeometryReader { geo in
             ScrollView {
-                VStack(spacing: 26) {
+                // Canonical 44pt section gap between the header block and
+                // the tile grid.
+                VStack(spacing: 44) {
                     header(stats)
                     tiles(stats)
                 }

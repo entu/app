@@ -24,37 +24,17 @@ extension PropertyEditor {
         }
     }
 
+    /// Same accent chip as the detail view (`FileChip` — thumbnail + name +
+    /// size), plus the trailing ×; tap previews.
     @ViewBuilder
     var savedFileRow: some View {
-        HStack(spacing: 8) {
-            Button {
-                Task { await downloadAndPreview() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc")
-                        .foregroundStyle(.secondary)
-                    Text(verbatim: value.stringValue)
-                        .foregroundStyle(.tint)
-                    if let size = value.filesize {
-                        Text(size.fileSizeString)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Button(role: .destructive) {
-                showingDeleteFileConfirm = true
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("removeValue")
-        }
+        FileChip(
+            propertyId: value._id ?? "",
+            filename: value.stringValue,
+            filesize: value.filesize,
+            action: { Task { await downloadAndPreview() } },
+            onDelete: { showingDeleteFileConfirm = true }
+        )
         .quickLookPreview($previewURL)
         .confirmationDialog(
             Text("removeFileConfirmTitle \(value.stringValue)"),
@@ -129,7 +109,7 @@ extension PropertyEditor {
                 Label("chooseFromFiles", systemImage: "folder")
             }
         } label: {
-            Label(definition.list ? "uploadFiles" : "uploadFile", systemImage: "arrow.up.circle")
+            uploadChipLabel
         }
         .photosPicker(
             isPresented: $showingPickerChoice,
@@ -153,8 +133,9 @@ extension PropertyEditor {
         Button {
             showingFileImporter = true
         } label: {
-            Label(definition.list ? "uploadFiles" : "uploadFile", systemImage: "arrow.up.circle")
+            uploadChipLabel
         }
+        .buttonStyle(.plain)
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: [.item],
@@ -163,6 +144,26 @@ extension PropertyEditor {
             handleFileImporter(result)
         }
         #endif
+    }
+
+    /// Dashed upload chip, per the design.
+    var uploadChipLabel: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.up")
+                .font(.caption2.weight(.medium))
+            Text(definition.list ? "uploadFiles" : "uploadFile")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .overlay {
+            Capsule().strokeBorder(
+                .quaternary,
+                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+            )
+        }
+        .contentShape(Capsule())
     }
 
     /// Copy each picked URL into the app's temp dir so it survives the

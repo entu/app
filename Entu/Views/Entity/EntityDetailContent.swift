@@ -66,15 +66,19 @@ struct EntityDetailContent: View {
                     }
                     .padding(.leading, entity.hasPhoto ? coverSize + 20 : 0)
                     .padding(.top, 14)
+                    // 20 + the first group's 20 + its row's 4 = the
+                    // canonical 44pt section gap.
+                    .padding(.bottom, 20)
 
                     ForEach(groupedProperties) { group in
                         propertyGroupSection(group)
                     }
                     .padding(.top, 20)
 
-                    // Child entities
+                    // Child entities — 40 + the last row's 4pt padding =
+                    // the canonical 44pt section gap.
                     ChildEntitiesSection(entityId: entity._id, onNavigate: onNavigate)
-                        .padding(.top, 24)
+                        .padding(.top, 40)
                 }
                 .padding(.horizontal, edgePadding)
                 .padding(.bottom, 24)
@@ -259,7 +263,9 @@ struct EntityDetailContent: View {
     /// per property.
     private func propertyGroupSection(_ group: PropertyGroup) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Group header
+            // Group header. Together with the per-group 20pt from the
+            // ForEach in `body` and the previous row's 4pt padding this
+            // makes the canonical 44pt section gap.
             if let name = group.name {
                 Text(name)
                     .textCase(.uppercase)

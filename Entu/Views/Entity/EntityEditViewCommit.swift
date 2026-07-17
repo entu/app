@@ -55,6 +55,9 @@ extension EntityEditView {
             return
         }
 
+        isSaving = true
+        defer { isSaving = false }
+
         do {
             if currentEntityId == nil && !isEmpty && value._id == nil {
                 try await createEntity(propertyName: propertyName, value: value, definition: def)
@@ -71,6 +74,7 @@ extension EntityEditView {
                     values[propertyName] = rows
                 }
             }
+            hasSavedChanges = true
         } catch {
             commitError = error.localizedDescription
         }
@@ -139,6 +143,10 @@ extension EntityEditView {
 
         value.isUploading = true
         value.uploadProgress = -1
+        isSaving = true
+        defer {
+            isSaving = false
+        }
         defer {
             value.isUploading = false
             value.uploadProgress = -1
@@ -196,6 +204,7 @@ extension EntityEditView {
                 value.filesize = value.pendingFilesize
                 updateLocalEntityCache(propertyName: propertyName, propertyId: serverId, value: value, definition: def)
             }
+            hasSavedChanges = true
             if let entityId = currentEntityId { onSaved?(entityId) }
         } catch {
             commitError = error.localizedDescription
@@ -249,6 +258,8 @@ extension EntityEditView {
     // MARK: - Per-value delete (swipe / file row trash)
 
     func deleteValue(propertyName: String, value: EditableValue, propertyId: String) async {
+        isSaving = true
+        defer { isSaving = false }
         do {
             let _: DeleteResponse = try await api.delete("property/\(propertyId)")
             if var rows = values[propertyName] {
@@ -258,6 +269,7 @@ extension EntityEditView {
             if let def = definitions.first(where: { $0.name == propertyName }) {
                 manageEmptyFields(for: def)
             }
+            hasSavedChanges = true
         } catch {
             commitError = error.localizedDescription
         }
@@ -269,7 +281,7 @@ extension EntityEditView {
     /// tidy after every commit so the user can keep typing without
     /// pressing a "+" button each time.
     ///   non-list, non-multilingual : one empty row only when no values
-    ///   list                       : two empty rows trailing
+    ///   list                       : one empty row trailing
     ///   multilingual               : one empty row per language;
     ///                                non-list also drops the empty when
     ///                                a saved value exists for that language
@@ -301,7 +313,10 @@ extension EntityEditView {
             let untaggedSaved = rows.filter {
                 $0._id != nil && !Self.multilingualLanguages.contains($0.language ?? "")
             }
+            // Values first (per language), empty rows collected below them —
+            // a new empty row never sits above existing values.
             var rebuilt: [EditableValue] = []
+            var empties: [EditableValue] = []
             for lang in Self.multilingualLanguages {
                 var saved = rows.filter { $0._id != nil && $0.language == lang }
                 if lang == firstLang { saved.append(contentsOf: untaggedSaved) }
@@ -317,26 +332,19 @@ extension EntityEditView {
 
                 let needsEmpty = def.list ? true : saved.isEmpty
                 if needsEmpty {
-                    if let first = empty.first {
-                        rebuilt.append(first)
-                    } else {
-                        rebuilt.append(defaultRow(for: def, language: lang))
-                    }
+                    empties.append(empty.first ?? defaultRow(for: def, language: lang))
                 }
             }
-            values[def.name] = rebuilt
+            values[def.name] = rebuilt + empties
             return
         }
 
         if def.list {
-            let emptyTrailing = rows.suffix(while: { $0._id == nil && isEditableValueEmpty($0, definition: def) }).count
-            if emptyTrailing < 2 {
-                for _ in 0..<(2 - emptyTrailing) {
-                    rows.append(defaultRow(for: def))
-                }
-            } else if emptyTrailing > 2 {
-                rows.removeLast(emptyTrailing - 2)
-            }
+            // Values first, exactly one empty row below them — an empty
+            // row never sits above existing values.
+            let nonEmpty = rows.filter { $0._id != nil || !isEditableValueEmpty($0, definition: def) }
+            let empties = rows.filter { $0._id == nil && isEditableValueEmpty($0, definition: def) }
+            rows = nonEmpty + [empties.first ?? defaultRow(for: def)]
         } else {
             let saved = rows.filter { $0._id != nil }
             let trailingEmpty = rows.filter { $0._id == nil && isEditableValueEmpty($0, definition: def) }
@@ -367,16 +375,5 @@ extension EntityEditView {
         } catch {
             commitError = error.localizedDescription
         }
-    }
-}
-
-private extension Array {
-    /// Trailing run length where `predicate` is true.
-    func suffix(while predicate: (Element) -> Bool) -> [Element] {
-        var i = endIndex
-        while i > startIndex, predicate(self[i - 1]) {
-            i -= 1
-        }
-        return Array(self[i..<endIndex])
     }
 }

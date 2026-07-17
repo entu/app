@@ -81,6 +81,12 @@ struct EntityEditView: View {
     @State var commitError: String?
     @State private var showingDeleteConfirm = false
 
+    /// Autosave pill state — `isSaving` while a commit's API work is in
+    /// flight, `hasSavedChanges` once anything has committed (the pill
+    /// only appears after an actual save). Set by the commit extension.
+    @State var isSaving = false
+    @State var hasSavedChanges = false
+
     /// Serializes commits — two near-simultaneous blurs can't both fire
     /// `createEntity` or race on `currentEntityId` updates.
     @State var commitChain: Task<Void, Never>?
@@ -88,7 +94,12 @@ struct EntityEditView: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            SheetHeader(title: headerTitle, subtitle: headerSubtitle)
+            // Every field autosaves — the pill replaces a Save button.
+            SheetHeader(title: headerTitle, subtitle: headerSubtitle) {
+                if isSaving || hasSavedChanges {
+                    AutosavePill(isSaving: isSaving)
+                }
+            }
             #endif
             Group {
                 if isLoading {
@@ -279,33 +290,60 @@ struct EntityEditView: View {
     // MARK: - Form body
 
     /// Type description renders as plain markdown above the form (mirrors
-    /// webapp's `text-gray-500` paragraph). Form rows below use the system
-    /// grouped style for rounded sections per group.
+    /// webapp's `text-gray-500` paragraph). Rows sit flat on the window
+    /// background with uppercase group kickers, per the design.
     private var formBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let typeDescription, !typeDescription.isEmpty {
-                Text(markdown: typeDescription)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-            }
+        ScrollViewReader { proxy in
+            scrollableForm(proxy)
+        }
+    }
 
-            Form {
+    private func scrollableForm(_ proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                #if os(iOS)
+                // No in-content header on iOS (the nav bar carries the
+                // title), so the autosave pill sits above the form instead.
+                if isSaving || hasSavedChanges {
+                    HStack {
+                        Spacer()
+                        AutosavePill(isSaving: isSaving)
+                    }
+                    .padding(.bottom, 4)
+                }
+                #endif
+
+                if let typeDescription, !typeDescription.isEmpty {
+                    Text(markdown: typeDescription)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, 10)
+                }
+
                 ForEach(orderedGroups, id: \.id) { group in
-                    Section {
-                        ForEach(group.definitions, id: \._id) { def in
-                            propertyRows(for: def)
-                        }
-                    } header: {
-                        if let name = group.name {
-                            Text(verbatim: name)
-                        }
+                    // 37 + the previous row's 7pt padding = the canonical
+                    // 44pt section gap; 3 + 7 = the 10pt kicker→row.
+                    if let name = group.name {
+                        Text(verbatim: name)
+                            .textCase(.uppercase)
+                            .font(.caption.weight(.semibold))
+                            .kerning(0.8)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 37)
+                            .padding(.bottom, 3)
+                    }
+
+                    ForEach(group.definitions, id: \._id) { def in
+                        propertyRows(for: def, proxy: proxy)
                     }
                 }
             }
-            .formStyle(.grouped)
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(Color("WindowBackground"))
     }
 
     /// Visible only in edit mode + owner rights.
@@ -320,10 +358,10 @@ struct EntityEditView: View {
     }
 
     /// Render every editable row for a single property definition. List
-    /// properties keep two trailing empty rows automatically (managed by
+    /// properties keep one trailing empty row automatically (managed by
     /// `manageEmptyFields`), so there's no explicit "Add value" button.
     @ViewBuilder
-    private func propertyRows(for def: PropertyDefinition) -> some View {
+    private func propertyRows(for def: PropertyDefinition, proxy: ScrollViewProxy) -> some View {
         let rows = values[def.name] ?? []
         let isFirstFocusable = def._id == firstFocusableDefinitionId
 
@@ -331,9 +369,26 @@ struct EntityEditView: View {
             PropertyEditor(
                 definition: def,
                 value: row,
-                showsLabel: !(def.list || def.multilingual) || index == 0,
+                // Label only on the property's first row — regardless of
+                // type: legacy data can hold several values even when the
+                // definition isn't flagged `list`.
+                showsLabel: index == 0,
                 valueCount: rows.filter { $0._id != nil }.count,
+                // Files and references carry their own × on the chip;
+                // other list-type rows get the row's trailing ×
+                // (the ScrollView layout has no swipe actions).
+                showsRowDelete: def.list && def.type != "file" && def.type != "reference" && row._id != nil,
+                isContinuationRow: index > 0,
                 onCommit: { await commit(propertyName: def.name, value: row) },
+                // Tabbing through a long form keeps the active row visible.
+                onFocused: {
+                    withAnimation { proxy.scrollTo(row.id, anchor: nil) }
+                },
+                // List properties grow their trailing empty row as soon as
+                // typing starts — not only after the value commits.
+                onValueEdited: {
+                    if def.list { manageEmptyFields(for: def) }
+                },
                 onFilesPicked: { picks in handleFilesPicked(propertyName: def.name, hostRow: row, picks: picks) },
                 onDelete: {
                     if let _id = row._id {
@@ -342,17 +397,7 @@ struct EntityEditView: View {
                 },
                 autoFocusOnAppear: isFirstFocusable && index == 0
             )
-            .swipeActions {
-                // Files use the inline trash button on `savedFileRow`; only
-                // list-type non-file rows still need the swipe affordance.
-                if def.list, def.type != "file", let _id = row._id {
-                    Button(role: .destructive) {
-                        Task { await deleteValue(propertyName: def.name, value: row, propertyId: _id) }
-                    } label: {
-                        Label("removeValue", systemImage: "trash")
-                    }
-                }
-            }
+            .id(row.id)
         }
     }
 

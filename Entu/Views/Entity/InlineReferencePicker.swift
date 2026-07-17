@@ -32,6 +32,15 @@ struct InlineReferencePicker: View {
     @State private var debounceTask: Task<Void, Never>?
     @FocusState private var focused: Bool
 
+    #if os(macOS)
+    /// Click-outside detection — macOS clicks on non-focusable controls
+    /// (toggles, chips, empty sheet area) don't move keyboard focus, so
+    /// the blur-based collapse alone would leave the panel open. A local
+    /// event monitor closes the picker on any click outside its frame.
+    @State private var clickMonitor: Any?
+    @State private var pickerFrame: CGRect = .zero
+    #endif
+
     private static let pageLimit = 100
 
     /// One dropdown row.
@@ -50,7 +59,48 @@ struct InlineReferencePicker: View {
         }
         .task { await runSearch() }
         .onAppear { focused = true }
+        #if os(macOS)
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .global)
+        } action: { pickerFrame = $0 }
+        .onAppear { installClickMonitor() }
+        .onDisappear { removeClickMonitor() }
+        #endif
     }
+
+    #if os(macOS)
+    private func installClickMonitor() {
+        guard clickMonitor == nil else { return }
+
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+            handleGlobalClick(event)
+            return event
+        }
+    }
+
+    private func removeClickMonitor() {
+        if let clickMonitor {
+            NSEvent.removeMonitor(clickMonitor)
+        }
+        clickMonitor = nil
+    }
+
+    /// Close when a click lands outside the picker. SwiftUI's `.global`
+    /// frame is top-left-origin within the window's content view; AppKit
+    /// event locations are bottom-left-origin — flip before comparing.
+    private func handleGlobalClick(_ event: NSEvent) {
+        guard let contentView = event.window?.contentView else { return }
+
+        let point = contentView.convert(event.locationInWindow, from: nil)
+        let flipped = CGPoint(
+            x: point.x,
+            y: contentView.isFlipped ? point.y : contentView.bounds.height - point.y
+        )
+        if !pickerFrame.insetBy(dx: -4, dy: -4).contains(flipped) {
+            onDismiss()
+        }
+    }
+    #endif
 
     // MARK: - Field
 

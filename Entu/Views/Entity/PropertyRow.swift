@@ -15,16 +15,7 @@ struct PropertyRow: View {
     /// Called when user taps a reference — navigates to that entity.
     var onNavigate: ((String) -> Void)?
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var previewURL: URL?
-
-    /// Stack label above value on iPhone — and at accessibility Dynamic
-    /// Type sizes on every platform, where the trailing-aligned label
-    /// column would clip the scaled-up label.
-    private var isCompact: Bool {
-        sizeClass == .compact || dynamicTypeSize.isAccessibilitySize
-    }
 
     /// Filter multilingual values to the user's preferred language.
     /// Priority matches `PropertyValue.best`: in-app language → no language
@@ -46,35 +37,13 @@ struct PropertyRow: View {
 
     var body: some View {
         if isVisible {
-            Group {
-                if isCompact {
-                    // iPhone: label above value, full width
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(definition.displayLabel(valueCount: displayValues.count))
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(displayValues.enumerated()), id: \.offset) { _, value in
-                                renderValue(value)
-                            }
-                        }
-                    }
-                } else {
-                    // macOS/iPad: label left, value right
-                    HStack(alignment: .top, spacing: 16) {
-                        Text(definition.displayLabel(valueCount: displayValues.count))
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                            .frame(minWidth: 80, idealWidth: 140, alignment: .trailing)
-                            .fixedSize(horizontal: true, vertical: false)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(displayValues.enumerated()), id: \.offset) { _, value in
-                                renderValue(value)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            LabeledRow(alignment: .top) {
+                Text(definition.displayLabel(valueCount: displayValues.count))
+                    .font(.subheadline)
+            } content: {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(displayValues.enumerated()), id: \.offset) { _, value in
+                        renderValue(value)
                     }
                 }
             }
@@ -193,12 +162,12 @@ struct PropertyRow: View {
 
     // MARK: - Reference
 
-    /// Tappable link that navigates to the referenced entity via `onNavigate`.
+    /// Reference chip (same pill as the edit sheet, sans ×) — navigates to
+    /// the referenced entity via `onNavigate`.
     private func referenceButton(id: String, name: String?) -> some View {
-        Button { onNavigate?(id) } label: {
-            Text(name ?? id).foregroundStyle(.tint)
+        ReferenceChip(entityId: id, name: name) {
+            onNavigate?(id)
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Auth provider
@@ -242,53 +211,136 @@ struct PropertyRow: View {
     }
 }
 
+// MARK: - Reference chip
+
+/// Entity-tinted reference pill — circular thumbnail (letter tile until /
+/// unless the entity has a photo) + name on the entity's identity color.
+/// Shared between the detail view (tap navigates) and the edit sheet
+/// (tap replaces, `onDelete` renders the trailing ×). The avatar also
+/// seeds the color cache from the thumbnail, so the pill adopts the
+/// cover's dominant color once loaded.
+/// Chip metrics — compact pointer chips on macOS, taller touch chips on
+/// iPad/iPhone. Shared by `ReferenceChip` and `FileChip`.
+enum ValueChipMetrics {
+    #if os(macOS)
+    static let contentHeight: CGFloat = 16
+    static let font = Font.caption
+    static let deleteFont = Font.caption2
+    #else
+    static let contentHeight: CGFloat = 24
+    static let font = Font.subheadline
+    static let deleteFont = Font.caption
+    #endif
+}
+
+struct ReferenceChip: View {
+    let entityId: String
+    let name: String?
+    let action: () -> Void
+    var onDelete: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: action) {
+                HStack(spacing: 6) {
+                    EntityAvatar(name: name ?? "", entityId: entityId, hasPhoto: true, size: ValueChipMetrics.contentHeight)
+                        .clipShape(Circle())
+
+                    Text(verbatim: name ?? entityId)
+                        .lineLimit(1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "xmark")
+                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
+                        .opacity(0.6)
+                        .padding(2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("removeValue")
+            }
+        }
+        .font(ValueChipMetrics.font)
+        .fontWeight(.medium)
+        .foregroundStyle(Color.entityTintText(for: entityId))
+        // Pin to the avatar's height so the capsule inset stays uniform.
+        .frame(height: ValueChipMetrics.contentHeight)
+        .padding(2)
+        .padding(.trailing, 6)
+        .background(Color.entityTintFill(for: entityId), in: Capsule())
+    }
+}
+
 // MARK: - File chip
 
 /// Accent file chip — "name · size" pill per the design, with a circular
 /// thumbnail for previewable files (images, PDFs), mirroring the webapp.
-private struct FileChip: View {
+/// Shared between the detail view and the edit sheet (which passes
+/// `onDelete` to get the trailing ×).
+struct FileChip: View {
     @Environment(APIClient.self) private var api
 
     let propertyId: String
     let filename: String?
     let filesize: Int?
     let action: () -> Void
+    var onDelete: (() -> Void)?
 
     @State private var thumbnail: Image?
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let thumbnail {
-                    thumbnail
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 16, height: 16)
-                        .clipShape(Circle())
-                }
-
-                Group {
-                    if let filesize {
-                        Text(verbatim: "\(filename ?? propertyId) · \(filesize.fileSizeString)")
-                    } else {
-                        Text(verbatim: filename ?? propertyId)
+        HStack(spacing: 6) {
+            Button(action: action) {
+                HStack(spacing: 6) {
+                    if let thumbnail {
+                        thumbnail
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: ValueChipMetrics.contentHeight, height: ValueChipMetrics.contentHeight)
+                            .clipShape(Circle())
                     }
+
+                    Group {
+                        if let filesize {
+                            Text(verbatim: "\(filename ?? propertyId) · \(filesize.fileSizeString)")
+                        } else {
+                            Text(verbatim: filename ?? propertyId)
+                        }
+                    }
+                    .lineLimit(1)
                 }
+                .contentShape(Rectangle())
             }
-            .font(.caption)
-            .fontWeight(.medium)
-            .foregroundStyle(.tint)
-            // Pin the content row to the thumbnail's height so the uniform
-            // inset is truly uniform — the text's own line height would
-            // otherwise stretch the capsule and unbalance top/bottom vs left.
-            .frame(height: 16)
-            .padding(2)
-            .padding(.leading, thumbnail == nil ? 6 : 0)
-            .padding(.trailing, 6)
-            .background(Color.accentColor.opacity(0.1), in: Capsule())
-            .contentShape(Capsule())
+            .buttonStyle(.plain)
+
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "xmark")
+                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
+                        .opacity(0.6)
+                        .padding(2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("removeValue")
+            }
         }
-        .buttonStyle(.plain)
+        .font(ValueChipMetrics.font)
+        .fontWeight(.medium)
+        .foregroundStyle(.tint)
+        // Pin the content row to the thumbnail's height so the uniform
+        // inset is truly uniform — the text's own line height would
+        // otherwise stretch the capsule and unbalance top/bottom vs left.
+        .frame(height: ValueChipMetrics.contentHeight)
+        .padding(2)
+        .padding(.leading, thumbnail == nil ? 6 : 0)
+        .padding(.trailing, 6)
+        .background(Color.accentColor.opacity(0.1), in: Capsule())
         .task(id: propertyId) {
             // Non-previewable files simply return no URL — chip stays text-only.
             guard let url = await api.propertyThumbnailURL(propertyId: propertyId, size: 50) else { return }

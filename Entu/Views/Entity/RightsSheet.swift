@@ -260,7 +260,7 @@ struct RightsSheet: View {
                     Task { await updateInheritRights(to: new) }
                 }
         }
-        .padding(.top, 72)
+        .padding(.top, 38)
         .padding(.bottom, 2)
 
         if inheritRights {
@@ -284,7 +284,7 @@ struct RightsSheet: View {
     @ViewBuilder
     private var entityRightsSection: some View {
         sectionKicker("userRightsEntity")
-            .padding(.top, 72)
+            .padding(.top, 38)
             .padding(.bottom, 2)
 
         ForEach(Array(entityRights.enumerated()), id: \.element.id) { index, user in
