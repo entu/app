@@ -33,12 +33,29 @@ struct EntityListView: View {
     /// `EntityToolbarHost`'s `onListChanged`.
     var refreshToken: Int = 0
 
-    /// Window-space x-origin of this column (macOS). When the sidebar is
-    /// collapsed the list becomes the leftmost column and the window
-    /// controls + sidebar toggle sit over it — the header's count then
-    /// shifts right to clear them. Measured instead of derived from the
-    /// split view's visibility so it can't go stale.
+    /// Window-space x-origin of this column. When the sidebar is collapsed
+    /// the list becomes the leftmost column — on macOS the window controls
+    /// + sidebar toggle then sit over it and the header shifts right to
+    /// clear them; on all platforms it means the sidebar isn't there to
+    /// show which menu is active, so the menu label becomes the title.
+    /// Measured instead of derived from the split view's visibility so it
+    /// can't go stale.
     @State private var columnOriginX: CGFloat = .infinity
+
+    /// The active menu's label — nil while the list shows a global search
+    /// result rather than a menu.
+    private var menuLabel: String? {
+        guard let menuId else { return nil }
+
+        return menu.groups.flatMap(\.items).first { $0._id == menuId }?.name
+    }
+
+    /// Menu label as title with the count demoted to subtitle — only when
+    /// the collapsed sidebar can't show which menu is active, and advanced
+    /// search isn't narrowing the rows beyond the menu's own query.
+    private var showsMenuTitle: Bool {
+        search.advancedQuery == nil && columnOriginX < 50 && menuLabel != nil
+    }
 
     /// Opens the advanced-search sheet (owned by `MainView`) — wired to the
     /// round button in the list header on all platforms.
@@ -81,13 +98,29 @@ struct EntityListView: View {
             // the window (drag region), so nothing interactive lives here —
             // the advanced-search button is a real toolbar item instead.
             HStack {
-                countTitle
+                if showsMenuTitle, let menuLabel {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: menuLabel)
+                            .font(.headline)
+                            .lineLimit(1)
+
+                        Text("entityCount \(totalCount)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .opacity(isLoading && items.isEmpty ? 0 : 1)
+                    }
+                } else {
+                    countTitle
+                }
                 Spacer()
             }
             .padding(.leading, columnOriginX < 50 ? 150 : 16)
             .padding(.trailing, 16)
-            .padding(.top, 22)
-            .padding(.bottom, 12)
+            // The strip matches the window-toolbar height, content centered
+            // vertically — both the single-line count and the stacked
+            // title+count sit on the toolbar's optical line.
+            .frame(height: 52)
             // Bar material behind the title — rows scrolling up would
             // otherwise show through it.
             .background(.bar)
@@ -96,11 +129,11 @@ struct EntityListView: View {
 
             listRows
         }
-        #if os(macOS)
-        .ignoresSafeArea(edges: .top)
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).minX
         } action: { columnOriginX = $0 }
+        #if os(macOS)
+        .ignoresSafeArea(edges: .top)
         .toolbar {
             if auth.currentUserId != nil, let onOpenAdvancedSearch {
                 ToolbarItem(placement: .primaryAction) {
@@ -113,10 +146,12 @@ struct EntityListView: View {
             }
         }
         #else
-        // iOS: the count is the (inline) navigation title and the
-        // advanced-search opener is a nav-bar item — an in-column header
-        // under the nav bar would leave a double strip of empty space.
-        .navigationTitle(Text("entityCount \(totalCount)"))
+        // iOS: inline navigation title — an in-column header under the nav
+        // bar would leave a double strip of empty space. Menu label + count
+        // subtitle when the sidebar is hidden (see `showsMenuTitle`), the
+        // bare count otherwise.
+        .navigationTitle(showsMenuTitle ? Text(verbatim: menuLabel ?? "") : Text("entityCount \(totalCount)"))
+        .navigationSubtitle(showsMenuTitle ? Text("entityCount \(totalCount)") : Text(verbatim: ""))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // iPhone bottom bar, Mail/Notes-style: filter · search · New.
