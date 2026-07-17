@@ -73,6 +73,25 @@ struct ChildEntitiesSection: View {
                     .cardSurface()
                     // Fresh table state (columns, sort) per group.
                     .id(group.id)
+                    // Horizontal swipe pages the table (touch counterpart
+                    // of the ‹ › pager). Fires once on release; the
+                    // dominant-axis check keeps vertical scrolling free.
+                    .gesture(
+                        DragGesture(minimumDistance: 30)
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+
+                                withAnimation(.snappy(duration: 0.25)) {
+                                    if dx < 0, page < totalPages {
+                                        page += 1
+                                    } else if dx > 0, page > 1 {
+                                        page -= 1
+                                    }
+                                }
+                            }
+                    )
                 }
             }
         }
