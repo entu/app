@@ -332,6 +332,12 @@ struct EntityListView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        // Right-click (macOS) / long-press (iPad, iPhone) — the entity
+        // actions, mirroring the toolbar. The action selects the row and
+        // runs once the detail has loaded, with the same rights gating.
+        .entityRowContextMenu(entityId: item._id) {
+            selectedEntityId = item._id
+        }
     }
 
     /// Move the selection by `delta` rows and keep it visible.

@@ -163,9 +163,13 @@ struct PropertyRow: View {
     // MARK: - Reference
 
     /// Reference chip (same pill as the edit sheet, sans ×) — navigates to
-    /// the referenced entity via `onNavigate`.
+    /// the referenced entity via `onNavigate`. Carries the same entity-
+    /// actions context menu as list and child-table rows.
     private func referenceButton(id: String, name: String?) -> some View {
         ReferenceChip(entityId: id, name: name) {
+            onNavigate?(id)
+        }
+        .entityRowContextMenu(entityId: id) {
             onNavigate?(id)
         }
     }

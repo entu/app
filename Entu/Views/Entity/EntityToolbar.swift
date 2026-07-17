@@ -486,7 +486,15 @@ private struct EntityToolbarHost: ViewModifier {
             // A plugin redirect to `entu.app/{db}/{id}#edit` opens the entity
             // in edit mode (webapp parity). The deep link already navigated
             // here; when this entity appears, honor the pending edit request.
-            .onAppear { openPendingEditIfNeeded() }
+            // Row context menus use the same channel: they select the row
+            // and stash the requested action for when the entity is loaded.
+            .onAppear {
+                openPendingEditIfNeeded()
+                openPendingRowActionIfNeeded()
+            }
+            .onChange(of: router.pendingRowAction) {
+                openPendingRowActionIfNeeded()
+            }
     }
 
     /// The current entity's rights-gated action set for the `Entity` menu.
@@ -528,6 +536,28 @@ private struct EntityToolbarHost: ViewModifier {
             } else {
                 showAddChildPicker = true
             }
+        }
+    }
+
+    /// Consume a context-menu action once its entity is the loaded detail —
+    /// same rights gating as the toolbar buttons; lacking the right, the
+    /// action is dropped silently (the row stays selected).
+    private func openPendingRowActionIfNeeded() {
+        guard let pending = router.pendingRowAction, pending.entityId == entity._id else { return }
+
+        router.pendingRowAction = nil
+        let rights = entity.rights(for: auth.currentUserId)
+        switch pending.kind {
+        case .edit:
+            if rights.editor { editMode = .edit(entityId: entity._id) }
+        case .duplicate:
+            if rights.owner { showingDuplicate = true }
+        case .parents:
+            if rights.editor { showingParents = true }
+        case .rights:
+            if rights.owner { showingRights = true }
+        case .history:
+            if rights.editor { showingHistory = true }
         }
     }
 

@@ -91,6 +91,12 @@ struct EntityTable: View {
                 .padding(.vertical, rowVerticalPadding)
                 .contentShape(Rectangle())
                 .onTapGesture { onNavigate?(entity._id) }
+                // Same entity-actions context menu as the list rows —
+                // navigates to the child, then runs the action once its
+                // detail is loaded (rights-gated there).
+                .entityRowContextMenu(entityId: entity._id) {
+                    onNavigate?(entity._id)
+                }
 
                 // Hairline between rows, none after the last.
                 if entity.id != entities.last?.id {

@@ -27,6 +27,21 @@ final class DeepLinkRouter {
     /// so it survives until the detail view can act on it.
     var pendingEditEntityId: String?
 
+    /// Entity action requested from a list row's context menu. The row
+    /// selects its entity and stashes this; `EntityToolbarHost` consumes it
+    /// once that entity's detail is loaded, applying the same rights gating
+    /// as the toolbar buttons.
+    struct PendingRowAction: Equatable {
+        enum Kind {
+            case edit, duplicate, parents, rights, history
+        }
+
+        let entityId: String
+        let kind: Kind
+    }
+
+    var pendingRowAction: PendingRowAction?
+
     /// Parse `url` and stash any matching deep-link state.
     /// Returns `true` when the URL was consumed (entu.app entity/database link),
     /// `false` when the caller should fall through (auth callback, foreign host, etc).
@@ -71,6 +86,7 @@ final class DeepLinkRouter {
         pendingDatabaseId = nil
         pendingEntityId = nil
         pendingQuery = [:]
+        pendingRowAction = nil
     }
 
     private func isObjectId(_ s: String) -> Bool {
