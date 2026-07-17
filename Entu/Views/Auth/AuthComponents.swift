@@ -39,8 +39,8 @@ struct BrowsePublicDatabaseButton: View {
                     ProgressView()
                         .controlSize(.small)
                 }
+                // Body size — same as the passkey and provider labels.
                 Text("browsePublicDatabase")
-                    .font(.subheadline)
                     .fontWeight(.medium)
             }
             // Explicit accent — macOS borderless buttons render the label

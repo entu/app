@@ -44,7 +44,9 @@ struct EntityDetailContent: View {
 
     private var coverSize: CGFloat { isCompact ? 96 : 128 }
     private var edgePadding: CGFloat { isCompact ? 16 : 28 }
-    private var bandHeight: CGFloat { isCompact ? 140 : 172 }
+    // Compact includes the status bar + nav bar the band runs behind —
+    // the title/cover must clear the toolbar buttons.
+    private var bandHeight: CGFloat { isCompact ? 210 : 172 }
     /// How far the cover hangs below the header band.
     private var coverOverlap: CGFloat { coverSize / 3 }
     /// Leading inset of the title/chips block — clears the cover.
@@ -115,28 +117,30 @@ struct EntityDetailContent: View {
 
     // MARK: - Header band
 
+    /// Clearance above the title so a wrapped (two-line) title can't grow
+    /// up into the toolbar the band runs behind — the band stretches taller
+    /// instead (content-driven height with `bandHeight` as the minimum).
+    private var bandTopClearance: CGFloat { isCompact ? 112 : 64 }
+
     private var headerBand: some View {
-        ZStack(alignment: .bottomLeading) {
-            Rectangle()
-                .fill(headerGradient)
-                .frame(maxWidth: .infinity)
-                .frame(height: bandHeight)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(entity.displayName)
+                .font(.title)
+                .fontWeight(.bold)
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.2), radius: 4, y: 1)
+                .lineLimit(2)
+                .textSelection(.enabled)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(entity.displayName)
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.2), radius: 4, y: 1)
-                    .lineLimit(2)
-                    .textSelection(.enabled)
-
-                badgeChips
-            }
-            .padding(.leading, titleLeading)
-            .padding(.trailing, edgePadding)
-            .padding(.bottom, 14)
-
+            badgeChips
+        }
+        .padding(.leading, titleLeading)
+        .padding(.trailing, edgePadding)
+        .padding(.top, bandTopClearance)
+        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, minHeight: bandHeight, alignment: .bottomLeading)
+        .background(headerGradient)
+        .overlay(alignment: .bottomLeading) {
             if entity.hasPhoto {
                 cover
                     .padding(.leading, edgePadding)
@@ -251,6 +255,7 @@ struct EntityDetailContent: View {
         Label(key, systemImage: systemImage)
             .font(.caption)
             .fontWeight(.medium)
+            .lineLimit(1)
             .foregroundStyle(textColor)
             .padding(.horizontal, 11)
             .padding(.vertical, 4)

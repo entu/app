@@ -17,6 +17,9 @@ import SwiftUI
 struct SearchSheet: View {
     @Environment(APIClient.self) private var api
     @Environment(\.dismiss) private var dismiss
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     /// Currently-applied query pairs (advanced or menu query), used to
     /// pre-populate the form — webapp's route-query watch equivalent.
@@ -180,7 +183,7 @@ struct SearchSheet: View {
                     SearchFilterRow(filter: $filter, model: model) { [id = filter.id] in
                         model.filters.removeAll { $0.id == id }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, filterRowPadding)
                 }
 
                 addFilterChip(model)
@@ -280,6 +283,16 @@ struct SearchSheet: View {
     /// the property sheets.
     private static let labelWidth: CGFloat = 110
 
+    /// Vertical padding per filter row — iPhone's stacked rows need more
+    /// separation than the single-line rows on macOS/iPad.
+    private var filterRowPadding: CGFloat {
+        #if os(iOS)
+        horizontalSizeClass == .compact ? 12 : 4
+        #else
+        4
+        #endif
+    }
+
     /// Dashed "+ Add filter" chip.
     private func addFilterChip(_ model: AdvancedSearchModel) -> some View {
         Button {
@@ -335,9 +348,10 @@ private struct SearchFilterRow: View {
 
     var body: some View {
         if isCompact {
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     fieldControl
+                        .lineLimit(1)
                     Spacer(minLength: 8)
                     removeButton
                 }

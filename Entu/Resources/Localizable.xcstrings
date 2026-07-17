@@ -1855,6 +1855,23 @@
         }
       }
     },
+    "menu" : {
+      "comment" : "iPhone stats view: sidebar toggle accessibility label.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menu"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menüü"
+          }
+        }
+      }
+    },
     "menuAddChild %@" : {
       "comment" : "File menu: add a child entity of the given type. Menu bar follows the system language.",
       "localizations" : {

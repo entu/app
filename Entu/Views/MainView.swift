@@ -94,6 +94,12 @@ struct MainView: View {
         Binding(
             get: { session.selectedMenuId },
             set: { newValue in
+                // The sidebar's List re-asserts the current selection when
+                // the sidebar (re)appears — a no-op write must not clear
+                // search/navigation or slam the compact column shut (it
+                // made the iPhone sidebar toggle look dead).
+                guard newValue != session.selectedMenuId else { return }
+
                 search.text = ""
                 search.advancedQuery = nil
                 session.selectedEntityId = nil
@@ -102,6 +108,16 @@ struct MainView: View {
                     session.pinnedEntityId = nil
                 }
                 session.selectedMenuId = newValue
+
+                #if os(iOS)
+                // iPhone: close the sidebar on selection. In landscape
+                // (regular width) it overlays the list and would stay
+                // floating on top; iPad keeps its persistent sidebar.
+                if newValue != nil, UIDevice.current.userInterfaceIdiom == .phone {
+                    columnVisibility = .doubleColumn
+                    preferredColumn = .content
+                }
+                #endif
             }
         )
     }
@@ -271,6 +287,9 @@ struct MainView: View {
     /// rebuilds this whole view tree.
     private func hardReset() {
         auth.clearLocalData()
+        // Land on the dashboard — on iPhone the sidebar may be the shown
+        // compact column, so switch back to detail explicitly.
+        preferredColumn = .detail
         Task { await menu?.load() }
     }
 
@@ -296,8 +315,15 @@ struct MainView: View {
                 search.text = snapshot.searchText
                 search.advancedQuery = snapshot.advancedQuery
                 chat.isOpen = snapshot.chatOpen
+                // Compact (iPhone) shows exactly one column — pick the one
+                // matching the restored state: open entity → detail; a menu
+                // or search without an entity → the list (the three-column
+                // layout's detail is a blank placeholder until a row is
+                // picked); otherwise the dashboard (detail of two-column).
                 if snapshot.entityId != nil || !snapshot.history.isEmpty || snapshot.pinnedId != nil {
                     preferredColumn = .detail
+                } else if snapshot.menuId != nil || !snapshot.searchText.isEmpty || snapshot.advancedQuery != nil {
+                    preferredColumn = .content
                 }
             } else {
                 session.clearNavigation()
@@ -417,11 +443,7 @@ struct MainView: View {
     private func twoColumnView(menu: MenuModel) -> some View {
         @Bindable var session = session
         return NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
-            SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
-                .environment(menu)
-                .frame(minWidth: sidebarMinWidth)
-                .navigationSplitViewColumnWidth(min: ColumnMetrics.sidebarMin, ideal: max(sidebarWidth, ColumnMetrics.sidebarMin))
-                .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
+            sidebarColumn(menu: menu)
         } detail: {
             if let pinnedEntityId = session.pinnedEntityId {
                 let shownId = session.entityHistory.last ?? pinnedEntityId
@@ -436,9 +458,68 @@ struct MainView: View {
                 .entityHistoryBack($session.entityHistory)
             } else {
                 DashboardView()
+                    #if os(iOS)
+                    // iPhone: the split view collapses to a stack and would
+                    // show a back chevron to the sidebar — replace it with
+                    // a sidebar toggle so the stats view reads as the root.
+                    .navigationBarBackButtonHidden(hSizeClass == .compact)
+                    .toolbar {
+                        if hSizeClass == .compact {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button {
+                                    preferredColumn = .sidebar
+                                } label: {
+                                    Label("menu", systemImage: "sidebar.left")
+                                }
+                            }
+                        }
+                    }
+                    #endif
             }
         }
         .environment(menu)
+    }
+
+    /// Sidebar toggle for a *pushed* compact column — pops the navigation
+    /// stack (same as the hidden back button would) and also updates the
+    /// preferred column so the split view's state stays in sync.
+    private struct CompactSidebarToggle: View {
+        @Environment(\.dismiss) private var dismiss
+
+        let setPreferred: () -> Void
+
+        var body: some View {
+            Button {
+                setPreferred()
+                dismiss()
+            } label: {
+                Label("menu", systemImage: "sidebar.left")
+            }
+        }
+    }
+
+    /// Shared sidebar column for both split layouts. On iPhone it carries
+    /// a toggle back to the detail column (stats), mirroring the
+    /// dashboard's own sidebar toggle.
+    private func sidebarColumn(menu: MenuModel) -> some View {
+        SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
+            .environment(menu)
+            .frame(minWidth: sidebarMinWidth)
+            .navigationSplitViewColumnWidth(min: ColumnMetrics.sidebarMin, ideal: max(sidebarWidth, ColumnMetrics.sidebarMin))
+            .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
+            #if os(iOS)
+            .toolbar {
+                if hSizeClass == .compact {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            preferredColumn = .detail
+                        } label: {
+                            Label("menu", systemImage: "sidebar.left")
+                        }
+                    }
+                }
+            }
+            #endif
     }
 
     // MARK: - Three-column: sidebar + entity list + detail (menu selected or search active)
@@ -446,11 +527,7 @@ struct MainView: View {
     private func threeColumnView(menu: MenuModel) -> some View {
         @Bindable var session = session
         return NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
-            SidebarView(selectedMenuId: menuSelection, openPinnedEntity: openPinnedEntity)
-                .environment(menu)
-                .frame(minWidth: sidebarMinWidth)
-                .navigationSplitViewColumnWidth(min: ColumnMetrics.sidebarMin, ideal: max(sidebarWidth, ColumnMetrics.sidebarMin))
-                .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != sidebarWidth { sidebarWidth = $0 } }
+            sidebarColumn(menu: menu)
         } content: {
             EntityListView(
                 query: activeQuery,
@@ -462,6 +539,23 @@ struct MainView: View {
                 .frame(minWidth: listMinWidth)
                 .navigationSplitViewColumnWidth(min: ColumnMetrics.listMin, ideal: max(contentWidth, ColumnMetrics.listMin))
                 .onGeometryChange(for: Double.self) { $0.size.width.rounded() } action: { if $0 != contentWidth { contentWidth = $0 } }
+                #if os(iOS)
+                // iPhone portrait: the compact stack would show a back
+                // chevron to the sidebar — use the sidebar toggle instead,
+                // same as the dashboard. The list is a pushed stack entry
+                // here, so the toggle pops it (`dismiss`) — flipping
+                // `preferredColumn` alone doesn't pop a pushed column.
+                .navigationBarBackButtonHidden(hSizeClass == .compact)
+                .toolbar {
+                    if hSizeClass == .compact {
+                        ToolbarItem(placement: .topBarLeading) {
+                            CompactSidebarToggle {
+                                preferredColumn = .sidebar
+                            }
+                        }
+                    }
+                }
+                #endif
         } detail: {
             if let currentEntityId {
                 EntityDetailView(

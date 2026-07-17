@@ -41,8 +41,6 @@ struct DatabaseListView: View {
             }
             .frame(maxWidth: 320)
             .padding(.horizontal, 32)
-            .padding(.bottom, 8)
-
             // MARK: - Database cards + sign out / browse public
 
             ScrollView {
@@ -98,11 +96,15 @@ struct DatabaseListView: View {
                             showingPublicEntry = true
                         }
                     }
-                    .padding(.top, 8)
+                    // 34 + the stack's 10pt gap = the canonical 44pt
+                    // section gap under the database cards.
+                    .padding(.top, 34)
                 }
                 .frame(maxWidth: 360)
                 .padding(.horizontal, 32)
-                .padding(.vertical, 24)
+                // Canonical 44pt section gap below the title block.
+                .padding(.top, 44)
+                .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
             }
             .scrollFadeMask()

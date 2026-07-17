@@ -573,6 +573,20 @@ private struct RightRow: View {
 
     @State private var selection: String
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    /// iPhone — the five-segment track with an expanded label doesn't fit
+    /// the narrow row; the active level shows its icon only.
+    private var showsActiveLabel: Bool {
+        #if os(iOS)
+        horizontalSizeClass != .compact
+        #else
+        true
+        #endif
+    }
+
     /// Segment frames in the track's coordinate space — lets a drag across
     /// the pill slide the selection (not just taps), like the child-type
     /// segmented control.
@@ -670,7 +684,7 @@ private struct RightRow: View {
                             .font(.footnote)
                             .foregroundStyle(isActive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
 
-                        if isActive {
+                        if isActive && showsActiveLabel {
                             Text(nameKey(for: type))
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
@@ -680,8 +694,8 @@ private struct RightRow: View {
                                 .transition(.opacity)
                         }
                     }
-                    .frame(minWidth: isActive ? nil : Self.segmentSize, minHeight: Self.segmentHeight)
-                    .padding(.horizontal, isActive ? 11 : 0)
+                    .frame(minWidth: isActive && showsActiveLabel ? nil : Self.segmentSize, minHeight: Self.segmentHeight)
+                    .padding(.horizontal, isActive && showsActiveLabel ? 11 : 0)
                     .background {
                         if isActive {
                             Capsule()

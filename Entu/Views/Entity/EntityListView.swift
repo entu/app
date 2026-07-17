@@ -10,6 +10,9 @@ struct EntityListView: View {
     @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
     @Environment(MenuModel.self) private var menu
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     let query: String
 
     /// ID of the currently-selected menu entity, used to look up which
@@ -219,12 +222,14 @@ struct EntityListView: View {
             .opacity(isLoading && items.isEmpty ? 0 : 1)
     }
 
-    /// Touch platforms get taller rows (≈44pt targets); macOS stays compact.
+    /// Touch platforms get taller rows (≈44pt targets); macOS stays
+    /// compact. iPhone gets extra breathing room — its narrow single
+    /// column reads denser than the iPad's list column.
     private var rowVerticalPadding: CGFloat {
         #if os(macOS)
         5
         #else
-        10
+        horizontalSizeClass == .compact ? 14 : 10
         #endif
     }
 
