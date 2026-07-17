@@ -406,7 +406,9 @@ private struct EntityToolbarHost: ViewModifier {
                 isPresented: $showingRights,
                 didChange: $didChangeRights,
                 onChange: onEdited,
-                width: 560, height: 600
+                width: 600, height: 600,
+                wide: true,
+                exactWidth: true
             ) {
                 RightsSheet(entityId: entity._id, onChanged: { didChangeRights = true })
             }
@@ -540,12 +542,18 @@ private struct EntityToolbarHost: ViewModifier {
 /// Apply `.frame(minWidth:minHeight:)` only on regular size class
 /// (iPad / macOS) so iPhone sheets don't force a width wider than the
 /// screen — which would horizontally clip the form rows.
+///
+/// `exactWidth` pins the macOS width instead of setting a floor — macOS
+/// sheets otherwise grow to the content's *ideal* width, so a sheet with
+/// long single-line texts (Rights' capability sentences) can never get
+/// narrower than their unwrapped width via `minWidth` alone.
 private struct SheetMinSize: ViewModifier {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     let width: CGFloat
     let height: CGFloat
+    var exactWidth = false
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -555,14 +563,20 @@ private struct SheetMinSize: ViewModifier {
             content.frame(minWidth: width, minHeight: height)
         }
         #else
-        content.frame(minWidth: width, minHeight: height)
+        if exactWidth {
+            content
+                .frame(width: width)
+                .frame(minHeight: height)
+        } else {
+            content.frame(minWidth: width, minHeight: height)
+        }
         #endif
     }
 }
 
 extension View {
-    fileprivate func sheetMinSize(width: CGFloat, height: CGFloat) -> some View {
-        modifier(SheetMinSize(width: width, height: height))
+    fileprivate func sheetMinSize(width: CGFloat, height: CGFloat, exactWidth: Bool = false) -> some View {
+        modifier(SheetMinSize(width: width, height: height, exactWidth: exactWidth))
     }
 
     /// Standard chrome for an entity-feature sheet: NavigationStack +
@@ -577,6 +591,8 @@ extension View {
         onChange: (() -> Void)?,
         width: CGFloat,
         height: CGFloat,
+        wide: Bool = false,
+        exactWidth: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         sheet(isPresented: isPresented, onDismiss: {
@@ -585,11 +601,19 @@ extension View {
                 didChange.wrappedValue = false
             }
         }) {
-            NavigationStack {
+            let stack = NavigationStack {
                 content()
-                    .sheetMinSize(width: width, height: height)
+                    .sheetMinSize(width: width, height: height, exactWidth: exactWidth)
             }
-            .presentationDetents([.large])
+
+            // iPad sheet widths are system-fixed — `wide` opts into the
+            // broader page-sheet sizing (Rights, with its three cards +
+            // level selectors). macOS width comes from `sheetMinSize`.
+            if wide {
+                stack.presentationSizing(.page)
+            } else {
+                stack.presentationDetents([.large])
+            }
         }
     }
 }

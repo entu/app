@@ -88,7 +88,7 @@ extension EntityEditView {
            let value = try? JSONDecoder().decode(PropertyValue.self, from: data) {
             return value
         }
-        return PropertyValue(_id: nil, string: nil, number: nil, boolean: nil, reference: reference, date: nil, datetime: nil, filename: nil, filesize: nil, language: nil, provider: nil, email: nil, ordinal: nil)
+        return PropertyValue(_id: nil, string: nil, number: nil, boolean: nil, reference: reference, date: nil, datetime: nil, filename: nil, filesize: nil, language: nil, provider: nil, email: nil, ordinal: nil, inherited: nil)
     }
 
     /// Build a `PropertyValue` for the local cache from an `EditableValue`.
@@ -123,7 +123,7 @@ extension EntityEditView {
            let decoded = try? JSONDecoder().decode(PropertyValue.self, from: data) {
             return decoded
         }
-        return PropertyValue(_id: _id, string: stringValue, number: numberValue, boolean: def.type == "boolean" ? value.boolValue : nil, reference: value.referenceId, date: def.type == "date" ? dateIso : nil, datetime: def.type == "datetime" ? dateIso : nil, filename: nil, filesize: nil, language: value.language, provider: nil, email: nil, ordinal: nil)
+        return PropertyValue(_id: _id, string: stringValue, number: numberValue, boolean: def.type == "boolean" ? value.boolValue : nil, reference: value.referenceId, date: def.type == "date" ? dateIso : nil, datetime: def.type == "datetime" ? dateIso : nil, filename: nil, filesize: nil, language: value.language, provider: nil, email: nil, ordinal: nil, inherited: nil)
     }
 
     /// Reassemble an `EntityDetail` with a new `properties` map. Required

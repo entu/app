@@ -2548,13 +2548,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "User can edit this entity and add children to it"
+            "value" : "Can edit this entity and add children to it"
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kasutaja saab objekti muuta ja lisada sellele alamosi"
+            "value" : "Saab objekti muuta ja lisada sellele alamosi"
           }
         }
       }
@@ -2564,13 +2564,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "User can add children to this entity"
+            "value" : "Can add children to this entity"
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kasutaja saab sellele objektile lisada alamobjekte"
+            "value" : "Saab sellele objektile lisada alamobjekte"
           }
         }
       }
@@ -2580,13 +2580,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "User has no access to this entity"
+            "value" : "No access to this entity"
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kasutajal puudub ligipääs objektile"
+            "value" : "Puudub ligipääs objektile"
           }
         }
       }
@@ -2596,13 +2596,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "User can edit, delete, add children and change rights"
+            "value" : "Can edit, delete, add children and change rights"
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kasutaja saab objekti muuta, kustutada, lisada sellele alamosi ja muuta õigusi"
+            "value" : "Saab objekti muuta, kustutada, lisada sellele alamosi ja muuta õigusi"
           }
         }
       }
@@ -2612,13 +2612,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "User can see this entity"
+            "value" : "Can see this entity"
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kasutaja näeb seda objekti"
+            "value" : "Näeb seda objekti"
           }
         }
       }

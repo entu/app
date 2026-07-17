@@ -76,29 +76,8 @@ struct ParentsSheet: View {
         .appLanguageScoped()
     }
 
-    /// Autosave status — green "All changes saved" once idle, a quiet
-    /// "Saving…" while a mutation is in flight.
     private var autosavePill: some View {
-        HStack(spacing: 5) {
-            if isUpdating {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("saving")
-                    .foregroundStyle(.secondary)
-            } else {
-                Image(systemName: "checkmark")
-                    .font(.caption2.weight(.bold))
-                Text("allChangesSaved")
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(Color("SuccessText"))
-        .padding(.horizontal, 11)
-        .padding(.vertical, 3)
-        .background(
-            (isUpdating ? Color.secondary : Color.green).opacity(0.14),
-            in: Capsule()
-        )
+        AutosavePill(isSaving: isUpdating)
     }
 
     private var headerTitle: String {
@@ -113,43 +92,71 @@ struct ParentsSheet: View {
     // MARK: - Form
 
     private var formBody: some View {
-        ScrollView {
-            VStack(spacing: 6) {
-                #if os(iOS)
-                // No in-content header on iOS (the nav bar carries the
-                // title), so the pill sits above the rows instead. Toolbar
-                // placement is out — toolbar items get button chrome.
-                if isUpdating || hasSavedChanges {
-                    HStack {
-                        Spacer()
-                        autosavePill
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 6) {
+                    #if os(iOS)
+                    // No in-content header on iOS (the nav bar carries the
+                    // title), so the pill sits above the rows instead. Toolbar
+                    // placement is out — toolbar items get button chrome.
+                    if isUpdating || hasSavedChanges {
+                        HStack {
+                            Spacer()
+                            autosavePill
+                        }
+                        .padding(.bottom, 4)
                     }
-                    .padding(.bottom, 4)
-                }
-                #endif
+                    #endif
 
-                ForEach(parents, id: \.self.uniqueId) { parent in
-                    parentRow(parent)
-                }
+                    ForEach(parents, id: \.self.uniqueId) { parent in
+                        parentRow(parent)
+                    }
 
-                if pickerActive {
-                    InlineReferencePicker(
-                        query: parentQuery,
-                        onSelect: { id, _ in
-                            Task { await addParent(reference: id) }
-                        },
-                        onDismiss: { pickerActive = false }
-                    )
-                } else {
-                    addParentRow
+                    Group {
+                        if pickerActive {
+                            InlineReferencePicker(
+                                query: parentQuery,
+                                onSelect: { id, _ in
+                                    Task { await addParent(reference: id) }
+                                },
+                                onDismiss: { pickerActive = false }
+                            )
+                        } else {
+                            addParentRow
+                        }
+                    }
+                    .id(Self.pickerAnchor)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 16)
+            .background(Color("WindowBackground"))
+            // The picker sits at the sheet's bottom — bring its field and
+            // results panel into view when it opens (and again once the
+            // first results/keyboard have landed).
+            .onChange(of: pickerActive) {
+                scrollToPicker(proxy)
+            }
         }
-        .background(Color("WindowBackground"))
     }
+
+    /// Scroll the add-parent picker (field + panel) into view — immediately,
+    /// then once more after the results panel has rendered and, on iPad,
+    /// the keyboard has settled.
+    private func scrollToPicker(_ proxy: ScrollViewProxy) {
+        guard pickerActive else { return }
+
+        withAnimation { proxy.scrollTo(Self.pickerAnchor, anchor: .bottom) }
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard pickerActive else { return }
+
+            withAnimation { proxy.scrollTo(Self.pickerAnchor, anchor: .bottom) }
+        }
+    }
+
+    private static let pickerAnchor = "add-parent-picker"
 
     /// One parent as a white card row — folder icon, name, remove ×
     /// (shown only for parents the user holds `_expander` on).

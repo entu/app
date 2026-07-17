@@ -21,6 +21,11 @@ struct PropertyValue: Codable {
     let email: String?
     let ordinal: Double?
 
+    /// Set on rights values (`_owner`, `_editor`, …) copied down from a
+    /// parent entity by the aggregation. Such values carry the *parent's*
+    /// property id — they can't be edited or deleted on this entity.
+    let inherited: Bool?
+
     /// Picks the best `PropertyValue` from a multilingual array. Priority:
     /// matching the in-app language > no language set > first available.
     /// Returns the whole value so callers can read fields beyond `string`
