@@ -93,8 +93,9 @@ final class AdvancedSearchModel {
     }
 
     /// Webapp `getPropertySearchField` — the value sub-field a property type
-    /// is searched on.
-    static func searchField(for propertyType: String) -> String {
+    /// is searched on. Pure — usable from nonisolated contexts
+    /// (`PaletteProperty.searchField`).
+    nonisolated static func searchField(for propertyType: String) -> String {
         switch propertyType {
         case "file": return "filename"
         case "reference": return "string"
@@ -144,21 +145,36 @@ final class AdvancedSearchModel {
 
     // MARK: - Option loading
 
-    /// Load entity-type options (webapp `onMounted`).
-    func loadEntityTypes() async {
+    /// One fetched entity-type definition — shared by the advanced search
+    /// and the command palette.
+    struct EntityTypeOption {
+        let _id: String
+        let name: String
+        let label: String
+    }
+
+    /// Fetch all entity-type definitions (webapp `onMounted` in the
+    /// search modal) — the single implementation both consumers map from.
+    static func fetchEntityTypes(api: APIClient) async -> [EntityTypeOption] {
         let params: [String: String] = [
             "_type.string": "entity",
             "props": "name,label",
             "limit": "1000"
         ]
-        guard let response: EntityListResponse = try? await api.get("entity", params: params) else { return }
+        guard let response: EntityListResponse = try? await api.get("entity", params: params) else { return [] }
 
-        entityTypeOptions = response.entities.compactMap { entity in
+        return response.entities.compactMap { entity in
             guard let name = PropertyValue.localized(entity.name), !name.isEmpty else { return nil }
             let label = PropertyValue.localized(entity.additionalProperties?["label"])
-            return SearchSelectOption(value: name, label: label?.isEmpty == false ? label! : name)
+            return EntityTypeOption(_id: entity._id, name: name, label: label?.isEmpty == false ? label! : name)
         }
-        .sorted { $0.label.localizedCompare($1.label) == .orderedAscending }
+    }
+
+    /// Load entity-type options (webapp `onMounted`).
+    func loadEntityTypes() async {
+        entityTypeOptions = await Self.fetchEntityTypes(api: api)
+            .map { SearchSelectOption(value: $0.name, label: $0.label) }
+            .sorted { $0.label.localizedCompare($1.label) == .orderedAscending }
     }
 
     /// Load property options for the selected types (webapp `types` watch).

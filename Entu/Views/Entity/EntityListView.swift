@@ -267,6 +267,7 @@ struct EntityListView: View {
                     pendingCreatedId = newId
                 }
             }
+            .blocksCommandPalette()
             // Wider page-sheet sizing on iPad (same as Rights) — the
             // two-column rows need the room.
             .presentationSizing(.page)

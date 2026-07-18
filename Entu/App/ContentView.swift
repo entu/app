@@ -15,6 +15,7 @@ struct ContentView: View {
     @Environment(SessionState.self) private var session
     @Environment(AIChatModel.self) private var chat
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(CommandPaletteModel.self) private var palette
 
     /// Total number of selectable databases (authenticated + saved public).
     private var totalDatabaseCount: Int {
@@ -66,13 +67,14 @@ struct ContentView: View {
             // Logout wipes the in-memory session state these models hold —
             // chat conversation, search text/query, navigation, pending deep
             // link — so nothing of the signed-out user survives in RAM.
-            auth.onLogOut = { [weak search, weak session, weak chat, weak router] in
+            auth.onLogOut = { [weak search, weak session, weak chat, weak router, weak palette] in
                 chat?.reset()
                 search?.text = ""
                 search?.advancedQuery = nil
                 search?.showAdvanced = false
                 session?.clearNavigation()
                 router?.clear()
+                palette?.reset()
             }
         }
     }

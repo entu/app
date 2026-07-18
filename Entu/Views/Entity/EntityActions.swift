@@ -10,11 +10,20 @@ import SwiftUI
 /// the same feature sheets as the toolbar buttons. A `nil` closure means
 /// the user lacks the required right — the menu item disables.
 ///
-/// `Equatable` on the *availability* of each action (not the closures,
-/// which change every render): lets SwiftUI dedupe the focused-value
-/// updates so a burst of re-renders during entity load doesn't republish
-/// many times per frame (which merely warns on macOS but can freeze iPad).
+/// `Equatable` on the entity identity plus the *availability* of each
+/// action (not the closures, which change every render): lets SwiftUI
+/// dedupe the focused-value updates so a burst of re-renders during
+/// entity load doesn't republish many times per frame (which merely
+/// warns on macOS but can freeze iPad). Identity is part of the equality
+/// so navigating between entities with identical rights still
+/// republishes — fresh closures for the new entity.
 struct EntityActions: Equatable {
+    /// Identity of the entity the closures act on — the command palette
+    /// titles its actions section with "type · name".
+    var entityId: String?
+    var entityName: String?
+    var entityTypeLabel: String?
+
     var edit: (() -> Void)?
     var duplicate: (() -> Void)?
     var parents: (() -> Void)?
@@ -23,7 +32,10 @@ struct EntityActions: Equatable {
     var reload: (() -> Void)?
 
     static func == (lhs: EntityActions, rhs: EntityActions) -> Bool {
-        (lhs.edit == nil) == (rhs.edit == nil)
+        lhs.entityId == rhs.entityId
+            && lhs.entityName == rhs.entityName
+            && lhs.entityTypeLabel == rhs.entityTypeLabel
+            && (lhs.edit == nil) == (rhs.edit == nil)
             && (lhs.duplicate == nil) == (rhs.duplicate == nil)
             && (lhs.parents == nil) == (rhs.parents == nil)
             && (lhs.rights == nil) == (rhs.rights == nil)
@@ -69,6 +81,16 @@ struct ClearCacheCommand: Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { true }
 }
 
+/// View-menu "command palette" toggle (⌘K) published by `MainView` —
+/// same focused-value mechanism as the entity actions, so the shortcut
+/// registers identically on macOS and iPadOS. Always equal (see
+/// `ClearCacheCommand`).
+struct CommandPaletteToggle: Equatable {
+    let invoke: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
 /// ⌘R fallback published by `EntityListView`: refetches the list when no
 /// entity is shown (an open entity's `EntityActions.reload` wins and
 /// reloads both). Equality compares `context` (the list's query), NOT the
@@ -90,6 +112,9 @@ extension FocusedValues {
 
     /// Clear-every-cache command — published by `MainView`.
     @Entry var clearCacheCommand: ClearCacheCommand?
+
+    /// Command-palette toggle (⌘K) — published by `MainView`.
+    @Entry var commandPalette: CommandPaletteToggle?
 
     /// List-refetch command — published by `EntityListView`.
     @Entry var reloadListCommand: ReloadListCommand?

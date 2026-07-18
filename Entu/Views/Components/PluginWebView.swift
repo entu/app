@@ -45,10 +45,6 @@ struct PluginWebView: View {
             // Reload if the URL changes (e.g. token refresh promotes the
             // sheet from create to edit mode and rebuilds the params).
             .task(id: url) {
-                #if DEBUG
-                print("[Plugin] load \(redactedForLog(url))")
-                #endif
-
                 page.load(URLRequest(url: url))
             }
             .onAppear {
@@ -59,10 +55,6 @@ struct PluginWebView: View {
             // pass (see `windowOpenShim`).
             .onChange(of: page.isLoading) { _, loading in
                 guard !loading else { return }
-
-                #if DEBUG
-                print("[Plugin] loaded \(redactedForLog(page.url ?? url))")
-                #endif
 
                 Task { @MainActor in
                     _ = try? await page.callJavaScript(Self.windowOpenShim)
@@ -96,26 +88,6 @@ final class PluginNavigationDecider: WebPage.NavigationDeciding {
     ) async -> WKNavigationActionPolicy {
         guard let url = action.request.url else { return .allow }
 
-        let handled = handleEntuLink(url)
-
-        #if DEBUG
-        print("[Plugin] nav \(redactedForLog(url)) → \(handled ? "route native (.cancel)" : "allow in webview")")
-        #endif
-
-        return handled ? .cancel : .allow
+        return handleEntuLink(url) ? .cancel : .allow
     }
 }
-
-#if DEBUG
-/// Render a plugin URL for logging with the `token` query param masked — it is
-/// the full user JWT and must never land in logs.
-private func redactedForLog(_ url: URL) -> String {
-    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          let items = components.queryItems else {
-        return url.absoluteString
-    }
-
-    components.queryItems = items.map { $0.name == "token" ? URLQueryItem(name: "token", value: "***") : $0 }
-    return components.string ?? url.absoluteString
-}
-#endif

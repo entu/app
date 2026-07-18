@@ -252,16 +252,9 @@ struct InlineReferencePicker: View {
         .buttonStyle(.plain)
     }
 
-    /// The typed text emphasized inside the entity name, per the design
-    /// ("**Roo**sleht, Milvi").
+    /// The typed text emphasized inside the entity name (shared helper).
     private func highlightedName(_ name: String) -> AttributedString {
-        var attributed = AttributedString(name)
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty,
-           let range = attributed.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) {
-            attributed[range].inlinePresentationIntent = .stronglyEmphasized
-        }
-        return attributed
+        name.emphasizing(text)
     }
 
     // MARK: - Search

@@ -73,19 +73,31 @@ struct NewEntityCommands: Commands {
     }
 }
 
-/// Entity actions in the File menu — Edit / Duplicate / Parents / Rights /
-/// History for the entity currently shown in the detail column. Entities
-/// are the app's document-like objects, so their actions live in File per
-/// the HIG (like File > Duplicate in document apps). Mirrors
-/// `EntityToolbar`'s buttons and rights gating through the `entityActions`
-/// focused value: items disable when no entity is shown or the user lacks
-/// the right. Shows in the macOS menu bar and the iPadOS hardware-keyboard
-/// menu, and carries the keyboard shortcuts on both.
+/// View > Command Palette (⌘K) — toggles the palette overlay. Driven by
+/// the `commandPalette` focused scene value `MainView` publishes, the
+/// same mechanism as the entity actions, so the shortcut registers
+/// identically on macOS and iPadOS. Deliberately NOT `.disabled` when
+/// the value is absent — iPadOS hides disabled menu items entirely
+/// (dropping the item and its ⌘K glyph from the menu); outside the
+/// main view the button is simply a no-op.
 ///
 /// Menu-bar strings resolve against the system language (plain
-/// `String(localized:)`, not `.currentLocalized`) — the OS has no Estonian
-/// localization, so following the in-app language toggle would leave a
-/// mixed-language menu bar.
+/// `String(localized:)`, not `.currentLocalized`) — see `EntityCommands`.
+struct PaletteCommands: Commands {
+    @FocusedValue(\.commandPalette) private var commandPalette
+
+    var body: some Commands {
+        CommandGroup(before: .sidebar) {
+            Button {
+                commandPalette?.invoke()
+            } label: {
+                Text(String(localized: "menuCommandPalette"))
+            }
+            .keyboardShortcut("k")
+        }
+    }
+}
+
 /// View-menu reload commands. ⌘R refetches the shown entity and its type
 /// from the API (bypassing the type cache); ⇧⌘R is the hard variant — it
 /// drops every local cache and UI setting (credentials survive) and returns
@@ -151,6 +163,19 @@ struct ReloadCommands: Commands {
     }
 }
 
+/// Entity actions in the File menu — Edit / Duplicate / Parents / Rights /
+/// History for the entity currently shown in the detail column. Entities
+/// are the app's document-like objects, so their actions live in File per
+/// the HIG (like File > Duplicate in document apps). Mirrors
+/// `EntityToolbar`'s buttons and rights gating through the `entityActions`
+/// focused value: items disable when no entity is shown or the user lacks
+/// the right. Shows in the macOS menu bar and the iPadOS hardware-keyboard
+/// menu, and carries the keyboard shortcuts on both.
+///
+/// Menu-bar strings resolve against the system language (plain
+/// `String(localized:)`, not `.currentLocalized`) — the OS has no Estonian
+/// localization, so following the in-app language toggle would leave a
+/// mixed-language menu bar.
 struct EntityCommands: Commands {
     @FocusedValue(\.entityActions) private var actions
 

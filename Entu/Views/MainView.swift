@@ -28,6 +28,7 @@ struct MainView: View {
     @Environment(AIChatModel.self) private var chat
     @Environment(SessionState.self) private var session
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(CommandPaletteModel.self) private var palette
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var menu: MenuModel?
@@ -242,6 +243,14 @@ struct MainView: View {
         }
     }
 
+    /// Palette "Go to Dashboard" — clear menu selection, search, and
+    /// navigation so the two-column dashboard layout takes over.
+    private func goToDashboard() {
+        search.text = ""
+        search.advancedQuery = nil
+        session.clearNavigation()
+    }
+
     /// Opens an entity from the sidebar user row. In two-column mode (dashboard visible),
     /// swap the dashboard for the entity detail. In three-column mode, append to the
     /// history stack so it becomes the current detail without clearing menu/search.
@@ -293,11 +302,9 @@ struct MainView: View {
         .focusedSceneValue(\.clearCacheCommand, ClearCacheCommand { hardReset() })
     }
 
-    /// ⇧⌘R — drop every local cache and UI setting (credentials survive),
-    /// reset the in-memory session, refetch the menu from the API, and land
-    /// on the database dashboard. When an in-app language was set, clearing
-    /// `ui.appLanguage` also re-keys the root view (see `EntuApp`), which
-    /// rebuilds this whole view tree.
+    /// ⇧⌘R — drop every local cache and UI setting (credentials and the
+    /// in-app language survive), reset the in-memory session, refetch the
+    /// menu from the API, and land on the database dashboard.
     private func hardReset() {
         auth.clearLocalData()
         // Land on the dashboard — on iPhone the sidebar may be the shown
@@ -373,7 +380,27 @@ struct MainView: View {
 
         // Split off the event handlers into a second expression — the whole
         // chain otherwise overwhelms the type-checker.
-        return stateSync(layout, menu: menu)
+        return ZStack {
+            stateSync(layout, menu: menu)
+
+            // ⌘K command palette — floats over the whole split view.
+            if palette.isOpen {
+                CommandPaletteView(
+                    onOpenEntity: openPinnedEntity,
+                    onSelectMenu: { menuSelection.wrappedValue = $0 },
+                    onGoDashboard: goToDashboard,
+                    onApplyQuery: applyAdvancedSearch
+                )
+                .environment(menu)
+                .transition(.scale(scale: 0.98, anchor: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: palette.isOpen)
+        // View > Command Palette (⌘K) — see `PaletteCommands`.
+        .focusedSceneValue(\.commandPalette, CommandPaletteToggle {
+            palette.toggle(databaseId: api.databaseId)
+        })
     }
 
     /// Attaches the session-persistence, restore, and cross-cutting reload
@@ -412,6 +439,7 @@ struct MainView: View {
                 // session (nav + search + chat-open) is then restored, so each
                 // database reopens where it was left.
                 chat.reset()
+                palette.close()
                 EntityDetailModel.clearCache()
                 EntityColorCache.shared.clear()
                 restoreSession(for: api.databaseId)
@@ -441,6 +469,7 @@ struct MainView: View {
                 onSearch: applyAdvancedSearch
             )
         }
+        .blocksCommandPalette()
         // Wider page-sheet sizing on iPad, same as the edit and Rights
         // sheets.
         .presentationSizing(.page)

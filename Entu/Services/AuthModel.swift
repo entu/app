@@ -232,20 +232,23 @@ final class AuthModel {
         EntityColorCache.shared.clear()
         EntityDetailModel.clearCache()
         SessionState.clearStored()
+        CommandPaletteModel.clearStored()
         ImageCache.shared.clear()
         FileManager.default.clearTemporaryFiles()
         onLogOut?()
     }
 
     /// ⇧⌘R — drop everything local except credentials: every cache, temp
-    /// files, and all `ui.*` settings (column widths, page size, language,
-    /// session snapshots). The Keychain token, database list, and last
-    /// database pointer survive, so the user stays signed in. In-memory
-    /// session state (chat, search, navigation, deep links) resets via the
-    /// same `onLogOut` hook sign-out uses.
+    /// files, and all `ui.*` settings (column widths, page size, session
+    /// snapshots). The in-app language, the Keychain token, database list,
+    /// and last database pointer survive, so the user stays signed in and
+    /// keeps their language. In-memory session state (chat, search,
+    /// navigation, deep links) resets via the same `onLogOut` hook
+    /// sign-out uses.
     func clearLocalData() {
         let defaults = UserDefaults.standard
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("ui.") {
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("ui.") && key != AppLanguage.storageKey {
             defaults.removeObject(forKey: key)
         }
         MenuModel.clearCache()

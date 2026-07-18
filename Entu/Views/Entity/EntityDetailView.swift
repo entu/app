@@ -47,6 +47,7 @@ struct EntityDetailView: View {
                     .transition(.opacity)
                     .entityToolbarHost(
                         entity: entity,
+                        typeLabel: model.typeLabel,
                         menuId: menuId,
                         onBack: onBack,
                         onEdited: {

@@ -83,19 +83,22 @@ final class EntityDetailModel {
             // 2. Resolve type definitions + type label (cached per language + typeId)
             typeLabel = nil
             if let typeId = fetchedEntity.typeId {
-                let key = Self.cacheKey(typeId: typeId)
-                if let cached = Self.typeCache[key] {
-                    definitions = cached.definitions
-                    typeLabel = cached.label
-                } else {
-                    async let defs = fetchTypeDefinitions(typeId: typeId)
-                    async let label = fetchTypeLabel(typeId: typeId)
-                    let metadata = TypeMetadata(definitions: await defs, label: await label)
-                    Self.typeCache[key] = metadata
-                    definitions = metadata.definitions
-                    typeLabel = metadata.label
-                }
+                let metadata = await Self.typeMetadata(typeId: typeId, api: api)
+                definitions = metadata.definitions
+                typeLabel = metadata.label
             }
+
+            // Every successfully shown entity feeds the command palette's
+            // per-database "Recent" list.
+            CommandPaletteModel.record(
+                RecentEntity(
+                    _id: fetchedEntity._id,
+                    name: fetchedEntity.displayName,
+                    typeLabel: typeLabel ?? fetchedEntity.typeName,
+                    hasPhoto: fetchedEntity.hasPhoto
+                ),
+                databaseId: api.databaseId
+            )
         } catch APIError.serverError(_, let body) {
             // Nitro/h3 errors are JSON with a `message` field. Surface only that.
             errorMessage = parseMessage(from: body)
@@ -118,7 +121,7 @@ final class EntityDetailModel {
 
     /// Fetch the localized singular label from the type entity, name as
     /// fallback.
-    private func fetchTypeLabel(typeId: String) async -> String? {
+    private static func fetchTypeLabel(typeId: String, api: APIClient) async -> String? {
         guard let response: EntityDetailResponse = try? await api.get(
             "entity/\(typeId)",
             params: ["props": "label,name"]
@@ -210,9 +213,25 @@ final class EntityDetailModel {
 
     // MARK: - Private
 
+    /// Cached type metadata (property definitions + localized label),
+    /// keyed per language + typeId — shared with the command palette so a
+    /// type's definitions are fetched once app-wide.
+    static func typeMetadata(typeId: String, api: APIClient) async -> (definitions: [PropertyDefinition], label: String?) {
+        let key = cacheKey(typeId: typeId)
+        if let cached = typeCache[key] {
+            return (cached.definitions, cached.label)
+        }
+
+        async let defs = fetchTypeDefinitions(typeId: typeId, api: api)
+        async let label = fetchTypeLabel(typeId: typeId, api: api)
+        let metadata = TypeMetadata(definitions: await defs, label: await label)
+        typeCache[key] = metadata
+        return (metadata.definitions, metadata.label)
+    }
+
     // Fetch property definitions for a type — these are child entities of the type entity
     // where _type.string == "property".
-    private func fetchTypeDefinitions(typeId: String) async -> [PropertyDefinition] {
+    private static func fetchTypeDefinitions(typeId: String, api: APIClient) async -> [PropertyDefinition] {
         let params: [String: String] = [
             "_parent.reference": typeId,
             "props": "decimals,default,description,formula,group,hidden,label_plural,label,list,mandatory,markdown,multilingual,name,ordinal,readonly,reference_query,set,type"

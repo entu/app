@@ -1880,6 +1880,23 @@
         }
       }
     },
+    "menuCommandPalette" : {
+      "comment" : "View menu: toggle the command palette overlay (Cmd-K). Menu bar follows the system language.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Command Palette"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Käsupalett"
+          }
+        }
+      }
+    },
     "menuNew %@" : {
       "comment" : "File menu: create a new entity of the given type. Menu bar follows the system language.",
       "localizations" : {
@@ -2216,6 +2233,448 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lehekülje suurus"
+          }
+        }
+      }
+    },
+    "paletteBackspaceHint" : {
+      "comment" : "Command palette footer, right side, while query tokens exist.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "removes last token"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kustutab viimase filtri"
+          }
+        }
+      }
+    },
+    "paletteCondAfter" : {
+      "comment" : "Filter chip condition for numbers and dates: value greater than.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "after"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pärast"
+          }
+        }
+      }
+    },
+    "paletteCondBefore" : {
+      "comment" : "Filter chip condition for numbers and dates: value less than.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "before"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "enne"
+          }
+        }
+      }
+    },
+    "paletteCondContains" : {
+      "comment" : "Filter chip condition: value contains the text.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "contains"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sisaldab"
+          }
+        }
+      }
+    },
+    "paletteCondIs" : {
+      "comment" : "Filter chip condition: exact match.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "is"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "on"
+          }
+        }
+      }
+    },
+    "paletteCondIsNot" : {
+      "comment" : "Filter chip condition: not equal.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "is not"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ei ole"
+          }
+        }
+      }
+    },
+    "paletteEntities" : {
+      "comment" : "Command palette section header above found entities.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Matching entities"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leitud objektid"
+          }
+        }
+      }
+    },
+    "paletteFilterBy %@" : {
+      "comment" : "Command palette grammar suggestion: start a filter token for the named property (Tab accepts).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter by %@…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtreeri: %@…"
+          }
+        }
+      }
+    },
+    "paletteFilterType %@" : {
+      "comment" : "Command palette grammar suggestion: scope the query to the named entity type (Tab accepts).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — filter type…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — objektitüüp…"
+          }
+        }
+      }
+    },
+    "paletteFooterHint" : {
+      "comment" : "Command palette footer, left side: what typing in the field does.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type to search, or pick an action"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otsimiseks kirjuta või vali tegevus"
+          }
+        }
+      }
+    },
+    "paletteGoDashboard" : {
+      "comment" : "Command palette navigation row: open the dashboard.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to Dashboard"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava töölaud"
+          }
+        }
+      }
+    },
+    "paletteGoTo %@" : {
+      "comment" : "Command palette navigation row: open the named sidebar menu entry.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to %@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava %@"
+          }
+        }
+      }
+    },
+    "paletteLanguage %@" : {
+      "comment" : "Command palette row: switch the in-app language to the named language.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language: %@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keel: %@"
+          }
+        }
+      }
+    },
+    "paletteMyProfile" : {
+      "comment" : "Command palette navigation row: open the signed-in user's own entity.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to my profile"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava minu profiil"
+          }
+        }
+      }
+    },
+    "paletteNavigate" : {
+      "comment" : "Command palette right-side caption on navigation rows.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Navigate"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Navigeeri"
+          }
+        }
+      }
+    },
+    "paletteNoRecents" : {
+      "comment" : "Command palette empty state when there are no recently viewed entities yet.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recent entities"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiljutisi objekte pole"
+          }
+        }
+      }
+    },
+    "paletteOpenChat" : {
+      "comment" : "Command palette row: open the Entu AI assistant panel.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Entu AI"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava Entu AI"
+          }
+        }
+      }
+    },
+    "paletteOptionHint" : {
+      "comment" : "Command palette footer while a filter token awaits its value.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cycles the condition"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vahetab tingimust"
+          }
+        }
+      }
+    },
+    "paletteRecent" : {
+      "comment" : "Command palette section header for recently viewed entities.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiljutised"
+          }
+        }
+      }
+    },
+    "paletteSearchEverywhere %@" : {
+      "comment" : "Command palette fallback row: run a global full-text search for the typed text.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search “%@” everywhere"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otsi “%@” kõikjalt"
+          }
+        }
+      }
+    },
+    "paletteSearchIn %@ %@" : {
+      "comment" : "Command palette row: apply the token query plus text to the main list. First arg is the text, second the entity-type label.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search “%1$@” in %2$@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otsi “%1$@” tüübist %2$@"
+          }
+        }
+      }
+    },
+    "paletteSearchPlaceholder" : {
+      "comment" : "Command palette input placeholder.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search, or type a command…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otsi või sisesta käsk…"
+          }
+        }
+      }
+    },
+    "paletteSortBy %@" : {
+      "comment" : "Command palette grammar suggestion: add a sort token for the named property (Tab accepts).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sort by %@…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sordi: %@…"
+          }
+        }
+      }
+    },
+    "paletteSortedBy %@" : {
+      "comment" : "Command palette footer fragment: current sort property, e.g. '6 entities · sorted by Subtitle ↓'.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sorted by %@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sorditud: %@"
+          }
+        }
+      }
+    },
+    "paletteSwitchDatabase %@" : {
+      "comment" : "Command palette navigation row: switch to the named database.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to %@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaheta: %@"
+          }
+        }
+      }
+    },
+    "paletteUseValue %@" : {
+      "comment" : "Command palette value stage: commit the typed text as the filter value.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use “%@”"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kasuta “%@”"
           }
         }
       }

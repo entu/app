@@ -124,6 +124,7 @@ struct SidebarView: View {
         }
         .sheet(isPresented: $showAccountSheet) {
             AccountSheet(openPinnedEntity: openPinnedEntity)
+                .blocksCommandPalette()
         }
         .task(id: currentDatabase?.user?._id) {
             await loadUserThumbnail()

@@ -18,6 +18,7 @@ struct EntuApp: App {
     @State private var chat: AIChatModel
     @State private var search = SearchModel()
     @State private var session = SessionState()
+    @State private var palette = CommandPaletteModel()
     @State private var network = NetworkMonitor()
     @State private var router = DeepLinkRouter()
     @State private var showingPublicEntry = false
@@ -69,6 +70,7 @@ struct EntuApp: App {
                 .environment(auth)
                 .environment(search)
                 .environment(session)
+                .environment(palette)
                 .environment(authService)
                 .environment(passkeyService)
                 .environment(chat)
@@ -201,6 +203,10 @@ struct EntuApp: App {
                     Text(String(localized: "browsePublicDatabaseMenu"))
                 }
             }
+
+            // View > Command Palette (⌘K) — driven by the focused scene
+            // value `MainView` publishes; a no-op outside the main view.
+            PaletteCommands()
 
             // Entity menu — actions for the entity shown in the detail
             // column, published via the `entityActions` focused value.

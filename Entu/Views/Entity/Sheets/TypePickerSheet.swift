@@ -51,6 +51,7 @@ struct TypePickerSheet: View {
                 .listStyle(.plain)
             }
             .sheetNavigationTitle(headerTitle)
+            .blocksCommandPalette()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     CloseButton { dismiss() }

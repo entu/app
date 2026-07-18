@@ -301,6 +301,7 @@ extension View {
     /// dialogs. Used by `EntityDetailView`.
     func entityToolbarHost(
         entity: EntityDetail,
+        typeLabel: String? = nil,
         menuId: String? = nil,
         onBack: (() -> Void)? = nil,
         onEdited: (() -> Void)? = nil,
@@ -311,6 +312,7 @@ extension View {
     ) -> some View {
         modifier(EntityToolbarHost(
             entity: entity,
+            typeLabel: typeLabel,
             menuId: menuId,
             onBack: onBack,
             onEdited: onEdited,
@@ -329,6 +331,8 @@ private struct EntityToolbarHost: ViewModifier {
     @Environment(DeepLinkRouter.self) private var router
 
     let entity: EntityDetail
+    /// Localized type label for the palette's "type · name" section title.
+    let typeLabel: String?
     let menuId: String?
     let onBack: (() -> Void)?
     let onEdited: (() -> Void)?
@@ -479,6 +483,7 @@ private struct EntityToolbarHost: ViewModifier {
                     // matches the screen width and rows don't clip.
                     .sheetMinSize(width: 640, height: 600)
                 }
+                .blocksCommandPalette()
                 // Wider page-sheet sizing on iPad (same as Rights) — the
                 // two-column rows need the room.
                 .presentationSizing(.page)
@@ -502,6 +507,9 @@ private struct EntityToolbarHost: ViewModifier {
     private var entityActions: EntityActions {
         let rights = entity.rights(for: auth.currentUserId)
         return EntityActions(
+            entityId: entity._id,
+            entityName: entity.displayName,
+            entityTypeLabel: typeLabel ?? entity.typeName,
             edit: rights.editor ? { editMode = .edit(entityId: entity._id) } : nil,
             duplicate: rights.owner ? { showingDuplicate = true } : nil,
             parents: rights.editor ? { showingParents = true } : nil,
@@ -636,6 +644,7 @@ extension View {
             let stack = NavigationStack {
                 content()
                     .sheetMinSize(width: width, height: height, exactWidth: exactWidth)
+                    .blocksCommandPalette()
             }
 
             // iPad sheet widths are system-fixed — `wide` opts into the
