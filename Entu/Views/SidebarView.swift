@@ -19,6 +19,11 @@ struct SidebarView: View {
     let openPinnedEntity: (String) -> Void
     @State private var showAccountSheet = false
 
+    #if os(macOS)
+    /// Signed thumbnail URL for the bottom-bar user pill's avatar.
+    @State private var userThumbnail: String?
+    #endif
+
 
     /// Ids of expanded groups. Seeded once when groups first arrive
     /// (first group expanded, rest collapsed). Stored as a `Set` so
@@ -65,6 +70,9 @@ struct SidebarView: View {
             // macOS: bottom bar with the user pill + AI pill.
             menuList
                 .safeAreaBar(edge: .bottom) { bottomBar }
+                .task(id: currentDatabase?.user?._id) {
+                    await loadUserThumbnail()
+                }
             #endif
         }
         .sheet(isPresented: $showAccountSheet) {
@@ -116,18 +124,14 @@ struct SidebarView: View {
         .padding(.vertical, 10)
     }
 
-    /// Opens the account sheet — person icon + name + database id in a
-    /// glass capsule (macOS bottom bar).
+    /// Opens the account sheet — user thumbnail (person-icon fallback) +
+    /// name + database id in a glass capsule (macOS bottom bar).
     private var fullUserPill: some View {
         Button {
             showAccountSheet = true
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "person.crop.circle")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 26, height: 26)
-                    .foregroundStyle(.secondary)
+                UserAvatar(thumbnail: userThumbnail, size: 26, fallback: .personIcon)
 
                 VStack(alignment: .leading, spacing: 0) {
                     ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
@@ -153,6 +157,20 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: Capsule())
+    }
+
+    /// Resolves the active database user's thumbnail for the bottom-bar
+    /// avatar. Cleared before fetching so a stale thumbnail never bleeds
+    /// across database switches.
+    private func loadUserThumbnail() async {
+        userThumbnail = nil
+        guard let userId = currentDatabase?.user?._id else { return }
+
+        // No photo pre-check — the thumbnail endpoint itself returns
+        // nothing for photo-less entities, and a `props=photo` probe
+        // false-negatives on slim payloads.
+        // Small bar-button avatar — the 50px thumbnail is plenty.
+        userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 50)?.absoluteString
     }
     #endif
 
