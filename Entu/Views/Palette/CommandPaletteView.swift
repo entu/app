@@ -697,6 +697,21 @@ struct CommandPaletteView: View {
         }
     }
 
+    /// "Search "text" in <menu entry>" — keeps the active menu's scope
+    /// and puts the text into the toolbar search field (any applied
+    /// advanced query is dropped: it would override the menu scope).
+    private func searchInMenuRow(_ query: String, menuItem: MenuEntity) -> PaletteRow {
+        PaletteRow(
+            id: "searchInMenu",
+            content: .action(icon: "magnifyingglass", title: loc("paletteSearchInMenu \(query) \(menuItem.name)"))
+        ) {
+            session.selectedEntityId = nil
+            session.entityHistory = []
+            search.advancedQuery = nil
+            search.text = query
+        }
+    }
+
     /// "Search "text" in <Type>" — applies the token query plus text to
     /// the main list through the advanced-search pipeline.
     private func searchInTypeRow(_ query: String, entityType: PaletteEntityType) -> PaletteRow {
@@ -888,6 +903,12 @@ struct CommandPaletteView: View {
 
         var scored: [(row: PaletteRow, score: Int)] = []
 
+        // With a menu active, searching within it is the likelier intent —
+        // it outranks (and precedes) the global search.
+        if let menuId = session.selectedMenuId,
+           let menuItem = menu.groups.flatMap(\.items).first(where: { $0._id == menuId }) {
+            scored.append((searchInMenuRow(query, menuItem: menuItem), Self.searchBand + 1))
+        }
         scored.append((searchEverywhereRow(query), Self.searchBand))
         for row in typeSuggestionRows(foldedQuery) {
             scored.append((row, Self.grammarBand))

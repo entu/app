@@ -81,6 +81,14 @@ struct ClearCacheCommand: Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { true }
 }
 
+/// Edit-menu "find" command (⌘F) published by `MainView` — moves focus
+/// into the toolbar search field. Always equal (see `ClearCacheCommand`).
+struct FocusSearchCommand: Equatable {
+    let invoke: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
 /// View-menu "command palette" toggle (⌘K) published by `MainView` —
 /// same focused-value mechanism as the entity actions, so the shortcut
 /// registers identically on macOS and iPadOS. Always equal (see
@@ -115,6 +123,9 @@ extension FocusedValues {
 
     /// Command-palette toggle (⌘K) — published by `MainView`.
     @Entry var commandPalette: CommandPaletteToggle?
+
+    /// Focus-the-search-field command (⌘F) — published by `MainView`.
+    @Entry var focusSearch: FocusSearchCommand?
 
     /// List-refetch command — published by `EntityListView`.
     @Entry var reloadListCommand: ReloadListCommand?

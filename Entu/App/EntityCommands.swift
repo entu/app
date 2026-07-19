@@ -98,6 +98,26 @@ struct PaletteCommands: Commands {
     }
 }
 
+/// Edit > Search (⌘F) — focuses the toolbar search field. Same focused
+/// scene-value mechanism (and iPadOS not-disabled rationale) as
+/// `PaletteCommands`.
+struct SearchFieldCommands: Commands {
+    @FocusedValue(\.focusSearch) private var focusSearch
+
+    var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Divider()
+
+            Button {
+                focusSearch?.invoke()
+            } label: {
+                Text(String(localized: "search"))
+            }
+            .keyboardShortcut("f")
+        }
+    }
+}
+
 /// View-menu reload commands. ⌘R refetches the shown entity and its type
 /// from the API (bypassing the type cache); ⇧⌘R is the hard variant — it
 /// drops every local cache and UI setting (credentials survive) and returns

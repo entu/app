@@ -34,6 +34,9 @@ struct MainView: View {
     @State private var menu: MenuModel?
     @State private var preferredColumn: NavigationSplitViewColumn = .detail
 
+    /// ⌘F target — programmatic focus for the toolbar search field.
+    @FocusState private var searchFieldFocused: Bool
+
     /// Shared across the two/three-column swap so a collapsed sidebar stays
     /// collapsed.
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
@@ -366,7 +369,7 @@ struct MainView: View {
                 threeColumnView(menu: menu)
             }
         }
-        .modifier(MenuScopedSearchable(text: $search.text, enabled: showSearchField))
+        .modifier(MenuScopedSearchable(text: $search.text, focused: $searchFieldFocused, enabled: showSearchField))
         .sheet(isPresented: $search.showAdvanced) { advancedSearchSheet }
         .modifier(ChatPresentation(chat: chat, onOpenEntity: openPinnedEntity))
         #if os(macOS)
@@ -400,6 +403,14 @@ struct MainView: View {
         // View > Command Palette (⌘K) — see `PaletteCommands`.
         .focusedSceneValue(\.commandPalette, CommandPaletteToggle {
             palette.toggle(databaseId: api.databaseId)
+        })
+        // Edit > Search (⌘F) — see `SearchFieldCommands`. Same modal
+        // guard as the palette: the field would gain focus behind a sheet.
+        .focusedSceneValue(\.focusSearch, FocusSearchCommand {
+            guard palette.modalDepth == 0 else { return }
+
+            palette.close()
+            searchFieldFocused = true
         })
     }
 
@@ -624,11 +635,14 @@ struct MainView: View {
 /// same view, never moves, just disappears on the iPhone sidebar.
 private struct MenuScopedSearchable: ViewModifier {
     @Binding var text: String
+    var focused: FocusState<Bool>.Binding
     let enabled: Bool
 
     func body(content: Content) -> some View {
         if enabled {
-            content.searchable(text: $text, prompt: "search")
+            content
+                .searchable(text: $text, prompt: "search")
+                .searchFocused(focused)
         } else {
             content
         }

@@ -208,6 +208,9 @@ struct EntuApp: App {
             // value `MainView` publishes; a no-op outside the main view.
             PaletteCommands()
 
+            // Edit > Search (⌘F) — focuses the toolbar search field.
+            SearchFieldCommands()
+
             // Entity menu — actions for the entity shown in the detail
             // column, published via the `entityActions` focused value.
             EntityCommands()

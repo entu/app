@@ -2594,6 +2594,23 @@
         }
       }
     },
+    "paletteSearchInMenu %@ %@" : {
+      "comment" : "Command palette row: search within the active sidebar menu entry. First arg is the text, second the menu entry name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search “%1$@” in %2$@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otsi “%1$@” loendist %2$@"
+          }
+        }
+      }
+    },
     "paletteSearchPlaceholder" : {
       "comment" : "Command palette input placeholder.",
       "localizations" : {
