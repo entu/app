@@ -1,12 +1,14 @@
-// Sidebar — menu groups as expandable sections. macOS/iPad add a bottom
-// bar with the user pill and the Entu AI button; iPhone draws the design's
-// header (database name, user name, avatar button) in the list content
-// and keeps only a prominent AI capsule at the bottom.
+// Sidebar — menu groups as expandable sections. iPhone/iPad show the
+// database name as the native large title with the user name as subtitle,
+// the avatar button in the nav bar and the AI button in the native bottom
+// toolbar (native equivalent of the design's in-content header + pills,
+// 24a); macOS keeps a bottom bar with the user pill and the AI pill.
 
 import SwiftUI
 
-/// Sidebar with menu groups as expandable sections and a bottom row holding
-/// the user pill (opens `AccountSheet`) and the Entu AI button.
+/// Sidebar with menu groups as expandable sections plus the account and
+/// Entu AI entry points — nav bar + bottom toolbar on iOS, bottom pill
+/// bar on macOS.
 struct SidebarView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
@@ -16,7 +18,6 @@ struct SidebarView: View {
     @Binding var selectedMenuId: String?
     let openPinnedEntity: (String) -> Void
     @State private var showAccountSheet = false
-    @State private var userThumbnail: String?
 
 
     /// Ids of expanded groups. Seeded once when groups first arrive
@@ -31,43 +32,51 @@ struct SidebarView: View {
         auth.databases.first { $0._id == api.databaseId }
     }
 
-    #if os(iOS)
-    private var isPhone: Bool {
-        UIDevice.current.userInterfaceIdiom == .phone
-    }
-    #endif
-
-
     var body: some View {
-        List(selection: $selectedMenuId) {
+        Group {
             #if os(iOS)
-            // iPhone: the design's header (24a) lives in the content — the
-            // nav bar stays inline with just the toggle. (A real large
-            // title gets stuck collapsed after popping back from the list
-            // column.) iPad mirrors macOS: no header, bottom user pill.
-            if isPhone {
-                HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: currentDatabase?.name ?? "Entu")
-                            .font(.largeTitle.bold())
-
-                        if let userName = currentDatabase?.user?.name {
-                            Text(verbatim: userName)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+            // iPhone + iPad: native large title + subtitle + nav-bar
+            // avatar instead of the design's in-content header / user
+            // pill (24a) — the native construction, per HIG. The AI
+            // entry point sits in the native bottom toolbar, matching
+            // the list column's filter / search / New.
+            menuList
+                .navigationTitle(currentDatabase?.name ?? "Entu")
+                .navigationSubtitle(currentDatabase?.user?.name ?? "")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        avatarButton
                     }
 
-                    Spacer(minLength: 0)
+                    // Entu AI entry point — gated on a signed-in user
+                    // (hidden in public-database mode, matching the
+                    // webapp) and hidden while the chat panel is open
+                    // to avoid redundancy. Flexible spacer pushes it
+                    // to the trailing edge, Mail-compose-style.
+                    if auth.currentUserId != nil && !chat.isOpen {
+                        ToolbarSpacer(.flexible, placement: .bottomBar)
 
-                    userPill
+                        ToolbarItem(placement: .bottomBar) {
+                            aiToolbarButton
+                        }
+                    }
                 }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .selectionDisabled()
-            }
+            #else
+            // macOS: bottom bar with the user pill + AI pill.
+            menuList
+                .safeAreaBar(edge: .bottom) { bottomBar }
             #endif
+        }
+        .sheet(isPresented: $showAccountSheet) {
+            AccountSheet(openPinnedEntity: openPinnedEntity)
+                .blocksCommandPalette()
+        }
+    }
 
+    /// The menu list itself — shared by the iOS (nav title + toolbars)
+    /// and macOS (bottom pill bar) branches of `body`.
+    private var menuList: some View {
+        List(selection: $selectedMenuId) {
             ForEach(menu.groups) { group in
                 Section(isExpanded: expansionBinding(for: group.id)) {
                     ForEach(group.items) { item in
@@ -78,8 +87,6 @@ struct SidebarView: View {
                     }
                 } header: {
                     Text(group.name ?? "")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -90,71 +97,37 @@ struct SidebarView: View {
         .onChange(of: menu.groups.count) { _, _ in
             seedExpansionIfNeeded()
         }
-        #if os(iOS)
-        // The header lives in the list content (see above) — keep the nav
-        // bar empty and pull the content up under it.
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.top, 0, for: .scrollContent)
-        #endif
-        // Bottom bar. macOS + iPad: compact user pill + AI side by side.
-        // iPhone: only the prominent AI capsule, trailing (24a) — the user
-        // lives in the header.
-        .safeAreaBar(edge: .bottom) {
-            HStack(spacing: 8) {
-                #if os(macOS)
-                userPill
-                #else
-                if isPhone {
-                    Spacer(minLength: 0)
-                } else {
-                    userPill
-                }
-                #endif
-
-                // Entu AI entry point — gated on a signed-in user (hidden in
-                // public-database mode, matching the webapp) and hidden while
-                // the chat panel is open to avoid redundancy.
-                if auth.currentUserId != nil && !chat.isOpen {
-                    aiButton
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-        }
-        .sheet(isPresented: $showAccountSheet) {
-            AccountSheet(openPinnedEntity: openPinnedEntity)
-                .blocksCommandPalette()
-        }
-        .task(id: currentDatabase?.user?._id) {
-            await loadUserThumbnail()
-        }
     }
 
-    /// Opens the account sheet. macOS + iPad: bottom glass pill with the
-    /// user's name and database id. iPhone: avatar-only button in the
-    /// content header.
-    private var userPill: some View {
-        #if os(macOS)
-        fullUserPill
-        #else
-        Group {
-            if isPhone {
-                avatarButton
-            } else {
-                fullUserPill
+    #if os(macOS)
+    /// Bottom bar (macOS): compact user pill + AI pill side by side.
+    private var bottomBar: some View {
+        HStack(spacing: 8) {
+            fullUserPill
+
+            // Entu AI entry point — gated on a signed-in user (hidden in
+            // public-database mode, matching the webapp) and hidden while
+            // the chat panel is open to avoid redundancy.
+            if auth.currentUserId != nil && !chat.isOpen {
+                aiButton
             }
         }
-        #endif
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
     }
 
-    /// Avatar + name + database id in a glass capsule (macOS, iPad).
+    /// Opens the account sheet — person icon + name + database id in a
+    /// glass capsule (macOS bottom bar).
     private var fullUserPill: some View {
         Button {
             showAccountSheet = true
         } label: {
             HStack(spacing: 8) {
-                UserAvatar(thumbnail: userThumbnail, size: 26, fallback: .personIcon)
+                Image(systemName: "person.crop.circle")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 26, height: 26)
+                    .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 0) {
                     ((currentDatabase?.user?.name).map { Text(verbatim: $0) } ?? Text("user"))
@@ -181,44 +154,42 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: Capsule())
     }
+    #endif
 
     #if os(iOS)
-    /// Round thumbnail-only button (iPhone header). AsyncImage, not a
-    /// `.task`-loading avatar — task modifiers in bar contexts don't
-    /// reliably fire on iOS.
+    /// Account button (iPhone + iPad nav bar) — the standard person
+    /// symbol; the toolbar supplies sizing and glass treatment.
     private var avatarButton: some View {
         Button {
             showAccountSheet = true
         } label: {
-            AsyncImage(url: userThumbnail.flatMap { URL(string: $0) }) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                Circle()
-                    .fill(.fill.quaternary)
-                    .overlay {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
-                    }
-            }
-            .frame(width: 44, height: 44)
-            .clipShape(Circle())
-            .overlay {
-                Circle().strokeBorder(.separator, lineWidth: 1)
-            }
-            .contentShape(Circle())
+            Image(systemName: "person.crop.circle")
         }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: Circle())
         .accessibilityLabel("user")
+    }
+
+    /// AI entry point as a standard bottom-toolbar button (iPhone +
+    /// iPad) — built exactly like the nav-bar avatar button: plain
+    /// button, system-drawn chrome. The only addition is the tint,
+    /// which colors the sparkles icon in the AI purple (design's
+    /// #5856d6 ≈ system indigo; toolbar icons color via `.tint`, not
+    /// `foregroundStyle`). Prominent styles are avoided deliberately —
+    /// they lose their tint on iPad and render white-on-white (see the
+    /// iPadOS 26 toolbar quirks note in CLAUDE-APP.md).
+    private var aiToolbarButton: some View {
+        Button {
+            chat.isOpen = true
+        } label: {
+            Label("aiButton", systemImage: "sparkles")
+        }
+        .tint(.indigo)
     }
     #endif
 
+    #if os(macOS)
     /// AI purple — same identity color as the chat's sparkle icons
-    /// (design's #5856d6 ≈ system indigo). Prominent 24a capsule on touch
-    /// platforms, the compact pill on macOS.
+    /// (design's #5856d6 ≈ system indigo). Compact glass pill beside the
+    /// user pill (macOS).
     private var aiButton: some View {
         Button {
             chat.isOpen = true
@@ -230,12 +201,12 @@ struct SidebarView: View {
             } icon: {
                 Image(systemName: "sparkles")
             }
-            .font(pillFont)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.white)
-            .padding(.horizontal, aiHorizontalPadding)
+            .padding(.horizontal, 8)
             // Same content height + uniform inset as the user
             // pill beside it, so the two pills match exactly.
-            .frame(height: pillContentHeight)
+            .frame(height: 26)
             .padding(4)
             // Never truncate the label — the user pill beside it
             // is the one that compresses in a narrow sidebar.
@@ -245,46 +216,7 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .glassEffect(.regular.tint(.indigo).interactive(), in: Capsule())
     }
-
-    /// AI-pill metrics — the design's prominent 24a sizing on iPhone,
-    /// the compact pill on macOS and iPad.
-    private var pillContentHeight: CGFloat {
-        #if os(macOS)
-        26
-        #else
-        isPhone ? 40 : 26
-        #endif
-    }
-
-    private var pillFont: Font {
-        #if os(macOS)
-        .caption.weight(.semibold)
-        #else
-        isPhone ? .subheadline.weight(.semibold) : .caption.weight(.semibold)
-        #endif
-    }
-
-    private var aiHorizontalPadding: CGFloat {
-        #if os(macOS)
-        8
-        #else
-        isPhone ? 16 : 8
-        #endif
-    }
-
-    /// Resolves the active database user's thumbnail for the bottom bar
-    /// avatar. Cleared before fetching so a stale thumbnail never bleeds across
-    /// database switches.
-    private func loadUserThumbnail() async {
-        userThumbnail = nil
-        guard let userId = currentDatabase?.user?._id else { return }
-
-        // No photo pre-check — the thumbnail endpoint itself returns
-        // nothing for photo-less entities, and a `props=photo` probe
-        // false-negatives on slim payloads.
-        // Small bar-button avatar — the 50px thumbnail is plenty.
-        userThumbnail = await api.entityThumbnailURL(entityId: userId, size: 50)?.absoluteString
-    }
+    #endif
 
     // MARK: - Expansion seed + binding
 

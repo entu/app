@@ -97,11 +97,12 @@ struct DashboardView: View {
     private func tiles(_ stats: DatabaseStats) -> some View {
         LazyVGrid(columns: columns, spacing: CardMetrics.gap) {
             StatTile(label: "entities", stat: stats.entities, color: .accentColor)
-            StatTile(label: "properties", stat: stats.properties, color: .indigo)
+            StatTile(label: "properties", stat: stats.properties, color: .orange)
             StatTile(label: "files", stat: stats.files, color: .green, isBytes: true)
 
             if let tokens = stats.tokens {
-                StatTile(label: "aiTokens", stat: tokens, color: .orange, isMonthly: true)
+                // Indigo = the AI identity color (sidebar AI button, chat sparkles).
+                StatTile(label: "aiTokens", stat: tokens, color: .indigo, isMonthly: true)
             }
         }
     }
