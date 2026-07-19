@@ -1,7 +1,9 @@
-// Entu AI assistant sheet. Presents the conversation, an input bar with
-// example prompts on an empty conversation, and the proposal review flow.
-// Mirrors the webapp's `components/chat/drawer.vue`. Presented from the
-// sidebar's Entu AI button; account-scoped state lives in `AIChatModel`.
+// Entu AI assistant panel. Presents the conversation, the close + input
+// controls (standard bottom-toolbar items on iOS; a hand-built glass bar
+// on macOS, whose custom column has no bottom toolbar), example prompts on
+// an empty conversation, and the proposal review flow. Mirrors the webapp's
+// `components/chat/drawer.vue`. Presented from the sidebar's Entu AI
+// button; account-scoped state lives in `AIChatModel`.
 
 import SwiftUI
 
@@ -19,9 +21,54 @@ struct AIChatView: View {
     private let examplePromptKeys = ["aiExample1", "aiExample2", "aiExample3", "aiExample4", "aiExample5"]
 
     var body: some View {
+        platformBody
+            // The assistant links entities as relative URLs ("/{db}/{id}",
+            // per the API's system prompt). The OS can't open those — route
+            // them to in-app navigation instead.
+            .environment(\.openURL, OpenURLAction { url in
+                if let entityId = entityId(from: url) {
+                    openEntity(entityId)
+                    return .handled
+                }
+                return .systemAction
+            })
+            .appLanguageScoped()
+            .onAppear { inputFocused = true }
+    }
+
+    /// iOS hosts close + input as standard bottom-toolbar items (system
+    /// glass, matching the sidebar's toolbars) — the `NavigationStack`
+    /// exists only to provide the toolbar context. macOS keeps the
+    /// hand-built glass bar: its custom trailing column has no bottom
+    /// toolbar to target.
+    @ViewBuilder
+    private var platformBody: some View {
+        #if os(iOS)
+        NavigationStack {
+            messageList
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Panel tone — the white card surface, a step lighter
+                // than the window background.
+                .background(Color("CardBackground").ignoresSafeArea())
+                .toolbar {
+                    ToolbarItem(placement: .bottomBar) {
+                        closeButton
+                    }
+
+                    // Fixed spacer splits the shared glass pod — close and
+                    // input render as separate capsules (same pattern as
+                    // the list column's filter · search · New).
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+
+                    ToolbarItem(placement: .bottomBar) {
+                        inputCore
+                    }
+                }
+        }
+        #else
         VStack(spacing: 0) {
-            // No in-content title on either platform — the panel is
-            // self-evidently the assistant (matching the macOS column).
+            // No in-content title — the panel is self-evidently the
+            // assistant.
             messageList
         }
         // The input bar floats over the message scroll as a glass surface —
@@ -31,18 +78,7 @@ struct AIChatView: View {
         // Panel tone — the white card surface, a step lighter than the
         // window background, covering the toolbar strip too.
         .background(Color("CardBackground").ignoresSafeArea())
-        // The assistant links entities as relative URLs ("/{db}/{id}", per
-        // the API's system prompt). The OS can't open those — route them to
-        // in-app navigation instead.
-        .environment(\.openURL, OpenURLAction { url in
-            if let entityId = entityId(from: url) {
-                openEntity(entityId)
-                return .handled
-            }
-            return .systemAction
-        })
-        .appLanguageScoped()
-        .onAppear { inputFocused = true }
+        #endif
     }
 
     /// Extracts the entity id from an AI-generated entity link — the last
@@ -137,6 +173,56 @@ struct AIChatView: View {
 
     // MARK: - Input
 
+    /// The bare input field. iOS: single-line in a bottom-toolbar item
+    /// (the toolbar supplies the glass); Return sends via `onSubmit` —
+    /// a multi-line field would swallow the software keyboard's Return
+    /// as a newline. macOS: multi-line, wrapped in its own glass surface
+    /// (`inputField`).
+    @ViewBuilder
+    private var inputCore: some View {
+        #if os(iOS)
+        TextField("aiInputPrompt", text: $input)
+            .textFieldStyle(.plain)
+            .focused($inputFocused)
+            .disabled(chat.isLoading)
+            .submitLabel(.send)
+            .onSubmit { send(input) }
+        #else
+        TextField("aiInputPrompt", text: $input, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(1...5)
+            .focused($inputFocused)
+            .disabled(chat.isLoading)
+            // Enter sends; Shift+Enter inserts a newline (handled explicitly —
+            // the field's default Shift+Return isn't a newline).
+            .onKeyPress { keyPress in
+                guard keyPress.key == .return else { return .ignored }
+
+                if keyPress.modifiers.contains(.shift) {
+                    input += "\n"
+                } else {
+                    send(input)
+                }
+                return .handled
+            }
+        #endif
+    }
+
+    #if os(iOS)
+    /// Standard toolbar close button — plain, system-drawn chrome, like
+    /// the sidebar's toolbar buttons.
+    private var closeButton: some View {
+        Button {
+            chat.isOpen = false
+        } label: {
+            Image(systemName: "xmark")
+        }
+        .accessibilityLabel("close")
+    }
+
+    #endif
+
+    #if os(macOS)
     /// Circular glass close (X) next to the glass input field. Wrapped in a
     /// `GlassEffectContainer` so the two glass shapes blend correctly when
     /// they come close.
@@ -163,29 +249,14 @@ struct AIChatView: View {
     }
 
     private var inputField: some View {
-        TextField("aiInputPrompt", text: $input, axis: .vertical)
-            .textFieldStyle(.plain)
-            .lineLimit(1...5)
-            .focused($inputFocused)
-            .disabled(chat.isLoading)
-            // Enter sends; Shift+Enter inserts a newline (handled explicitly —
-            // the field's default Shift+Return isn't a newline).
-            .onKeyPress { keyPress in
-                guard keyPress.key == .return else { return .ignored }
-
-                if keyPress.modifiers.contains(.shift) {
-                    input += "\n"
-                } else {
-                    send(input)
-                }
-                return .handled
-            }
+        inputCore
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
             // Standard glass surface — blends with the glass close button
             // via the shared GlassEffectContainer.
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
+    #endif
 
     // MARK: - Actions
 
