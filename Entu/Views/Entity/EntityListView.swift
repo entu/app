@@ -5,10 +5,12 @@
 import SwiftUI
 
 /// Scrollable entity list with search, infinite scroll, and pull-to-refresh.
-/// Custom rows instead of `List(selection:)` — the selected row is tinted
-/// with the entity's derived color (rounded fill + ring), which the system
-/// list highlight cannot do. Arrow-key selection is reimplemented via
-/// `onKeyPress` on the focused scroll container.
+/// iPad/macOS use custom rows instead of `List(selection:)` — the selected
+/// row is tinted with the entity's derived color (rounded fill + ring),
+/// which the system list highlight cannot do; arrow-key selection is
+/// reimplemented via `onKeyPress` on the focused scroll container. iPhone
+/// uses the standard system `List` — its compact width pushes the detail,
+/// so the custom selection styling never shows there.
 struct EntityListView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(APIClient.self) private var api
@@ -296,7 +298,61 @@ struct EntityListView: View {
 
     // MARK: - Rows
 
+    /// iPhone gets the standard system list — compact width pushes the
+    /// detail onto the stack, so the custom derived-color selection
+    /// styling (the reason for the custom rows) never shows there.
+    /// iPad/macOS keep the custom rows with the tinted selection.
+    @ViewBuilder
     private var listRows: some View {
+        #if os(iOS)
+        if isPhone {
+            phoneList
+        } else {
+            scrollRows
+        }
+        #else
+        scrollRows
+        #endif
+    }
+
+    #if os(iOS)
+    /// Standard `List` (iPhone) — native rows, separators, and tap
+    /// behavior; selection drives the split view's detail push.
+    private var phoneList: some View {
+        List(selection: $selectedEntityId) {
+            ForEach(items) { item in
+                HStack(spacing: 9) {
+                    EntityAvatar(name: item.name, entityId: item._id, hasPhoto: item.hasPhoto, size: 24)
+
+                    Text(item.name)
+                        .lineLimit(1)
+                }
+                .tag(item._id)
+                .onAppear {
+                    if item.id == items.last?.id && hasMore && !isLoadingMore {
+                        Task { await loadMore() }
+                    }
+                }
+                .entityRowContextMenu(entityId: item._id) {
+                    selectedEntityId = item._id
+                }
+            }
+
+            if isLoadingMore {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .refreshable { await loadEntities() }
+    }
+    #endif
+
+    private var scrollRows: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 1) {
