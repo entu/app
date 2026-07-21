@@ -29,7 +29,11 @@ struct MainView: View {
     @Environment(SessionState.self) private var session
     @Environment(DeepLinkRouter.self) private var router
     @Environment(CommandPaletteModel.self) private var palette
+    @Environment(WindowState.self) private var windowState
+    @Environment(WindowSessionStore.self) private var windowSessions
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
 
     @State private var menu: MenuModel?
     @State private var preferredColumn: NavigationSplitViewColumn = .detail
@@ -44,6 +48,16 @@ struct MainView: View {
     /// Bumped by detail-side operations (currently: duplicate) to force
     /// `EntityListView` to refetch its rows even when `query` is unchanged.
     @State private var listRefreshToken: Int = 0
+
+    /// Display name of the entity currently shown in the detail column,
+    /// reported by `EntityDetailView`. Feeds the native-tab label (macOS).
+    @State private var entityTitle: String = ""
+
+    /// Top safe-area inset (macOS) — the window toolbar's height, and ~36pt
+    /// more once the window joins a tab group. Injected into the columns via
+    /// `\.windowTopInset` so their top-bleeding headers clear the tab bar
+    /// instead of hiding behind it. 52 is the untabbed toolbar height.
+    @State private var topInset: CGFloat = 52
 
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = ColumnMetrics.sidebarDefault
     @AppStorage("ui.contentWidth") private var contentWidth: Double = ColumnMetrics.listDefault
@@ -94,6 +108,39 @@ struct MainView: View {
         session.selectedMenuId == nil && !search.isActive
     }
 
+    /// Name of the active database — the display name for an authenticated
+    /// database, the id itself for a public one (which has no name; the id
+    /// doubles as its label, mirroring `AuthModel`).
+    private var databaseName: String {
+        guard let id = api.databaseId else { return "" }
+
+        return auth.databases.first { $0._id == id }?.name ?? id
+    }
+
+    /// Menu label for the selected sidebar item — the same lookup
+    /// `EntityListView` shows as the list's title.
+    private var menuName: String? {
+        guard let menuId = session.selectedMenuId else { return nil }
+
+        return menu?.groups.flatMap(\.items).first { $0._id == menuId }?.name
+    }
+
+    /// Native-tab / window label — the open entity's name, else the selected
+    /// menu's name (its entity list is shown, mirroring the list title), else
+    /// the database name (dashboard).
+    private var windowTitle: String {
+        let hasEntity = currentEntityId != nil || session.pinnedEntityId != nil
+        if hasEntity, !entityTitle.isEmpty {
+            return entityTitle
+        }
+
+        if let menuName, !menuName.isEmpty {
+            return menuName
+        }
+
+        return databaseName
+    }
+
     /// Hide the search field on compact-size sidebar (iPhone, iPad split) when no menu is selected.
     /// Matches Mail.app behaviour — search appears on the list view, not the root sidebar.
     private var showSearchField: Bool {
@@ -111,6 +158,10 @@ struct MainView: View {
                 // search/navigation or slam the compact column shut (it
                 // made the iPhone sidebar toggle look dead).
                 guard newValue != session.selectedMenuId else { return }
+
+                // ⌘-click a sidebar menu item → open it in a new tab/window
+                // instead of switching this window's selection.
+                if interceptsMenuToNewTab(newValue) { return }
 
                 search.text = ""
                 search.advancedQuery = nil
@@ -134,10 +185,63 @@ struct MainView: View {
         )
     }
 
+    // MARK: - Open in new tab / window
+
+    /// Open `id` in a new window. On macOS the system tabs it next to the
+    /// current tab (per the user's "Prefer tabs" setting); on iPad it's a
+    /// new scene window.
+    private func openEntityInNewTab(_ id: String) {
+        openWindow(id: "main", value: TabRequest(content: .entity(id)))
+    }
+
+    /// ⌘-click routing — when the Command key is held at click time, open the
+    /// entity in a new tab/window instead and report the click as consumed.
+    /// Every entity-link click funnels through one of three roots
+    /// (`openPinnedEntity`, `navigate(to:)`, `entitySelection`), so this is
+    /// checked only there — leaf views stay modifier-unaware.
+    private func interceptsToNewTab(_ id: String?) -> Bool {
+        guard supportsMultipleWindows, let id, ModifierState.isCommandHeld else { return false }
+
+        openEntityInNewTab(id)
+        return true
+    }
+
+    /// ⌘-click routing for a sidebar menu item — opens that menu's entity
+    /// list in a new tab/window instead of switching this window.
+    private func interceptsMenuToNewTab(_ menuId: String?) -> Bool {
+        guard supportsMultipleWindows, let menuId, ModifierState.isCommandHeld else { return false }
+
+        openWindow(id: "main", value: TabRequest(content: .menu(menuId)))
+        return true
+    }
+
+    /// Detail-side navigation (reference chips, parent/type chips, table
+    /// rows) — pushes onto the history stack unless ⌘-click routes it to a
+    /// new tab.
+    private func navigate(to entityId: String) {
+        if interceptsToNewTab(entityId) { return }
+
+        session.entityHistory.append(entityId)
+    }
+
+    /// List-selection binding — intercepts ⌘-click into a new tab (keeping
+    /// the current selection), otherwise writes through to the session.
+    private var entitySelection: Binding<String?> {
+        Binding(
+            get: { session.selectedEntityId },
+            set: { newValue in
+                if newValue != session.selectedEntityId, interceptsToNewTab(newValue) { return }
+
+                session.selectedEntityId = newValue
+            }
+        )
+    }
+
     /// Apply a pending deep link from `DeepLinkRouter`. Switches the database
     /// if needed, resets navigation state, optionally pre-fills search/menu
     /// from query params, then opens the linked entity (if any). Cleared
-    /// once consumed so the same link doesn't re-fire.
+    /// once consumed so the same link doesn't re-fire. With several windows
+    /// open, only the window whose URL handler received the link consumes it.
     ///
     /// Resolves the target database in this order:
     ///   1. authenticated database — `selectDatabase`
@@ -146,6 +250,7 @@ struct MainView: View {
     ///      the saved list and select. On failure clear the pending state and
     ///      stay where we are.
     private func applyPendingDeepLink() {
+        guard router.targetWindowId == nil || router.targetWindowId == windowState.windowId else { return }
         guard let dbId = router.pendingDatabaseId else { return }
 
         if dbId != api.databaseId {
@@ -254,10 +359,13 @@ struct MainView: View {
         session.clearNavigation()
     }
 
-    /// Opens an entity from the sidebar user row. In two-column mode (dashboard visible),
-    /// swap the dashboard for the entity detail. In three-column mode, append to the
+    /// Opens an entity from the sidebar user row, the command palette, or an
+    /// AI-chat link. In two-column mode (dashboard visible), swap the
+    /// dashboard for the entity detail. In three-column mode, append to the
     /// history stack so it becomes the current detail without clearing menu/search.
     private func openPinnedEntity(_ entityId: String) {
+        if interceptsToNewTab(entityId) { return }
+
         if showDashboard {
             // No-op if already viewing that exact entity with no sub-navigation.
             if session.pinnedEntityId == entityId && session.entityHistory.isEmpty {
@@ -286,14 +394,21 @@ struct MainView: View {
             }
         }
         .task {
-            // Reopen where the user left off *before* the menu loads, so the
-            // split view's first render is already in the right (two/three-
-            // column, chat open/closed) configuration. Reconfiguring after
-            // the first paint mislays the toolbar on macOS. A deep link wins
-            // over a saved session, so it's applied after the menu is ready.
-            if router.pendingDatabaseId == nil {
-                restoreSession(for: api.databaseId)
+            // Apply this window's initial state *before* the menu loads, so
+            // the split view's first render is already in the right (two/
+            // three-column, chat open/closed) configuration. Reconfiguring
+            // after the first paint mislays the toolbar on macOS. A deep
+            // link wins over a saved session, so it's applied after the menu
+            // is ready. `hasRestored` skips the restore when the language-
+            // change `.id` rebuild re-runs this task — the per-window models
+            // already hold the live state.
+            if router.pendingDatabaseId == nil, !windowState.hasRestored {
+                applyInitialState()
             }
+            windowState.hasRestored = true
+            // Register this window in the store even if nothing changes after
+            // restore, so it's persisted for the next launch.
+            updateWindowSession()
             let menuModel = MenuModel(api: api)
             menu = menuModel
             await menuModel.load()
@@ -306,19 +421,23 @@ struct MainView: View {
     }
 
     /// ⇧⌘R — drop every local cache and UI setting (credentials and the
-    /// in-app language survive), reset the in-memory session, refetch the
-    /// menu from the API, and land on the database dashboard.
+    /// in-app language survive), reset the in-memory session, and land on
+    /// the database dashboard. The menu refetch rides the `logOutToken`
+    /// bump `clearLocalData` makes (see `stateSync`), in this window and
+    /// every other one.
     private func hardReset() {
         auth.clearLocalData()
         // Land on the dashboard — on iPhone the sidebar may be the shown
         // compact column, so switch back to detail explicitly.
         preferredColumn = .detail
-        Task { await menu?.load() }
     }
 
     // MARK: - Session persistence
 
-    /// Save the current "where I left off" state for the active database.
+    /// Save the current "where I left off" state — both the per-database
+    /// `ui.session` store (database switch, cold start, single-window
+    /// fallback) and this window's entry in the ordered `WindowSessionStore`
+    /// (per-tab relaunch restore).
     private func persistSession() {
         session.persist(
             databaseId: api.databaseId,
@@ -326,14 +445,74 @@ struct MainView: View {
             advancedQuery: search.advancedQuery,
             chatOpen: chat.isOpen
         )
+        updateWindowSession()
+    }
+
+    /// Register/refresh this window's snapshot in the ordered store.
+    private func updateWindowSession() {
+        guard let databaseId = api.databaseId else { return }
+
+        windowSessions.update(
+            windowState.windowId,
+            snapshot: SessionState.SceneSnapshot(
+                databaseId: databaseId,
+                epoch: SessionState.currentEpoch,
+                snapshot: session.currentSnapshot(
+                    searchText: search.text,
+                    advancedQuery: search.advancedQuery,
+                    chatOpen: chat.isOpen
+                )
+            )
+        )
+    }
+
+    /// First-appearance state for this window. Precedence:
+    /// 1. The window's own restored scene snapshot (relaunch), if it still
+    ///    matches the active database.
+    /// 2. The seed it was opened with — ⌘T dashboard or ⌘-click entity,
+    ///    both starting from clean navigation and search.
+    /// 3. The per-database saved session (default window, cold start).
+    private func applyInitialState() {
+        // Restored windows carry the default `.restore` seed — claim the
+        // next saved per-window snapshot in order (only when it belongs to
+        // the active database and the current sign-out epoch, so a previous
+        // user's snapshot is never applied).
+        if case .restore = windowState.seed,
+           let claimed = windowSessions.claim(),
+           claimed.databaseId == api.databaseId,
+           claimed.epoch == SessionState.currentEpoch {
+            applySnapshot(claimed.snapshot)
+            return
+        }
+
+        switch windowState.seed {
+        case .dashboard:
+            applySnapshot(nil)
+        case .entity(let entityId):
+            var snapshot = SessionState.Snapshot()
+            snapshot.pinnedId = entityId
+            applySnapshot(snapshot)
+        case .menu(let menuId):
+            var snapshot = SessionState.Snapshot()
+            snapshot.menuId = menuId
+            applySnapshot(snapshot)
+        case .restore:
+            restoreSession(for: api.databaseId)
+        }
     }
 
     /// Apply the saved session for `databaseId` (nav + search + chat), or
-    /// clear to the dashboard when there's none. Wrapped in `withRestoring`
-    /// so the side-effect `onChange` handlers don't mangle the restored state.
+    /// clear to the dashboard when there's none.
     private func restoreSession(for databaseId: String?) {
+        applySnapshot(session.snapshot(databaseId: databaseId))
+    }
+
+    /// Apply `snapshot` (nav + search + chat), or clear to the dashboard
+    /// when nil. Wrapped in `withRestoring` so the side-effect `onChange`
+    /// handlers don't mangle the restored state.
+    private func applySnapshot(_ snapshot: SessionState.Snapshot?) {
         session.withRestoring {
-            if let snapshot = session.snapshot(databaseId: databaseId) {
+            if let snapshot {
                 session.applyNavigation(snapshot)
                 search.text = snapshot.searchText
                 search.advancedQuery = snapshot.advancedQuery
@@ -362,6 +541,13 @@ struct MainView: View {
         @Bindable var search = search
         @Bindable var chat = chat
 
+        // Row context menus offer "open in new tab/window" wherever the
+        // platform supports multiple windows (nil hides the item on iPhone).
+        // Typed out here — an inline ternary overwhelms the type-checker.
+        let openInNewTab: ((String) -> Void)? = supportsMultipleWindows
+            ? { openEntityInNewTab($0) }
+            : nil
+
         let layout = Group {
             if showDashboard {
                 twoColumnView(menu: menu)
@@ -379,6 +565,12 @@ struct MainView: View {
         // floating search field instead of a white band.
         .navigationTitle("")
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        // The window's top inset grows by the tab-bar height when tabbed —
+        // captured here (where the toolbar establishes it) and fed to the
+        // columns so their top-bleeding headers clear the tab bar.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { newInset in
+            if newInset > 0 { topInset = newInset }
+        }
         #endif
 
         // Split off the event handlers into a second expression — the whole
@@ -400,6 +592,15 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: palette.isOpen)
+        .environment(\.openEntityInNewTab, openInNewTab)
+        .environment(\.windowTopInset, topInset)
+        #if os(macOS)
+        // Label this window's native tab — the redesign keeps the window
+        // title empty, so without this the tab shows no name. `initial`
+        // seeds it at first render; the `macWindow` didSet re-applies once
+        // the accessor hands over the window.
+        .onChange(of: windowTitle, initial: true) { windowState.tabTitle = windowTitle }
+        #endif
         // View > Command Palette (⌘K) — see `PaletteCommands`.
         .focusedSceneValue(\.commandPalette, CommandPaletteToggle {
             palette.toggle(databaseId: api.databaseId)
@@ -462,6 +663,16 @@ struct MainView: View {
                 listRefreshToken &+= 1
                 Task { await menu.load() }
             }
+            // ⇧⌘R in *another* window cleared the menu cache and this
+            // window's navigation (via `WindowRootView`) — refetch the menu
+            // so this window doesn't keep serving the stale in-memory copy.
+            // Sign-out also bumps the token, but then `api.databaseId` is
+            // already nil and `MainView` is on its way out.
+            .onChange(of: auth.logOutToken) {
+                guard api.databaseId != nil else { return }
+
+                Task { await menu.load() }
+            }
             .onChange(of: router.pendingDatabaseId) {
                 applyPendingDeepLink()
             }
@@ -503,10 +714,11 @@ struct MainView: View {
                 EntityDetailView(
                     entityId: shownId,
                     menuId: session.selectedMenuId,
-                    onNavigate: { session.entityHistory.append($0) },
+                    onNavigate: { navigate(to: $0) },
                     onBack: session.entityHistory.isEmpty ? nil : { session.entityHistory.removeLast() },
                     onDelete: { popOrClearPinnedDetail() },
-                    onListChanged: { listRefreshToken &+= 1 }
+                    onListChanged: { listRefreshToken &+= 1 },
+                    onTitle: { entityTitle = $0 }
                 )
                 .entityHistoryBack($session.entityHistory)
             } else {
@@ -585,7 +797,7 @@ struct MainView: View {
             EntityListView(
                 query: activeQuery,
                 menuId: session.selectedMenuId,
-                selectedEntityId: $session.selectedEntityId,
+                selectedEntityId: entitySelection,
                 refreshToken: listRefreshToken,
                 onOpenAdvancedSearch: { search.showAdvanced = true }
             )
@@ -614,10 +826,11 @@ struct MainView: View {
                 EntityDetailView(
                     entityId: currentEntityId,
                     menuId: session.selectedMenuId,
-                    onNavigate: { session.entityHistory.append($0) },
+                    onNavigate: { navigate(to: $0) },
                     onBack: session.entityHistory.isEmpty ? nil : { session.entityHistory.removeLast() },
                     onDelete: { popOrClearListDetail() },
-                    onListChanged: { listRefreshToken &+= 1 }
+                    onListChanged: { listRefreshToken &+= 1 },
+                    onTitle: { entityTitle = $0 }
                 )
                 .entityHistoryBack($session.entityHistory)
             } else {
@@ -716,6 +929,15 @@ private struct ChatPresentation: ViewModifier {
         }
         #endif
     }
+}
+
+extension EnvironmentValues {
+    /// Window top safe-area inset (macOS) — the toolbar height plus the tab
+    /// bar when the window is tabbed. The top-bleeding column headers
+    /// (entity-list count strip, entity-detail band) size their clearance
+    /// from it so they sit below the tab bar instead of behind it. Default is
+    /// the untabbed toolbar height; `MainView` overrides it live.
+    @Entry var windowTopInset: CGFloat = 52
 }
 
 extension View {

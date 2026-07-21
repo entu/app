@@ -1,7 +1,8 @@
-// App entry point — creates the shared models once (API client, auth,
-// chat, search, session, deep-link router), injects them into the
-// environment, and hosts the main window with its menu-bar commands and
-// the entu:// URL handler.
+// App entry point — creates the app-wide services once (API client, auth,
+// network, deep-link router, tab coordinator), injects them into the
+// environment, and hosts the main window group with its menu-bar commands.
+// Per-window state (navigation, search, palette, chat) lives in
+// `WindowRootView` so every window/tab navigates independently.
 
 import SwiftUI
 #if os(macOS)
@@ -15,13 +16,9 @@ struct EntuApp: App {
     @State private var auth: AuthModel
     @State private var authService: AuthService
     @State private var passkeyService: PasskeyService
-    @State private var chat: AIChatModel
-    @State private var search = SearchModel()
-    @State private var session = SessionState()
-    @State private var palette = CommandPaletteModel()
     @State private var network = NetworkMonitor()
     @State private var router = DeepLinkRouter()
-    @State private var showingPublicEntry = false
+    @State private var windowSessions = WindowSessionStore()
 
     /// User-selected in-app language. Drives `.environment(\.locale, ...)`
     /// below — SwiftUI APIs that take a `LocalizedStringKey` (`Text("key")`,
@@ -34,7 +31,10 @@ struct EntuApp: App {
 
     init() {
         #if os(macOS)
-        NSWindow.allowsAutomaticWindowTabbing = false
+        // Let macOS tab new windows automatically — ⌘T / ⌘-click open a new
+        // window and the system tabs it next to the current one (per the
+        // user's "Prefer tabs" setting). No manual tab attaching.
+        NSWindow.allowsAutomaticWindowTabbing = true
         #endif
         Self.migrateLegacyDefaults()
 
@@ -44,7 +44,6 @@ struct EntuApp: App {
         _auth = State(initialValue: auth)
         _authService = State(initialValue: AuthService(auth: auth))
         _passkeyService = State(initialValue: PasskeyService(auth: auth))
-        _chat = State(initialValue: AIChatModel(api: api))
     }
 
     /// One-time rename of legacy UserDefaults keys to the namespaced scheme (`auth.*`, `ui.*`).
@@ -63,67 +62,32 @@ struct EntuApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
-            ContentView()
-                .publicDatabaseEntry(isPresented: $showingPublicEntry)
+        WindowGroup(id: "main", for: TabRequest.self) { $request in
+            WindowRootView(api: api, request: request)
                 .environment(api)
                 .environment(auth)
-                .environment(search)
-                .environment(session)
-                .environment(palette)
                 .environment(authService)
                 .environment(passkeyService)
-                .environment(chat)
                 .environment(network)
                 .environment(router)
+                .environment(windowSessions)
                 .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
-                // SwiftUI's `Text("key")` doesn't always re-resolve when the
-                // env locale changes — it caches against `Bundle.main`'s
-                // preferred localization set at launch. Re-keying the root
-                // view forces a full rebuild on language change so every
-                // `LocalizedStringKey` resolves against the active locale.
-                // Session state lives in `EntuApp` (not `ContentView`), so
-                // it survives the rebuild.
-                .id(appLanguage)
-                #if os(macOS)
-                .frame(minWidth: 800, minHeight: 700)
-                // App Store macOS screenshot capture mode — DO NOT DELETE.
-                // Swap with the `minWidth/minHeight` line above when taking
-                // App Store screenshots. Apple requires a 1280×800 pt outer
-                // window; macOS adds ~32pt of title-bar chrome above the
-                // content view, so the content frame is 1280×768 to land the
-                // window at 1280×800 (= 2560×1600 px @2x, Apple's accepted
-                // screenshot size). `MainView` also adds a ~20pt toolbar row
-                // that `AuthView`/`DatabaseListView` lack, so its content
-                // frame is shortened by that amount to keep the outer window
-                // at 1280×800 in every screen state.
-                // .frame(width: 1280, height: api.databaseId != nil ? 748 : 768)
-                #endif
-                .onOpenURL { url in
-                    if !router.handle(url: url) {
-                        authService.handleIncoming(url: url)
-                    }
-                }
-                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                    if let url = activity.webpageURL {
-                        if !router.handle(url: url) {
-                            authService.handleIncoming(url: url)
-                        }
-                    }
-                }
+        } defaultValue: {
+            TabRequest()
         }
         .defaultSize(width: 1280, height: 850)
         // App Store screenshot capture mode — uncomment together with the
-        // `.frame(width: 1280, height: 768)` above to lock the window to the
-        // fixed content size (otherwise the window resizes and leaves margins
-        // around the fixed content). Comment both out to ship.
+        // `.frame(width: 1280, height: 768)` in `WindowRootView` to lock the
+        // window to the fixed content size (otherwise the window resizes and
+        // leaves margins around the fixed content). Comment both out to ship.
         // .windowResizability(.contentSize)
         .commands {
             // File > New — ⌘N creates an entity (the app's primary object),
             // ⌃⌘N adds a child. `.newItem` is *replaced* (not left default)
             // so ⌘N is the entity action; New Window moves to ⇧⌘N inside the
             // same group, keeping the window-reopen affordance App Review
-            // requires. See `NewEntityCommands`.
+            // requires. ⌘T opens a new tab on the dashboard (macOS).
+            // See `NewEntityCommands`.
             NewEntityCommands()
 
             // Entu menu — Sign In (with providers submenu) when nothing is
@@ -170,39 +134,10 @@ struct EntuApp: App {
                 }
             }
 
-            // Database menu — authenticated databases first (no group title),
-            // then public, then a Browse-public entry. Always shown so the
-            // user can add a public database from the menu bar even before
-            // signing in.
-            CommandMenu(String(localized: "database")) {
-                ForEach(auth.databases) { database in
-                    Toggle(database.name, isOn: Binding(
-                        get: { database._id == api.databaseId },
-                        set: { if $0 { auth.selectDatabase(database) } }
-                    ))
-                }
-
-                if !auth.publicDatabases.isEmpty {
-                    Section(String(localized: "publicDatabasesSection")) {
-                        ForEach(auth.publicDatabases, id: \.self) { id in
-                            Toggle(id, isOn: Binding(
-                                get: { id == api.databaseId },
-                                set: { if $0 { auth.selectPublicDatabase(id) } }
-                            ))
-                        }
-                    }
-                }
-
-                if auth.isAuthenticated || !auth.publicDatabases.isEmpty {
-                    Divider()
-                }
-
-                Button {
-                    showingPublicEntry = true
-                } label: {
-                    Text(String(localized: "browsePublicDatabaseMenu"))
-                }
-            }
+            // Database menu — see `DatabaseCommands` (extracted so the
+            // Browse-public entry can target the active window through a
+            // focused scene value).
+            DatabaseCommands(auth: auth, api: api)
 
             // View > Command Palette (⌘K) — driven by the focused scene
             // value `MainView` publishes; a no-op outside the main view.

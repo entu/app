@@ -99,6 +99,16 @@ struct CommandPaletteToggle: Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { true }
 }
 
+/// Database-menu "browse public database" trigger published by
+/// `WindowRootView` — presents the entry alert in the active window only
+/// (an app-level binding would present it in every window at once).
+/// Always equal (see `ClearCacheCommand`).
+struct BrowsePublicDatabaseCommand: Equatable {
+    let invoke: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
 /// ⌘R fallback published by `EntityListView`: refetches the list when no
 /// entity is shown (an open entity's `EntityActions.reload` wins and
 /// reloads both). Equality compares `context` (the list's query), NOT the
@@ -126,6 +136,9 @@ extension FocusedValues {
 
     /// Focus-the-search-field command (⌘F) — published by `MainView`.
     @Entry var focusSearch: FocusSearchCommand?
+
+    /// Browse-public-database trigger — published by `WindowRootView`.
+    @Entry var browsePublicDatabase: BrowsePublicDatabaseCommand?
 
     /// List-refetch command — published by `EntityListView`.
     @Entry var reloadListCommand: ReloadListCommand?

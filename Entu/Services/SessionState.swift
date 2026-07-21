@@ -39,15 +39,42 @@ final class SessionState {
         var chatOpen: Bool = false
     }
 
+    /// A per-window snapshot for `WindowSessionStore` — the snapshot plus the
+    /// database it belongs to and the sign-out epoch it was written under, so
+    /// a snapshot is ignored on restore when the app-global database has
+    /// changed or a different user has since signed in (see `currentEpoch`).
+    struct SceneSnapshot: Codable {
+        var databaseId: String
+        var epoch: Int
+        var snapshot: Snapshot
+    }
+
+    // MARK: - Sign-out epoch
+
+    /// Bumped on every sign-out. Stamped into each `SceneSnapshot`; a
+    /// snapshot whose epoch differs from the current one is discarded on
+    /// restore. A *disconnected* iPad scene (routine with multi-window) keeps
+    /// its entry in `WindowSessionStore`'s in-memory map after sign-out and
+    /// can get re-persisted by another window, so this epoch is what stops a
+    /// different user on the same device from restoring the previous user's
+    /// search text and navigation from that dormant scene.
+    static let epochKey = "ui.sessionEpoch"
+
+    static var currentEpoch: Int {
+        UserDefaults.standard.integer(forKey: epochKey)
+    }
+
+    /// Invalidate every persisted scene snapshot (see `currentEpoch`).
+    static func bumpEpoch() {
+        UserDefaults.standard.set(currentEpoch + 1, forKey: epochKey)
+    }
+
     // MARK: - Persist
 
-    /// Save the current session for `databaseId`. No-op while restoring (so a
-    /// half-applied restore never writes back over the store).
-    func persist(databaseId: String?, searchText: String, advancedQuery: String?, chatOpen: Bool) {
-        guard !isRestoring, let databaseId else { return }
-
-        var all = Self.loadAll()
-        all[databaseId] = Snapshot(
+    /// The current navigation state plus the given view-side fields as a
+    /// snapshot — shared by the per-database store and the scene storage.
+    func currentSnapshot(searchText: String, advancedQuery: String?, chatOpen: Bool) -> Snapshot {
+        Snapshot(
             menuId: selectedMenuId,
             entityId: selectedEntityId,
             history: entityHistory,
@@ -56,6 +83,17 @@ final class SessionState {
             advancedQuery: advancedQuery,
             chatOpen: chatOpen
         )
+    }
+
+    /// Save the current session for `databaseId`. No-op while restoring (so a
+    /// half-applied restore never writes back over the store). With several
+    /// windows open, each one writes on its own changes — last writer wins,
+    /// which is acceptable for these tiny UI pointers.
+    func persist(databaseId: String?, searchText: String, advancedQuery: String?, chatOpen: Bool) {
+        guard !isRestoring, let databaseId else { return }
+
+        var all = Self.loadAll()
+        all[databaseId] = currentSnapshot(searchText: searchText, advancedQuery: advancedQuery, chatOpen: chatOpen)
         Self.storeAll(all)
     }
 

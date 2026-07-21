@@ -38,6 +38,7 @@ struct EntityEditView: View {
     @Environment(AuthModel.self) var auth
     @Environment(APIClient.self) var api
     @Environment(DeepLinkRouter.self) var router
+    @Environment(WindowState.self) var windowState
     @Environment(\.dismiss) var dismiss
 
     let mode: EntityEditMode
@@ -283,6 +284,9 @@ struct EntityEditView: View {
     private func openEntuLink(_ url: URL) -> Bool {
         guard router.handle(url: url) else { return false }
 
+        // Consume the link in this window (the one hosting the plugin sheet),
+        // not whichever window's onChange runs first.
+        router.targetWindowId = windowState.windowId
         dismiss()
         return true
     }

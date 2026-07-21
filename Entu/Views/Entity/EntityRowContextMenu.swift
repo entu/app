@@ -3,18 +3,40 @@
 
 import SwiftUI
 
-/// Context menu for any row representing an entity — the entity actions,
-/// mirroring the toolbar (same icons and grouping). `select` makes the
-/// entity the shown detail; the action itself rides
+extension EnvironmentValues {
+    /// Opens an entity in a new tab (macOS) / window (iPad) — set by
+    /// `MainView` when the platform supports multiple windows, nil on
+    /// iPhone (which hides the context-menu item).
+    @Entry var openEntityInNewTab: ((String) -> Void)?
+}
+
+/// Context menu for any row representing an entity — open in new tab plus
+/// the entity actions, mirroring the toolbar (same icons and grouping).
+/// `select` makes the entity the shown detail; each action itself rides
 /// `DeepLinkRouter.pendingRowAction` and is consumed by `EntityToolbarHost`
 /// once the entity is loaded, with the toolbar's rights gating.
 struct EntityRowContextMenuItems: View {
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(\.openEntityInNewTab) private var openEntityInNewTab
 
     let entityId: String
     let select: () -> Void
 
     var body: some View {
+        if let openEntityInNewTab {
+            Button {
+                openEntityInNewTab(entityId)
+            } label: {
+                #if os(macOS)
+                Label("openInNewTab", systemImage: "macwindow.badge.plus")
+                #else
+                Label("openInNewWindow", systemImage: "macwindow.badge.plus")
+                #endif
+            }
+
+            Divider()
+        }
+
         Button {
             trigger(.edit)
         } label: {

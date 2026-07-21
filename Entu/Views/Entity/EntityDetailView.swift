@@ -28,6 +28,10 @@ struct EntityDetailView: View {
     /// today; later: bulk operations) — parent refreshes the entity list.
     var onListChanged: (() -> Void)?
 
+    /// Reports the loaded entity's display name so the parent can label the
+    /// window/tab. Fires on load and after edits that may rename the entity.
+    var onTitle: ((String) -> Void)?
+
     @State private var model: EntityDetailModel?
 
     var body: some View {
@@ -51,7 +55,11 @@ struct EntityDetailView: View {
                         menuId: menuId,
                         onBack: onBack,
                         onEdited: {
-                            Task { await model.load(entityId: entityId) }
+                            Task {
+                                await model.load(entityId: entityId)
+                                // An edit may have renamed the entity.
+                                onTitle?(model.entity?.displayName ?? "")
+                            }
                             // Edited values can change the row's display name
                             // or thumbnail in the surrounding list.
                             onListChanged?()
@@ -100,6 +108,7 @@ struct EntityDetailView: View {
             let m = model ?? EntityDetailModel(api: api)
             model = m
             await m.load(entityId: entityId)
+            onTitle?(m.entity?.displayName ?? "")
         }
     }
 

@@ -27,9 +27,8 @@ import SwiftUI
 /// localization, so following the in-app language toggle would leave a
 /// mixed-language menu bar.
 struct NewEntityCommands: Commands {
-    #if os(macOS)
     @Environment(\.openWindow) private var openWindow
-    #endif
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     @FocusedValue(\.newEntityCommand) private var newEntityCommand
     @FocusedValue(\.addChildCommand) private var addChildCommand
 
@@ -37,11 +36,23 @@ struct NewEntityCommands: Commands {
         CommandGroup(replacing: .newItem) {
             newEntitySection
             addChildSection
-            #if os(macOS)
-            Divider()
-            Button(String(localized: "menuNewWindow")) { openWindow(id: "main") }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-            #endif
+            // New Window is available wherever the platform offers multiple
+            // windows (macOS always, iPad with Stage Manager / Split View;
+            // never iPhone). New Tab is macOS-only — iPadOS has no window
+            // tabs; ⌘-click on entity links opens scene windows there. macOS
+            // tabs the ⌘T window itself (per the user's "Prefer tabs"
+            // setting), next to the current tab — no manual attaching.
+            if supportsMultipleWindows {
+                Divider()
+                Button(String(localized: "menuNewWindow")) { openWindow(id: "main") }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                #if os(macOS)
+                Button(String(localized: "menuNewTab")) {
+                    openWindow(id: "main", value: TabRequest(content: .dashboard))
+                }
+                .keyboardShortcut("t")
+                #endif
+            }
         }
     }
 
@@ -69,6 +80,54 @@ struct NewEntityCommands: Commands {
                 : String(localized: "menuAddChildMulti")
             Button(title) { command.invoke() }
                 .keyboardShortcut("n", modifiers: [.command, .control])
+        }
+    }
+}
+
+/// Database menu — authenticated databases first (no group title), then
+/// public, then a Browse-public entry. Always shown so the user can add a
+/// public database from the menu bar even before signing in. The Browse
+/// entry rides the `browsePublicDatabase` focused scene value so the entry
+/// alert presents in the active window only (an app-level binding would
+/// present it in every window at once).
+///
+/// Menu-bar strings resolve against the system language (plain
+/// `String(localized:)`, not `.currentLocalized`) — see `NewEntityCommands`.
+struct DatabaseCommands: Commands {
+    let auth: AuthModel
+    let api: APIClient
+
+    @FocusedValue(\.browsePublicDatabase) private var browsePublicDatabase
+
+    var body: some Commands {
+        CommandMenu(String(localized: "database")) {
+            ForEach(auth.databases) { database in
+                Toggle(database.name, isOn: Binding(
+                    get: { database._id == api.databaseId },
+                    set: { if $0 { auth.selectDatabase(database) } }
+                ))
+            }
+
+            if !auth.publicDatabases.isEmpty {
+                Section(String(localized: "publicDatabasesSection")) {
+                    ForEach(auth.publicDatabases, id: \.self) { id in
+                        Toggle(id, isOn: Binding(
+                            get: { id == api.databaseId },
+                            set: { if $0 { auth.selectPublicDatabase(id) } }
+                        ))
+                    }
+                }
+            }
+
+            if auth.isAuthenticated || !auth.publicDatabases.isEmpty {
+                Divider()
+            }
+
+            Button {
+                browsePublicDatabase?.invoke()
+            } label: {
+                Text(String(localized: "browsePublicDatabaseMenu"))
+            }
         }
     }
 }

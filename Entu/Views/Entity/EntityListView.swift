@@ -16,6 +16,7 @@ struct EntityListView: View {
     @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
     @Environment(MenuModel.self) private var menu
+    @Environment(\.windowTopInset) private var windowTopInset
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -119,10 +120,12 @@ struct EntityListView: View {
             }
             .padding(.leading, columnOriginX < 50 ? 150 : 16)
             .padding(.trailing, 16)
-            // The strip matches the window-toolbar height, content centered
-            // vertically — both the single-line count and the stacked
-            // title+count sit on the toolbar's optical line.
+            // Count sits on the toolbar's optical line (centered in the 52pt
+            // toolbar height); the strip then extends down by the tab-bar
+            // height when the window is tabbed, so the rows below start under
+            // the tab bar instead of behind it.
             .frame(height: 52)
+            .padding(.bottom, max(0, windowTopInset - 52))
             // Bar material behind the title — rows scrolling up would
             // otherwise show through it.
             .background(.bar)
@@ -390,11 +393,17 @@ struct EntityListView: View {
                 }
             }
             #else
-            .onKeyPress(.upArrow) {
+            // ⌘-arrow is ignored so a held Command key never drives the
+            // selection binding, which routes ⌘-clicks into a new window.
+            .onKeyPress(keys: [.upArrow]) { press in
+                guard !press.modifiers.contains(.command) else { return .ignored }
+
                 moveSelection(-1, proxy: proxy)
                 return .handled
             }
-            .onKeyPress(.downArrow) {
+            .onKeyPress(keys: [.downArrow]) { press in
+                guard !press.modifiers.contains(.command) else { return .ignored }
+
                 moveSelection(1, proxy: proxy)
                 return .handled
             }

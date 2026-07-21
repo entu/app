@@ -16,6 +16,7 @@ import SwiftUI
 struct EntityDetailContent: View {
     @Environment(APIClient.self) private var api
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.windowTopInset) private var windowTopInset
 
     let entity: EntityDetail
     let groupedProperties: [PropertyGroup]
@@ -117,10 +118,18 @@ struct EntityDetailContent: View {
 
     // MARK: - Header band
 
-    /// Clearance above the title so a wrapped (two-line) title can't grow
-    /// up into the toolbar the band runs behind — the band stretches taller
-    /// instead (content-driven height with `bandHeight` as the minimum).
-    private var bandTopClearance: CGFloat { isCompact ? 112 : 64 }
+    /// Clearance above the title so it clears the chrome the band runs
+    /// behind — the band stretches taller instead (content-driven height with
+    /// `bandHeight` as the minimum). On macOS it tracks the window top inset
+    /// (toolbar height + the tab bar when tabbed) so the title stays below
+    /// the tab bar; +12 is the gap that made the untabbed clearance 64.
+    private var bandTopClearance: CGFloat {
+        #if os(macOS)
+        return windowTopInset + 12
+        #else
+        return isCompact ? 112 : 64
+        #endif
+    }
 
     private var headerBand: some View {
         VStack(alignment: .leading, spacing: 8) {

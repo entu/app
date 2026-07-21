@@ -1931,6 +1931,23 @@
         }
       }
     },
+    "menuNewTab" : {
+      "comment" : "File menu: open a new tab on the dashboard (Cmd-T, macOS).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Tab"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uus vaheleht"
+          }
+        }
+      }
+    },
     "menuNewWindow" : {
       "comment" : "File menu: open another app window.",
       "localizations" : {
@@ -2185,6 +2202,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ava"
+          }
+        }
+      }
+    },
+    "openInNewTab" : {
+      "comment" : "Row context menu: open the entity in a new tab (macOS).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in New Tab"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava uuel vahelehel"
+          }
+        }
+      }
+    },
+    "openInNewWindow" : {
+      "comment" : "Row context menu: open the entity in a new window (iPad).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in New Window"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ava uues aknas"
           }
         }
       }

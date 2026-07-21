@@ -207,15 +207,17 @@ final class AuthModel {
 
     // MARK: - Sign out & account deletion
 
-    /// Extra cleanup on sign-out for state this model can't reach — set by
-    /// `ContentView` to reset the chat conversation, search state, and
-    /// in-memory navigation.
-    var onLogOut: (() -> Void)?
+    /// Bumped on sign-out and cache clear. Every window's `WindowRootView`
+    /// observes it and resets its own per-window state — chat conversation,
+    /// search, navigation, palette, scene snapshot. Replaces the previous
+    /// single-closure hook, which was last-writer-wins once multiple
+    /// windows exist.
+    private(set) var logOutToken = 0
 
     /// Reset everything — credentials, caches, temp files, and (via
-    /// `onLogOut`) all in-memory session state. Only app-general settings
-    /// survive: language, column widths, table page size. Returns the user
-    /// to `AuthView`.
+    /// `logOutToken`) all in-memory session state in every window. Only
+    /// app-general settings survive: language, column widths, table page
+    /// size. Returns the user to `AuthView`.
     func logOut() {
         KeychainService.deleteToken()
         KeychainService.deleteTokenExpiry()
@@ -232,10 +234,12 @@ final class AuthModel {
         EntityColorCache.shared.clear()
         EntityDetailModel.clearCache()
         SessionState.clearStored()
+        SessionState.bumpEpoch()
+        WindowSessionStore.clearStored()
         CommandPaletteModel.clearStored()
         ImageCache.shared.clear()
         FileManager.default.clearTemporaryFiles()
-        onLogOut?()
+        logOutToken &+= 1
     }
 
     /// ⇧⌘R — drop everything local except credentials: every cache, temp
@@ -243,20 +247,23 @@ final class AuthModel {
     /// snapshots). The in-app language, the Keychain token, database list,
     /// and last database pointer survive, so the user stays signed in and
     /// keeps their language. In-memory session state (chat, search,
-    /// navigation, deep links) resets via the same `onLogOut` hook
-    /// sign-out uses.
+    /// navigation, deep links) resets in every window via the same
+    /// `logOutToken` bump sign-out uses.
     func clearLocalData() {
         let defaults = UserDefaults.standard
+        // The sign-out epoch is a monotonic counter, not a UI preference —
+        // keep it across the sweep (like the language) so it stays useful.
         for key in defaults.dictionaryRepresentation().keys
-        where key.hasPrefix("ui.") && key != AppLanguage.storageKey {
+        where key.hasPrefix("ui.") && key != AppLanguage.storageKey && key != SessionState.epochKey {
             defaults.removeObject(forKey: key)
         }
+        SessionState.bumpEpoch()
         MenuModel.clearCache()
         EntityColorCache.shared.clear()
         EntityDetailModel.clearCache()
         ImageCache.shared.clear()
         FileManager.default.clearTemporaryFiles()
-        onLogOut?()
+        logOutToken &+= 1
     }
 
     /// Permanently delete the signed-in user's person entity in the active

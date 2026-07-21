@@ -13,6 +13,12 @@ final class DeepLinkRouter {
     /// Set when a deep link names a database (always present after a successful parse).
     var pendingDatabaseId: String?
 
+    /// Identity of the window whose URL handler received the link — set by
+    /// `WindowRootView` right after a successful `handle(url:)` so only that
+    /// window's `MainView` consumes the pending state (every window observes
+    /// the same shared router).
+    var targetWindowId: UUID?
+
     /// Set when a deep link also names an entity inside the database.
     var pendingEntityId: String?
 
@@ -87,6 +93,7 @@ final class DeepLinkRouter {
         pendingEntityId = nil
         pendingQuery = [:]
         pendingRowAction = nil
+        targetWindowId = nil
     }
 
     private func isObjectId(_ s: String) -> Bool {
