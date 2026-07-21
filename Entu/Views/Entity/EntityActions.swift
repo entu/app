@@ -37,6 +37,10 @@ struct EntityActions: Equatable {
     var history: (() -> Void)?
     var reload: (() -> Void)?
 
+    /// Open this entity in a new tab (macOS) / window (iPad) — ⌥⌘O. Nil on
+    /// iPhone (`supportsMultipleWindows` is false there).
+    var openInNewTab: (() -> Void)?
+
     static func == (lhs: EntityActions, rhs: EntityActions) -> Bool {
         lhs.windowId == rhs.windowId
             && lhs.entityId == rhs.entityId
@@ -48,6 +52,7 @@ struct EntityActions: Equatable {
             && (lhs.rights == nil) == (rhs.rights == nil)
             && (lhs.history == nil) == (rhs.history == nil)
             && (lhs.reload == nil) == (rhs.reload == nil)
+            && (lhs.openInNewTab == nil) == (rhs.openInNewTab == nil)
     }
 }
 

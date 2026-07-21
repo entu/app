@@ -330,6 +330,8 @@ private struct EntityToolbarHost: ViewModifier {
     @Environment(MenuModel.self) private var menu
     @Environment(DeepLinkRouter.self) private var router
     @Environment(WindowState.self) private var windowState
+    @Environment(\.openEntityInNewTab) private var openEntityInNewTab
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
 
     let entity: EntityDetail
     /// Localized type label for the palette's "type · name" section title.
@@ -517,8 +519,18 @@ private struct EntityToolbarHost: ViewModifier {
             parents: rights.editor ? { showingParents = true } : nil,
             rights: rights.owner ? { showingRights = true } : nil,
             history: rights.editor ? { showingHistory = true } : nil,
-            reload: onReload
+            reload: onReload,
+            openInNewTab: openInNewTabAction
         )
+    }
+
+    /// ⌥⌘O — open the shown entity in a new tab/window. Nil on iPhone so
+    /// the menu item and palette row disappear there.
+    private var openInNewTabAction: (() -> Void)? {
+        guard supportsMultipleWindows, let openEntityInNewTab else { return nil }
+
+        let entityId = entity._id
+        return { openEntityInNewTab.invoke(entityId) }
     }
 
     /// Add-child options — expander-gated, one per addable child type, each

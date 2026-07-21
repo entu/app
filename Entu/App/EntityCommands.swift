@@ -298,6 +298,21 @@ struct EntityCommands: Commands {
             }
             .keyboardShortcut("y")
             .disabled(actions?.history == nil)
+
+            Divider()
+
+            // ⌥⌘O — open the shown entity in a new tab (macOS) / window
+            // (iPad). Absent (nil) on iPhone; disabled with no entity open.
+            #if os(macOS)
+            let openLabel = String(localized: "openInNewTab")
+            #else
+            let openLabel = String(localized: "openInNewWindow")
+            #endif
+            Button(openLabel) {
+                actions?.openInNewTab?()
+            }
+            .keyboardShortcut("o", modifiers: [.command, .option])
+            .disabled(actions?.openInNewTab == nil)
         }
     }
 }

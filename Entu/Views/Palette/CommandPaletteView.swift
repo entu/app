@@ -552,6 +552,22 @@ struct CommandPaletteView: View {
                 run: run
             ))
         }
+
+        // Open in a new tab/window — last, after the entity actions. Nil
+        // (hidden) on iPhone. Same closure as the Entity menu's ⌥⌘O item.
+        if let openInNewTab = actions.openInNewTab {
+            #if os(macOS)
+            let title: String.LocalizationValue = "openInNewTab"
+            #else
+            let title: String.LocalizationValue = "openInNewWindow"
+            #endif
+            rows.append(PaletteRow(
+                id: "openInNewTab",
+                content: .action(icon: "macwindow.badge.plus", title: loc(title)),
+                keyHint: "⌥⌘O",
+                run: openInNewTab
+            ))
+        }
         return rows
     }
 
