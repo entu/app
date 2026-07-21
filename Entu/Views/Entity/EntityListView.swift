@@ -16,7 +16,8 @@ struct EntityListView: View {
     @Environment(APIClient.self) private var api
     @Environment(SearchModel.self) private var search
     @Environment(MenuModel.self) private var menu
-    @Environment(\.windowTopInset) private var windowTopInset
+    @Environment(WindowState.self) private var windowState
+    @Environment(\.windowTabBarInset) private var windowTabBarInset
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -50,7 +51,7 @@ struct EntityListView: View {
     private var menuLabel: String? {
         guard let menuId else { return nil }
 
-        return menu.groups.flatMap(\.items).first { $0._id == menuId }?.name
+        return menu.item(for: menuId)?.name
     }
 
     /// Menu label as title with the count demoted to subtitle — only when
@@ -120,12 +121,13 @@ struct EntityListView: View {
             }
             .padding(.leading, columnOriginX < 50 ? 150 : 16)
             .padding(.trailing, 16)
-            // Count sits on the toolbar's optical line (centered in the 52pt
-            // toolbar height); the strip then extends down by the tab-bar
-            // height when the window is tabbed, so the rows below start under
-            // the tab bar instead of behind it.
+            // The strip matches the window-toolbar height, content centered
+            // vertically — both the single-line count and the stacked
+            // title+count sit on the toolbar's optical line. When the window
+            // is tabbed, the tab bar's extra inset pads the strip downward so
+            // the rows below start under the tab bar, not behind it.
             .frame(height: 52)
-            .padding(.bottom, max(0, windowTopInset - 52))
+            .padding(.bottom, windowTabBarInset)
             // Bar material behind the title — rows scrolling up would
             // otherwise show through it.
             .background(.bar)
@@ -238,7 +240,7 @@ struct EntityListView: View {
         // View > Reload Entity (⌘R) fallback while no entity is open —
         // refetches the list rows. Keeps existing rows visible (same
         // no-flash behavior as the `refreshToken` path).
-        .focusedSceneValue(\.reloadListCommand, ReloadListCommand(context: query) {
+        .focusedSceneValue(\.reloadListCommand, ReloadListCommand(windowId: windowState.windowId, context: query) {
             Task { await loadEntities() }
         })
         // ⌘N with several addable types opens this chooser (the toolbar's
@@ -395,16 +397,10 @@ struct EntityListView: View {
             #else
             // ⌘-arrow is ignored so a held Command key never drives the
             // selection binding, which routes ⌘-clicks into a new window.
-            .onKeyPress(keys: [.upArrow]) { press in
+            .onKeyPress(keys: [.upArrow, .downArrow]) { press in
                 guard !press.modifiers.contains(.command) else { return .ignored }
 
-                moveSelection(-1, proxy: proxy)
-                return .handled
-            }
-            .onKeyPress(keys: [.downArrow]) { press in
-                guard !press.modifiers.contains(.command) else { return .ignored }
-
-                moveSelection(1, proxy: proxy)
+                moveSelection(press.key == .upArrow ? -1 : 1, proxy: proxy)
                 return .handled
             }
             #endif
@@ -501,7 +497,7 @@ struct EntityListView: View {
         let options = newEntityOptions
         guard !options.isEmpty else { return nil }
 
-        return EntityCreateCommand(options: options) {
+        return EntityCreateCommand(windowId: windowState.windowId, options: options) {
             if options.count == 1 {
                 options[0].create()
             } else {

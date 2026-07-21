@@ -18,6 +18,11 @@ private enum ColumnMetrics {
 
     static let listMin: Double = 250
     static let listDefault: Double = 375
+
+    /// Height of the (hidden-background) macOS window toolbar — the top
+    /// safe-area inset of an untabbed window. Anything above this measured
+    /// at runtime is the native tab bar (see `windowTabBarInset`).
+    static let toolbarHeight: CGFloat = 52
 }
 
 /// Main app layout — two or three-column NavigationSplitView.
@@ -53,11 +58,11 @@ struct MainView: View {
     /// reported by `EntityDetailView`. Feeds the native-tab label (macOS).
     @State private var entityTitle: String = ""
 
-    /// Top safe-area inset (macOS) — the window toolbar's height, and ~36pt
-    /// more once the window joins a tab group. Injected into the columns via
-    /// `\.windowTopInset` so their top-bleeding headers clear the tab bar
-    /// instead of hiding behind it. 52 is the untabbed toolbar height.
-    @State private var topInset: CGFloat = 52
+    /// Extra top inset the native tab bar adds when this window is tabbed
+    /// (~36pt), 0 otherwise — measured from the window's top safe area minus
+    /// the toolbar height. Injected via `\.windowTabBarInset` so the columns'
+    /// top-bleeding headers clear the tab bar instead of hiding behind it.
+    @State private var tabBarInset: CGFloat = 0
 
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = ColumnMetrics.sidebarDefault
     @AppStorage("ui.contentWidth") private var contentWidth: Double = ColumnMetrics.listDefault
@@ -114,7 +119,7 @@ struct MainView: View {
     private var databaseName: String {
         guard let id = api.databaseId else { return "" }
 
-        return auth.databases.first { $0._id == id }?.name ?? id
+        return auth.database(for: id)?.name ?? id
     }
 
     /// Menu label for the selected sidebar item — the same lookup
@@ -122,7 +127,7 @@ struct MainView: View {
     private var menuName: String? {
         guard let menuId = session.selectedMenuId else { return nil }
 
-        return menu?.groups.flatMap(\.items).first { $0._id == menuId }?.name
+        return menu?.item(for: menuId)?.name
     }
 
     /// Native-tab / window label — the open entity's name, else the selected
@@ -161,7 +166,7 @@ struct MainView: View {
 
                 // ⌘-click a sidebar menu item → open it in a new tab/window
                 // instead of switching this window's selection.
-                if interceptsMenuToNewTab(newValue) { return }
+                if intercepts(opening: newValue.map(TabRequest.Content.menu)) { return }
 
                 search.text = ""
                 search.advancedQuery = nil
@@ -187,31 +192,25 @@ struct MainView: View {
 
     // MARK: - Open in new tab / window
 
-    /// Open `id` in a new window. On macOS the system tabs it next to the
-    /// current tab (per the user's "Prefer tabs" setting); on iPad it's a
-    /// new scene window.
-    private func openEntityInNewTab(_ id: String) {
-        openWindow(id: "main", value: TabRequest(content: .entity(id)))
+    /// Open `content` in a new window. On macOS the system tabs it next to
+    /// the current tab (per the user's "Prefer tabs" setting); on iPad it's
+    /// a new scene window.
+    private func openInNewWindow(_ content: TabRequest.Content) {
+        openWindow(value: TabRequest(content: content))
     }
 
-    /// ⌘-click routing — when the Command key is held at click time, open the
-    /// entity in a new tab/window instead and report the click as consumed.
-    /// Every entity-link click funnels through one of three roots
-    /// (`openPinnedEntity`, `navigate(to:)`, `entitySelection`), so this is
-    /// checked only there — leaf views stay modifier-unaware.
-    private func interceptsToNewTab(_ id: String?) -> Bool {
-        guard supportsMultipleWindows, let id, ModifierState.isCommandHeld else { return false }
+    /// ⌘-click routing — when the Command key is held at click time, open
+    /// `content` in a new tab/window instead and report the click as
+    /// consumed. Every navigation click funnels through one of four roots
+    /// (`openPinnedEntity`, `navigate(to:)`, `entitySelection`,
+    /// `menuSelection`), so this is checked only there — leaf views stay
+    /// modifier-unaware, except `EntityListView`'s arrow-key handlers, which
+    /// ignore ⌘ so keyboard selection never routes through the intercepting
+    /// binding.
+    private func intercepts(opening content: TabRequest.Content?) -> Bool {
+        guard supportsMultipleWindows, let content, ModifierState.isCommandHeld else { return false }
 
-        openEntityInNewTab(id)
-        return true
-    }
-
-    /// ⌘-click routing for a sidebar menu item — opens that menu's entity
-    /// list in a new tab/window instead of switching this window.
-    private func interceptsMenuToNewTab(_ menuId: String?) -> Bool {
-        guard supportsMultipleWindows, let menuId, ModifierState.isCommandHeld else { return false }
-
-        openWindow(id: "main", value: TabRequest(content: .menu(menuId)))
+        openInNewWindow(content)
         return true
     }
 
@@ -219,7 +218,7 @@ struct MainView: View {
     /// rows) — pushes onto the history stack unless ⌘-click routes it to a
     /// new tab.
     private func navigate(to entityId: String) {
-        if interceptsToNewTab(entityId) { return }
+        if intercepts(opening: .entity(entityId)) { return }
 
         session.entityHistory.append(entityId)
     }
@@ -230,7 +229,8 @@ struct MainView: View {
         Binding(
             get: { session.selectedEntityId },
             set: { newValue in
-                if newValue != session.selectedEntityId, interceptsToNewTab(newValue) { return }
+                if newValue != session.selectedEntityId,
+                   intercepts(opening: newValue.map(TabRequest.Content.entity)) { return }
 
                 session.selectedEntityId = newValue
             }
@@ -364,7 +364,7 @@ struct MainView: View {
     /// dashboard for the entity detail. In three-column mode, append to the
     /// history stack so it becomes the current detail without clearing menu/search.
     private func openPinnedEntity(_ entityId: String) {
-        if interceptsToNewTab(entityId) { return }
+        if intercepts(opening: .entity(entityId)) { return }
 
         if showDashboard {
             // No-op if already viewing that exact entity with no sub-navigation.
@@ -417,7 +417,7 @@ struct MainView: View {
             }
         }
         // View > Clear Cache (⇧⌘R) — see `ReloadCommands`.
-        .focusedSceneValue(\.clearCacheCommand, ClearCacheCommand { hardReset() })
+        .focusedSceneValue(\.clearCacheCommand, ClearCacheCommand(windowId: windowState.windowId) { hardReset() })
     }
 
     /// ⇧⌘R — drop every local cache and UI setting (credentials and the
@@ -473,31 +473,25 @@ struct MainView: View {
     ///    both starting from clean navigation and search.
     /// 3. The per-database saved session (default window, cold start).
     private func applyInitialState() {
-        // Restored windows carry the default `.restore` seed — claim the
-        // next saved per-window snapshot in order (only when it belongs to
-        // the active database and the current sign-out epoch, so a previous
-        // user's snapshot is never applied).
-        if case .restore = windowState.seed,
-           let claimed = windowSessions.claim(),
-           claimed.databaseId == api.databaseId,
-           claimed.epoch == SessionState.currentEpoch {
-            applySnapshot(claimed.snapshot)
-            return
-        }
-
         switch windowState.seed {
         case .dashboard:
             applySnapshot(nil)
         case .entity(let entityId):
-            var snapshot = SessionState.Snapshot()
-            snapshot.pinnedId = entityId
-            applySnapshot(snapshot)
+            applySnapshot(SessionState.Snapshot(pinnedId: entityId))
         case .menu(let menuId):
-            var snapshot = SessionState.Snapshot()
-            snapshot.menuId = menuId
-            applySnapshot(snapshot)
-        case .restore:
+            applySnapshot(SessionState.Snapshot(menuId: menuId))
+        case .newWindow:
             restoreSession(for: api.databaseId)
+        case .restore:
+            // Launch-restored window — claim its own saved snapshot in
+            // order (when it still belongs to the active database; stale
+            // sign-out epochs are already dropped by the store), else fall
+            // back to the per-database session.
+            if let claimed = windowSessions.claim(), claimed.databaseId == api.databaseId {
+                applySnapshot(claimed.snapshot)
+            } else {
+                restoreSession(for: api.databaseId)
+            }
         }
     }
 
@@ -541,13 +535,6 @@ struct MainView: View {
         @Bindable var search = search
         @Bindable var chat = chat
 
-        // Row context menus offer "open in new tab/window" wherever the
-        // platform supports multiple windows (nil hides the item on iPhone).
-        // Typed out here — an inline ternary overwhelms the type-checker.
-        let openInNewTab: ((String) -> Void)? = supportsMultipleWindows
-            ? { openEntityInNewTab($0) }
-            : nil
-
         let layout = Group {
             if showDashboard {
                 twoColumnView(menu: menu)
@@ -566,11 +553,16 @@ struct MainView: View {
         .navigationTitle("")
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         // The window's top inset grows by the tab-bar height when tabbed —
-        // captured here (where the toolbar establishes it) and fed to the
+        // measured here (where the toolbar establishes it) and fed to the
         // columns so their top-bleeding headers clear the tab bar.
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { newInset in
-            if newInset > 0 { topInset = newInset }
+        .onGeometryChange(for: CGFloat.self) {
+            max(0, $0.safeAreaInsets.top - ColumnMetrics.toolbarHeight)
+        } action: { newInset in
+            tabBarInset = newInset
         }
+        // Label this window's native tab — the redesign keeps the window
+        // title empty, so without this the tab shows no name.
+        .background(WindowTabTitle(title: windowTitle))
         #endif
 
         // Split off the event handlers into a second expression — the whole
@@ -592,22 +584,19 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: palette.isOpen)
-        .environment(\.openEntityInNewTab, openInNewTab)
-        .environment(\.windowTopInset, topInset)
-        #if os(macOS)
-        // Label this window's native tab — the redesign keeps the window
-        // title empty, so without this the tab shows no name. `initial`
-        // seeds it at first render; the `macWindow` didSet re-applies once
-        // the accessor hands over the window.
-        .onChange(of: windowTitle, initial: true) { windowState.tabTitle = windowTitle }
-        #endif
+        // Row context menus offer "open in new tab/window" — always-equal
+        // action (see `OpenEntityInNewTabAction`) so injecting it every
+        // render never invalidates readers; iPhone hides the item via
+        // `\.supportsMultipleWindows` at the menu itself.
+        .environment(\.openEntityInNewTab, OpenEntityInNewTabAction { openInNewWindow(.entity($0)) })
+        .environment(\.windowTabBarInset, tabBarInset)
         // View > Command Palette (⌘K) — see `PaletteCommands`.
-        .focusedSceneValue(\.commandPalette, CommandPaletteToggle {
+        .focusedSceneValue(\.commandPalette, CommandPaletteToggle(windowId: windowState.windowId) {
             palette.toggle(databaseId: api.databaseId)
         })
         // Edit > Search (⌘F) — see `SearchFieldCommands`. Same modal
         // guard as the palette: the field would gain focus behind a sheet.
-        .focusedSceneValue(\.focusSearch, FocusSearchCommand {
+        .focusedSceneValue(\.focusSearch, FocusSearchCommand(windowId: windowState.windowId) {
             guard palette.modalDepth == 0 else { return }
 
             palette.close()
@@ -932,13 +921,35 @@ private struct ChatPresentation: ViewModifier {
 }
 
 extension EnvironmentValues {
-    /// Window top safe-area inset (macOS) — the toolbar height plus the tab
-    /// bar when the window is tabbed. The top-bleeding column headers
-    /// (entity-list count strip, entity-detail band) size their clearance
-    /// from it so they sit below the tab bar instead of behind it. Default is
-    /// the untabbed toolbar height; `MainView` overrides it live.
-    @Entry var windowTopInset: CGFloat = 52
+    /// Extra top inset added by the macOS native tab bar when the window is
+    /// tabbed, 0 otherwise (and always 0 on iOS). The top-bleeding column
+    /// headers (entity-list count strip, entity-detail band) add it to their
+    /// own clearance so they sit below the tab bar instead of behind it.
+    /// Measured and injected live by `MainView`.
+    @Entry var windowTabBarInset: CGFloat = 0
 }
+
+#if os(macOS)
+/// Writes `title` onto the hosting window's native tab
+/// (`NSWindow.tab.title`) — the redesign keeps `NSWindow.title` empty, so
+/// the tab has no name without this. Applied as a background so SwiftUI
+/// re-runs `updateNSView` whenever the title changes; the async hop covers
+/// the first pass, where the view isn't in a window yet.
+private struct WindowTabTitle: NSViewRepresentable {
+    let title: String
+
+    func makeNSView(context: Context) -> NSView {
+        NSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        let title = title
+        DispatchQueue.main.async {
+            nsView.window?.tab.title = title
+        }
+    }
+}
+#endif
 
 extension View {
     /// While `history` is non-empty, replaces the system back button with

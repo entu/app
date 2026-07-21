@@ -282,11 +282,10 @@ struct EntityEditView: View {
     /// `true` when the URL was an Entu link (so the web navigation is
     /// cancelled); `false` lets the plugin navigate normally.
     private func openEntuLink(_ url: URL) -> Bool {
-        guard router.handle(url: url) else { return false }
+        // Claimed for this window (the one hosting the plugin sheet), not
+        // whichever window's onChange runs first.
+        guard router.handle(url: url, in: windowState.windowId) else { return false }
 
-        // Consume the link in this window (the one hosting the plugin sheet),
-        // not whichever window's onChange runs first.
-        router.targetWindowId = windowState.windowId
         dismiss()
         return true
     }

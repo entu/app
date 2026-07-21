@@ -329,6 +329,7 @@ private struct EntityToolbarHost: ViewModifier {
     @Environment(AuthModel.self) private var auth
     @Environment(MenuModel.self) private var menu
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(WindowState.self) private var windowState
 
     let entity: EntityDetail
     /// Localized type label for the palette's "type · name" section title.
@@ -507,6 +508,7 @@ private struct EntityToolbarHost: ViewModifier {
     private var entityActions: EntityActions {
         let rights = entity.rights(for: auth.currentUserId)
         return EntityActions(
+            windowId: windowState.windowId,
             entityId: entity._id,
             entityName: entity.displayName,
             entityTypeLabel: typeLabel ?? entity.typeName,
@@ -538,7 +540,7 @@ private struct EntityToolbarHost: ViewModifier {
         let options = childAddOptions
         guard !options.isEmpty else { return nil }
 
-        return EntityCreateCommand(options: options) {
+        return EntityCreateCommand(windowId: windowState.windowId, options: options) {
             if options.count == 1 {
                 options[0].create()
             } else {

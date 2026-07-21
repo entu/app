@@ -1,5 +1,5 @@
 // App entry point — creates the app-wide services once (API client, auth,
-// network, deep-link router, tab coordinator), injects them into the
+// network, deep-link router, window-session store), injects them into the
 // environment, and hosts the main window group with its menu-bar commands.
 // Per-window state (navigation, search, palette, chat) lives in
 // `WindowRootView` so every window/tab navigates independently.

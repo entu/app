@@ -1,49 +1,30 @@
 // Root of every window scene — owns the models that are per-window
 // (navigation session, search, command palette, AI chat) so each tab or
-// window navigates independently, and hosts the URL handlers, the
-// public-database entry alert, and (macOS) the window accessor that labels
-// the native tab.
+// window navigates independently, and hosts the URL handlers and the
+// public-database entry alert.
 
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
 /// Per-window identity and restore bookkeeping, injected alongside the
 /// per-window models so `MainView` can seed and gate on it.
 @MainActor @Observable
 final class WindowState {
-    /// Stable identity for this window — deep-link consumption is gated on
-    /// it so a link opens in exactly one window.
-    let windowId = UUID()
+    /// Stable identity for this window — deep-link consumption and the
+    /// window-session registry key on it. Reuses the scene value's nonce,
+    /// which is already unique per window and survives relaunch with it.
+    let windowId: UUID
 
-    /// What this window was opened to show — ⌘T dashboard, ⌘-click entity,
-    /// or the default session restore.
+    /// What this window was opened to show — ⌘T dashboard, ⌘-click entity
+    /// or menu, explicit New Window, or the default launch restore.
     let seed: TabRequest.Content
 
     /// True once `MainView` has applied its restore ladder — guards against
     /// re-restoring after the `.id(appLanguage)` rebuild on language change.
     var hasRestored = false
 
-    #if os(macOS)
-    /// The hosting `NSWindow`, filled by `WindowRootView`'s accessor once the
-    /// scene is installed. Used only to label the native tab (the redesign
-    /// window keeps `window.title` empty, so the tab has no name unless we
-    /// set `tab.title` directly). Not observed — imperative AppKit sink.
-    @ObservationIgnored weak var macWindow: NSWindow? {
-        didSet { macWindow?.tab.title = tabTitle }
-    }
-
-    /// Current native-tab label. `MainView` writes the entity name (or the
-    /// database name on the dashboard) here; it's mirrored to the window's
-    /// tab whether the window is set before or after the title.
-    @ObservationIgnored var tabTitle: String = "" {
-        didSet { macWindow?.tab.title = tabTitle }
-    }
-    #endif
-
-    init(seed: TabRequest.Content) {
-        self.seed = seed
+    init(request: TabRequest) {
+        windowId = request.nonce
+        seed = request.content
     }
 }
 
@@ -56,9 +37,6 @@ struct WindowRootView: View {
     @Environment(AuthService.self) private var authService
     @Environment(DeepLinkRouter.self) private var router
     @Environment(WindowSessionStore.self) private var windowSessions
-
-    /// The seed this scene was opened with (also system-restored on relaunch).
-    let request: TabRequest
 
     private let api: APIClient
 
@@ -75,10 +53,9 @@ struct WindowRootView: View {
 
     init(api: APIClient, request: TabRequest) {
         self.api = api
-        self.request = request
         // `@State` init-in-init only takes effect on first construction —
         // exactly right: the models must survive later re-inits of the view.
-        _windowState = State(initialValue: WindowState(seed: request.content))
+        _windowState = State(initialValue: WindowState(request: request))
         _chat = State(initialValue: AIChatModel(api: api))
     }
 
@@ -110,37 +87,19 @@ struct WindowRootView: View {
             // frame is shortened by that amount to keep the outer window
             // at 1280×800 in every screen state.
             // .frame(width: 1280, height: api.databaseId != nil ? 748 : 768)
-            .background {
-                // Hands this scene's NSWindow to `WindowState` so `MainView`
-                // can label the native tab. Tab placement itself is left to
-                // macOS — a new window opened from ⌘T / ⌘-click is tabbed by
-                // the system (per the user's "Prefer tabs" setting), next to
-                // the current tab; no manual attaching.
-                WindowAccessor { window in
-                    windowState.macWindow = window
-                }
-            }
             #endif
             // Menu bar Database > Browse Public Database — published as a
             // focused scene value so the command targets the active window
             // (an app-level binding would present the alert in every window).
-            .focusedSceneValue(\.browsePublicDatabase, BrowsePublicDatabaseCommand {
+            .focusedSceneValue(\.browsePublicDatabase, BrowsePublicDatabaseCommand(windowId: windowState.windowId) {
                 showingPublicEntry = true
             })
             .onOpenURL { url in
-                if router.handle(url: url) {
-                    router.targetWindowId = windowState.windowId
-                } else {
-                    authService.handleIncoming(url: url)
-                }
+                handleIncoming(url: url)
             }
             .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                 if let url = activity.webpageURL {
-                    if router.handle(url: url) {
-                        router.targetWindowId = windowState.windowId
-                    } else {
-                        authService.handleIncoming(url: url)
-                    }
+                    handleIncoming(url: url)
                 }
             }
             // Sign-out / ⇧⌘R wipe the in-memory state every window holds —
@@ -158,6 +117,15 @@ struct WindowRootView: View {
             }
     }
 
+    /// Route an incoming URL: an entity deep link is claimed for this window
+    /// (see `DeepLinkRouter.handle(url:in:)`); anything else falls through
+    /// to the auth-callback handler.
+    private func handleIncoming(url: URL) {
+        if !router.handle(url: url, in: windowState.windowId) {
+            authService.handleIncoming(url: url)
+        }
+    }
+
     /// Reset every per-window model plus this window's stored snapshot.
     private func resetWindowState() {
         chat.reset()
@@ -170,22 +138,3 @@ struct WindowRootView: View {
         windowSessions.remove(windowState.windowId)
     }
 }
-
-#if os(macOS)
-/// Reports the hosting `NSWindow` once SwiftUI has installed the view in a
-/// window — used only to label the native tab (`window.tab.title`).
-struct WindowAccessor: NSViewRepresentable {
-    let onWindow: @MainActor (NSWindow) -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        // The window isn't set yet inside makeNSView — read it a tick later.
-        DispatchQueue.main.async {
-            if let window = view.window { onWindow(window) }
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-#endif

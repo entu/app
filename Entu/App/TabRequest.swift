@@ -8,8 +8,15 @@ import Foundation
 struct TabRequest: Codable, Hashable {
     /// The content a freshly opened window starts on.
     enum Content: Codable, Hashable {
-        /// Default window — restore the saved session for the active database.
+        /// Launch-restored window (the WindowGroup default value) — claims
+        /// its own saved per-window snapshot from `WindowSessionStore`,
+        /// falling back to the active database's `ui.session` state.
         case restore
+
+        /// ⇧⌘N "New Window" — the active database's `ui.session` state,
+        /// without claiming a restored window's snapshot (distinguishes an
+        /// explicit new window from launch restoration).
+        case newWindow
 
         /// ⌘T "New Tab" — fresh dashboard with clean navigation and search.
         case dashboard

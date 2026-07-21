@@ -43,7 +43,7 @@ struct AccountSheet: View {
 
     /// Active authenticated database, or nil when browsing as a guest.
     private var activeDatabase: Database? {
-        auth.databases.first { $0._id == api.databaseId }
+        auth.database(for: api.databaseId)
     }
 
     /// Hero title — user's name when signed in, database id when browsing

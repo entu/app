@@ -13,11 +13,20 @@ final class DeepLinkRouter {
     /// Set when a deep link names a database (always present after a successful parse).
     var pendingDatabaseId: String?
 
-    /// Identity of the window whose URL handler received the link — set by
-    /// `WindowRootView` right after a successful `handle(url:)` so only that
-    /// window's `MainView` consumes the pending state (every window observes
-    /// the same shared router).
+    /// Identity of the window whose URL handler received the link — stamped
+    /// by `handle(url:in:)` so only that window's `MainView` consumes the
+    /// pending state (every window observes the same shared router).
     var targetWindowId: UUID?
+
+    /// Parse `url` and stash any matching deep-link state, claiming it for
+    /// the window with `windowId`. Targeting is atomic with parsing so no
+    /// call site can forget the claim and leak the link to another window.
+    func handle(url: URL, in windowId: UUID) -> Bool {
+        guard handle(url: url) else { return false }
+
+        targetWindowId = windowId
+        return true
+    }
 
     /// Set when a deep link also names an entity inside the database.
     var pendingEntityId: String?

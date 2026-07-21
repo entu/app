@@ -3,11 +3,20 @@
 
 import SwiftUI
 
+/// Environment action that opens an entity in a new tab (macOS) / window
+/// (iPad). Always equal — closures aren't Equatable, and a bare closure in
+/// the environment would read as "changed" on every `MainView` render,
+/// invalidating every reader (see `ClearCacheCommand` for the pattern).
+struct OpenEntityInNewTabAction: Equatable {
+    let invoke: (String) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
 extension EnvironmentValues {
     /// Opens an entity in a new tab (macOS) / window (iPad) — set by
-    /// `MainView` when the platform supports multiple windows, nil on
-    /// iPhone (which hides the context-menu item).
-    @Entry var openEntityInNewTab: ((String) -> Void)?
+    /// `MainView`; nil outside it (which hides the context-menu item).
+    @Entry var openEntityInNewTab: OpenEntityInNewTabAction?
 }
 
 /// Context menu for any row representing an entity — open in new tab plus
@@ -18,14 +27,16 @@ extension EnvironmentValues {
 struct EntityRowContextMenuItems: View {
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.openEntityInNewTab) private var openEntityInNewTab
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
 
     let entityId: String
     let select: () -> Void
 
     var body: some View {
-        if let openEntityInNewTab {
+        // Hidden on iPhone (`supportsMultipleWindows` is false there).
+        if supportsMultipleWindows, let openEntityInNewTab {
             Button {
-                openEntityInNewTab(entityId)
+                openEntityInNewTab.invoke(entityId)
             } label: {
                 #if os(macOS)
                 Label("openInNewTab", systemImage: "macwindow.badge.plus")

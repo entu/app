@@ -841,8 +841,7 @@ struct CommandPaletteView: View {
         // equivalents, titled with the active menu entry's name.
         let creates = createRows
         if !creates.isEmpty {
-            let menuName = menu.groups.flatMap(\.items)
-                .first { $0._id == session.selectedMenuId }?.name
+            let menuName = session.selectedMenuId.flatMap { menu.item(for: $0)?.name }
             sections.append(PaletteSection(id: "create", title: menuName ?? loc("add"), rows: creates))
         }
 
@@ -905,8 +904,7 @@ struct CommandPaletteView: View {
 
         // With a menu active, searching within it is the likelier intent —
         // it outranks (and precedes) the global search.
-        if let menuId = session.selectedMenuId,
-           let menuItem = menu.groups.flatMap(\.items).first(where: { $0._id == menuId }) {
+        if let menuId = session.selectedMenuId, let menuItem = menu.item(for: menuId) {
             scored.append((searchInMenuRow(query, menuItem: menuItem), Self.searchBand + 1))
         }
         scored.append((searchEverywhereRow(query), Self.searchBand))

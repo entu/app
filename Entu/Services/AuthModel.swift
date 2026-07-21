@@ -52,8 +52,15 @@ final class AuthModel {
     /// Nil while signed out and nil in public mode — write affordances treat
     /// nil as "no rights anywhere" via `EntityDetail.rights(for:)`.
     var currentUserId: String? {
-        guard let id = api.databaseId else { return nil }
-        return databases.first { $0._id == id }?.user?._id
+        database(for: api.databaseId)?.user?._id
+    }
+
+    /// The authenticated database with `id`, or nil for unknown/public ids
+    /// (public databases carry no `Database` record — only their id).
+    func database(for id: String?) -> Database? {
+        guard let id else { return nil }
+
+        return databases.first { $0._id == id }
     }
 
     let api: APIClient
@@ -274,7 +281,7 @@ final class AuthModel {
     /// switches to another database or signs out entirely.
     func deleteCurrentAccount() async throws {
         guard let activeId = api.databaseId,
-              let database = databases.first(where: { $0._id == activeId }),
+              let database = database(for: activeId),
               let personId = database.user?._id else {
             throw APIError.invalidResponse
         }

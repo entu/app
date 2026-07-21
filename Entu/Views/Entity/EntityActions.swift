@@ -10,14 +10,20 @@ import SwiftUI
 /// the same feature sheets as the toolbar buttons. A `nil` closure means
 /// the user lacks the required right — the menu item disables.
 ///
-/// `Equatable` on the entity identity plus the *availability* of each
-/// action (not the closures, which change every render): lets SwiftUI
-/// dedupe the focused-value updates so a burst of re-renders during
-/// entity load doesn't republish many times per frame (which merely
-/// warns on macOS but can freeze iPad). Identity is part of the equality
-/// so navigating between entities with identical rights still
-/// republishes — fresh closures for the new entity.
+/// `Equatable` on the owning window, the entity identity, and the
+/// *availability* of each action (not the closures, which change every
+/// render): lets SwiftUI dedupe the focused-value updates so a burst of
+/// re-renders during entity load doesn't republish many times per frame
+/// (which merely warns on macOS but can freeze iPad). Identity is part of
+/// the equality so navigating between entities with identical rights still
+/// republishes — fresh closures for the new entity. The window id is part
+/// of it so switching between windows showing the *same* entity swaps in
+/// the front window's closures (see the freeze warning on every command
+/// type below).
 struct EntityActions: Equatable {
+    /// Window the closures act in — see the equality note above.
+    var windowId: UUID
+
     /// Identity of the entity the closures act on — the command palette
     /// titles its actions section with "type · name".
     var entityId: String?
@@ -32,7 +38,8 @@ struct EntityActions: Equatable {
     var reload: (() -> Void)?
 
     static func == (lhs: EntityActions, rhs: EntityActions) -> Bool {
-        lhs.entityId == rhs.entityId
+        lhs.windowId == rhs.windowId
+            && lhs.entityId == rhs.entityId
             && lhs.entityName == rhs.entityName
             && lhs.entityTypeLabel == rhs.entityTypeLabel
             && (lhs.edit == nil) == (rhs.edit == nil)
@@ -61,66 +68,74 @@ struct EntityCreateOption: Identifiable {
 /// several (SwiftUI can't open the toolbar's Add menu programmatically, so
 /// the shortcut opens an equivalent picker instead).
 ///
-/// `Equatable` on the option ids (not the closures) so SwiftUI dedupes the
-/// focused-value updates — see `EntityActions`.
+/// `Equatable` on the owning window plus the option ids (not the closures)
+/// so SwiftUI dedupes the focused-value updates — see `EntityActions`.
 struct EntityCreateCommand: Equatable {
+    let windowId: UUID
     let options: [EntityCreateOption]
     let invoke: () -> Void
 
     static func == (lhs: EntityCreateCommand, rhs: EntityCreateCommand) -> Bool {
-        lhs.options.map(\.id) == rhs.options.map(\.id)
+        lhs.windowId == rhs.windowId && lhs.options.map(\.id) == rhs.options.map(\.id)
     }
 }
 
-/// View-menu "clear cache" command (⇧⌘R) published by `MainView`. Always
-/// equal — its availability never changes while the main view is up, so
-/// SwiftUI dedupes the focused-value republishes (see `EntityActions`).
+// Every command below compares by the OWNING WINDOW, never `true`: SwiftUI
+// drops republishes of equal focused values, so an always-equal command
+// freezes the first window's closure forever. With multiple windows that
+// froze ⌘K (and friends) onto whichever window published first — the
+// shortcut then fired invisibly in a background tab. Within one window the
+// windowId is constant, so republish dedupe still works.
+
+/// View-menu "clear cache" command (⇧⌘R) published by `MainView`.
 struct ClearCacheCommand: Equatable {
+    let windowId: UUID
     let invoke: () -> Void
 
-    static func == (lhs: Self, rhs: Self) -> Bool { true }
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.windowId == rhs.windowId }
 }
 
 /// Edit-menu "find" command (⌘F) published by `MainView` — moves focus
-/// into the toolbar search field. Always equal (see `ClearCacheCommand`).
+/// into the toolbar search field.
 struct FocusSearchCommand: Equatable {
+    let windowId: UUID
     let invoke: () -> Void
 
-    static func == (lhs: Self, rhs: Self) -> Bool { true }
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.windowId == rhs.windowId }
 }
 
 /// View-menu "command palette" toggle (⌘K) published by `MainView` —
 /// same focused-value mechanism as the entity actions, so the shortcut
-/// registers identically on macOS and iPadOS. Always equal (see
-/// `ClearCacheCommand`).
+/// registers identically on macOS and iPadOS.
 struct CommandPaletteToggle: Equatable {
+    let windowId: UUID
     let invoke: () -> Void
 
-    static func == (lhs: Self, rhs: Self) -> Bool { true }
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.windowId == rhs.windowId }
 }
 
 /// Database-menu "browse public database" trigger published by
 /// `WindowRootView` — presents the entry alert in the active window only
 /// (an app-level binding would present it in every window at once).
-/// Always equal (see `ClearCacheCommand`).
 struct BrowsePublicDatabaseCommand: Equatable {
+    let windowId: UUID
     let invoke: () -> Void
 
-    static func == (lhs: Self, rhs: Self) -> Bool { true }
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.windowId == rhs.windowId }
 }
 
 /// ⌘R fallback published by `EntityListView`: refetches the list when no
 /// entity is shown (an open entity's `EntityActions.reload` wins and
-/// reloads both). Equality compares `context` (the list's query), NOT the
-/// closure: SwiftUI drops republishes of equal focused values, so an
-/// always-equal command would freeze the first closure — and its captured
-/// query — forever, making ⌘R reload a long-gone list.
+/// reloads both). Equality compares the window plus `context` (the list's
+/// query), NOT the closure — an equal command would freeze the first
+/// closure and its captured query, making ⌘R reload a long-gone list.
 struct ReloadListCommand: Equatable {
+    let windowId: UUID
     let context: String
     let invoke: () -> Void
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.context == rhs.context
+        lhs.windowId == rhs.windowId && lhs.context == rhs.context
     }
 }
 

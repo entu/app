@@ -42,13 +42,17 @@ struct NewEntityCommands: Commands {
             // tabs; ⌘-click on entity links opens scene windows there. macOS
             // tabs the ⌘T window itself (per the user's "Prefer tabs"
             // setting), next to the current tab — no manual attaching.
+            // `.newWindow` (not the default `.restore`) so an explicit new
+            // window never claims a launch-restored window's snapshot.
             if supportsMultipleWindows {
                 Divider()
-                Button(String(localized: "menuNewWindow")) { openWindow(id: "main") }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button(String(localized: "menuNewWindow")) {
+                    openWindow(value: TabRequest(content: .newWindow))
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
                 #if os(macOS)
                 Button(String(localized: "menuNewTab")) {
-                    openWindow(id: "main", value: TabRequest(content: .dashboard))
+                    openWindow(value: TabRequest(content: .dashboard))
                 }
                 .keyboardShortcut("t")
                 #endif

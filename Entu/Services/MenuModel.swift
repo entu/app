@@ -36,6 +36,12 @@ final class MenuModel {
     /// Menu entity ID → query string lookup. Used to resolve NavigationLink selection.
     var queryById: [String: String] = [:]
 
+    /// The menu item with `menuId`, from any group. The single lookup behind
+    /// the list title, the window/tab title, and the palette's menu rows.
+    func item(for menuId: String) -> MenuEntity? {
+        groups.lazy.flatMap(\.items).first { $0._id == menuId }
+    }
+
     /// Menu (or type) entity ID → list of types that can be added under it.
     /// Drives the toolbar Add button at menu level (`activeMenu.addFrom`)
     /// and per-entity child add (`addChildOptions`) — same data source as

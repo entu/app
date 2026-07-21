@@ -29,13 +29,15 @@ final class SessionState {
     private static let storageKey = "ui.session"
 
     /// A restorable snapshot of everything that makes up "where I left off".
+    /// Every field defaults to the empty/dashboard state so seed snapshots
+    /// (`Snapshot(pinnedId:)`, `Snapshot(menuId:)`) read cleanly.
     struct Snapshot: Codable {
-        var menuId: String?
-        var entityId: String?
+        var menuId: String? = nil
+        var entityId: String? = nil
         var history: [String] = []
-        var pinnedId: String?
+        var pinnedId: String? = nil
         var searchText: String = ""
-        var advancedQuery: String?
+        var advancedQuery: String? = nil
         var chatOpen: Bool = false
     }
 
@@ -136,15 +138,11 @@ final class SessionState {
     // MARK: - Store
 
     private static func loadAll() -> [String: Snapshot] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([String: Snapshot].self, from: data)
-        else { return [:] }
-        return decoded
+        UserDefaults.standard.codable([String: Snapshot].self, forKey: storageKey) ?? [:]
     }
 
     private static func storeAll(_ all: [String: Snapshot]) {
-        guard let data = try? JSONEncoder().encode(all) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        UserDefaults.standard.setCodable(all, forKey: storageKey)
     }
 
     /// Remove all persisted snapshots. Called on sign-out so a different user

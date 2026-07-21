@@ -113,15 +113,11 @@ final class CommandPaletteModel {
     }
 
     private static func loadAll() -> [String: [RecentEntity]] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([String: [RecentEntity]].self, from: data)
-        else { return [:] }
-        return decoded
+        UserDefaults.standard.codable([String: [RecentEntity]].self, forKey: storageKey) ?? [:]
     }
 
     private static func storeAll(_ all: [String: [RecentEntity]]) {
-        guard let data = try? JSONEncoder().encode(all) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        UserDefaults.standard.setCodable(all, forKey: storageKey)
     }
 
     /// Remove all persisted recents. Called on sign-out so a different user

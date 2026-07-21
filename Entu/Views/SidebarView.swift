@@ -34,7 +34,7 @@ struct SidebarView: View {
     @State private var didSeedExpansion = false
 
     private var currentDatabase: Database? {
-        auth.databases.first { $0._id == api.databaseId }
+        auth.database(for: api.databaseId)
     }
 
     var body: some View {

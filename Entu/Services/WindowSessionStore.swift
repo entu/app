@@ -19,14 +19,12 @@ import AppKit
 /// overview). Injected app-wide from `EntuApp`.
 @MainActor @Observable
 final class WindowSessionStore {
-    /// Live snapshots this session, keyed by window id.
-    @ObservationIgnored private var live: [UUID: SessionState.SceneSnapshot] = [:]
-
-    /// Registration order — persisted as a stable sequence so restored
-    /// windows can be handed snapshots in the same order next launch.
-    @ObservationIgnored private var order: [UUID] = []
+    /// Live windows' snapshots in registration order — persisted as-is so
+    /// restored windows can claim them in the same order next launch.
+    @ObservationIgnored private var entries: [(id: UUID, snapshot: SessionState.SceneSnapshot)] = []
 
     /// Snapshots loaded at launch, handed one per restored window in order.
+    /// Stale-epoch entries (a previous user's) are dropped at load.
     @ObservationIgnored private var restoreQueue: [SessionState.SceneSnapshot]
 
     /// True once the app is terminating — window teardown on quit must NOT
@@ -38,9 +36,11 @@ final class WindowSessionStore {
     init() {
         restoreQueue = Self.load()
 
-        // Only launch-restored windows should claim a saved snapshot; drop
-        // the queue shortly after launch so a later New Window / New Tab
-        // doesn't grab a leftover.
+        // Only launch-restored windows claim a saved snapshot (explicit New
+        // Window / New Tab carry their own non-`.restore` seed). Drop the
+        // queue shortly after launch so a window opened much later — e.g.
+        // Dock-reopen after all windows were closed — can't grab a stale
+        // leftover from a launch that restored fewer windows than saved.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             restoreQueue.removeAll()
@@ -63,10 +63,11 @@ final class WindowSessionStore {
 
     /// Record or refresh a window's snapshot and re-persist the ordered set.
     func update(_ windowId: UUID, snapshot: SessionState.SceneSnapshot) {
-        if live[windowId] == nil {
-            order.append(windowId)
+        if let index = entries.firstIndex(where: { $0.id == windowId }) {
+            entries[index].snapshot = snapshot
+        } else {
+            entries.append((windowId, snapshot))
         }
-        live[windowId] = snapshot
         persist()
     }
 
@@ -75,22 +76,20 @@ final class WindowSessionStore {
     func remove(_ windowId: UUID) {
         guard !isTerminating else { return }
 
-        live[windowId] = nil
-        order.removeAll { $0 == windowId }
+        entries.removeAll { $0.id == windowId }
         persist()
     }
 
     private func persist() {
-        let ordered = order.compactMap { live[$0] }
-        guard let data = try? JSONEncoder().encode(ordered) else { return }
-        UserDefaults.standard.set(data, forKey: Self.key)
+        UserDefaults.standard.setCodable(entries.map(\.snapshot), forKey: Self.key)
     }
 
+    /// Saved snapshots from the previous run, minus any written under an
+    /// older sign-out epoch — invalidation lives here, next to the data it
+    /// guards (`MainView` still checks the runtime databaseId on claim).
     private static func load() -> [SessionState.SceneSnapshot] {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([SessionState.SceneSnapshot].self, from: data)
-        else { return [] }
-        return decoded
+        let saved = UserDefaults.standard.codable([SessionState.SceneSnapshot].self, forKey: key) ?? []
+        return saved.filter { $0.epoch == SessionState.currentEpoch }
     }
 
     /// Wipe the persisted set on sign-out — mirrors `SessionState.clearStored()`

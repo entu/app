@@ -29,7 +29,9 @@ struct EntityDetailView: View {
     var onListChanged: (() -> Void)?
 
     /// Reports the loaded entity's display name so the parent can label the
-    /// window/tab. Fires on load and after edits that may rename the entity.
+    /// window/tab. Driven declaratively off the model (see the `onChange`
+    /// in `body`), so every load/reload/rename path reports without having
+    /// to remember to fire it.
     var onTitle: ((String) -> Void)?
 
     @State private var model: EntityDetailModel?
@@ -55,11 +57,7 @@ struct EntityDetailView: View {
                         menuId: menuId,
                         onBack: onBack,
                         onEdited: {
-                            Task {
-                                await model.load(entityId: entityId)
-                                // An edit may have renamed the entity.
-                                onTitle?(model.entity?.displayName ?? "")
-                            }
+                            Task { await model.load(entityId: entityId) }
                             // Edited values can change the row's display name
                             // or thumbnail in the surrounding list.
                             onListChanged?()
@@ -108,7 +106,11 @@ struct EntityDetailView: View {
             let m = model ?? EntityDetailModel(api: api)
             model = m
             await m.load(entityId: entityId)
-            onTitle?(m.entity?.displayName ?? "")
+        }
+        // Title tracks the model — loads, reloads, and renaming edits all
+        // land here without per-path reporting.
+        .onChange(of: model?.entity?.displayName, initial: true) { _, name in
+            onTitle?(name ?? "")
         }
     }
 
