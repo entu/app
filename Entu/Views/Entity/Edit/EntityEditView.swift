@@ -31,6 +31,13 @@ enum EntityEditMode: Hashable, Identifiable {
     }
 }
 
+/// Raw invite JWT from a committed self-invite, driving the
+/// `AddLoginMethodSheet` presentation via `.sheet(item:)`.
+struct PendingSelfInvite: Identifiable {
+    let token: String
+    var id: String { token }
+}
+
 /// Modal sheet that creates or edits a single entity, autosaving per-field.
 struct EntityEditView: View {
     // Internal (non-private) so extensions in companion files
@@ -39,6 +46,7 @@ struct EntityEditView: View {
     @Environment(APIClient.self) var api
     @Environment(DeepLinkRouter.self) var router
     @Environment(WindowState.self) var windowState
+    @Environment(PasskeyService.self) var passkeyService
     @Environment(\.dismiss) var dismiss
 
     let mode: EntityEditMode
@@ -91,6 +99,17 @@ struct EntityEditView: View {
     /// Serializes commits — two near-simultaneous blurs can't both fire
     /// `createEntity` or race on `currentEntityId` updates.
     @State var commitChain: Task<Void, Never>?
+
+    /// Raw invite JWT from a just-committed self-invite (`entu_user` on the
+    /// user's own entity) — presents the provider sheet that completes it.
+    /// Mirrors webapp's redirect to `/{account}/invite?token=…`.
+    @State var pendingSelfInvite: PendingSelfInvite?
+
+    /// True when the edited entity is the signed-in user's own person
+    /// entity — mirrors webapp's `isOwnEntity` in `property/edit.vue`.
+    var isOwnEntity: Bool {
+        auth.currentUserId != nil && auth.currentUserId == currentEntityId
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -149,6 +168,12 @@ struct EntityEditView: View {
             Button("ok", role: .cancel) {}
         } message: {
             if let commitError { Text(commitError) }
+        }
+        .sheet(item: $pendingSelfInvite) { invite in
+            AddLoginMethodSheet(inviteToken: invite.token) {
+                // Invite consumed — refetch so the new login row appears.
+                Task { await load() }
+            }
         }
         .task { await load() }
         .appLanguageScoped()
@@ -379,8 +404,10 @@ struct EntityEditView: View {
                 valueCount: rows.filter { $0._id != nil }.count,
                 // Files and references carry their own × on the chip;
                 // other list-type rows get the row's trailing ×
-                // (the ScrollView layout has no swipe actions).
-                showsRowDelete: def.list && def.type != "file" && def.type != "reference" && row._id != nil,
+                // (the ScrollView layout has no swipe actions). Reserved
+                // auth rows own their delete affordances.
+                showsRowDelete: def.list && def.type != "file" && def.type != "reference" && row._id != nil
+                    && !PropertyEditor.reservedAuthNames.contains(def.name),
                 isContinuationRow: index > 0,
                 onCommit: { await commit(propertyName: def.name, value: row) },
                 // Tabbing through a long form keeps the active row visible.
@@ -398,7 +425,9 @@ struct EntityEditView: View {
                         await deleteValue(propertyName: def.name, value: row, propertyId: _id)
                     }
                 },
-                autoFocusOnAppear: isFirstFocusable && index == 0
+                autoFocusOnAppear: isFirstFocusable && index == 0,
+                isOwnEntity: isOwnEntity,
+                onRegisterPasskey: { await registerPasskey(propertyName: def.name, value: row) }
             )
             .id(row.id)
         }
@@ -435,7 +464,7 @@ struct EntityEditView: View {
                 switch def.type {
                 case "text", "number":
                     return def._id
-                case "string" where def.set.isEmpty:
+                case "string" where def.set.isEmpty && !PropertyEditor.reservedAuthNames.contains(def.name):
                     return def._id
                 default:
                     continue

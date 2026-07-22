@@ -4,6 +4,7 @@
 // (`components/property/edit.vue::updateValue`) — a single commit chain
 // fans out to create/add/edit/delete based on entity + value state.
 
+import AuthenticationServices
 import Foundation
 import SwiftUI
 
@@ -75,11 +76,47 @@ extension EntityEditView {
                 }
             }
             hasSavedChanges = true
+
+            // Self-invite on the user's own entity: the response carried a
+            // raw invite JWT (set by `applyUpsertResponse`) — present the
+            // provider sheet that attaches the new login method. Mirrors
+            // webapp's redirect to `/{account}/invite?token=…`. Masked
+            // `***` invites from GET never pass through this path.
+            if def.name == "entu_user", isOwnEntity, let token = value.invite, token != "***" {
+                pendingSelfInvite = PendingSelfInvite(token: token)
+            }
         } catch {
             commitError = error.localizedDescription
         }
 
         manageEmptyFields(for: def)
+    }
+
+    // MARK: - Passkey registration
+
+    /// Run the native WebAuthn registration flow for an empty
+    /// `entu_passkey` row and apply the stored property to it. Only
+    /// reachable on the user's own entity (the editor gates the button).
+    func registerPasskey(propertyName: String, value: EditableValue) async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            guard let property = try await passkeyService.register(),
+                  let serverId = property._id else { return }
+
+            value._id = serverId
+            value.stringValue = property.string ?? ""
+            hasSavedChanges = true
+
+            if let def = definitions.first(where: { $0.name == propertyName }) {
+                manageEmptyFields(for: def)
+            }
+        } catch let authError as ASAuthorizationError where authError.code == .canceled {
+            // User dismissed the passkey sheet — not an error
+        } catch {
+            commitError = error.localizedDescription
+        }
     }
 
     /// Create the entity from the very first committed value. Sends the

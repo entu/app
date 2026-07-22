@@ -254,7 +254,11 @@ final class APIClient {
         let bearerToken = tokenOverride ?? (suppress ? nil : currentToken)
 
         #if DEBUG
-        let queryString = url.query.map { "?\($0)" } ?? ""
+        // Token-bearing params (the invite JWT on `GET /auth`) are redacted —
+        // Xcode console output can end up in sysdiagnose archives.
+        let queryString = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems.map { items in
+            "?" + items.map { "\($0.name)=\($0.name == "invite" ? "***" : $0.value ?? "")" }.joined(separator: "&")
+        } ?? ""
         print("[API] \(method) \(url.path)\(queryString)")
         #endif
 

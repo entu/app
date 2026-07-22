@@ -467,8 +467,28 @@ struct RightsSheet: View {
 
     // MARK: - Mutations
 
+    // Every mutation is guarded by `isUpdating` re-entry checks: the UI
+    // disables its controls while updating, but a second tap in the same
+    // run-loop tick (double-click) schedules its Task before SwiftUI
+    // re-renders the disabled state — the guard drops it.
+
+    /// Rights aggregation is asynchronous server-side — refetching right
+    /// after a rights write returns stale rows (old property ids), and
+    /// acting on those errors. Webapp waits the same 2 s (`setTimeout` in
+    /// `rights.vue::onAddRight` / `onEditRight`) before reloading;
+    /// `isUpdating` keeps the buttons disabled for the whole window.
+    private func settleAndReload() async {
+        try? await Task.sleep(for: .seconds(2))
+        await load(silent: true)
+    }
+
     private func updateSharing(to value: String) async {
+        guard !isUpdating else { return }
+
         isUpdating = true
+        // A picker left open during the save would drop its pick on the
+        // re-entry guard (iOS has no click-outside monitor) — collapse it.
+        pickerActive = false
         defer { isUpdating = false }
         let propertyId = entity?.properties["_sharing"]?.first?._id
         do {
@@ -491,7 +511,10 @@ struct RightsSheet: View {
     }
 
     private func updateInheritRights(to value: Bool) async {
+        guard !isUpdating else { return }
+
         isUpdating = true
+        pickerActive = false
         defer { isUpdating = false }
         let propertyId = entity?.properties["_inheritrights"]?.first?._id
         do {
@@ -512,13 +535,15 @@ struct RightsSheet: View {
     }
 
     private func addRight(userId: String) async {
+        guard !isUpdating else { return }
+
         isUpdating = true
         defer { isUpdating = false }
         do {
             var change = EntityPropertyChange(type: "_viewer")
             change.reference = userId
             let _: EntityUpsertResponse = try await api.post("entity/\(entityId)", body: [change])
-            await load(silent: true)
+            await settleAndReload()
             hasSavedChanges = true
             onChanged?()
         } catch {
@@ -527,7 +552,10 @@ struct RightsSheet: View {
     }
 
     private func editRight(user: RightUser, newType: String) async {
+        guard !isUpdating else { return }
+
         isUpdating = true
+        pickerActive = false
         defer { isUpdating = false }
         do {
             // The API guarantees one right property per user per entity —
@@ -537,7 +565,7 @@ struct RightsSheet: View {
             change._id = user._id
             change.reference = user.userId
             let _: EntityUpsertResponse = try await api.post("entity/\(entityId)", body: [change])
-            await load(silent: true)
+            await settleAndReload()
             hasSavedChanges = true
             onChanged?()
         } catch {
@@ -546,11 +574,14 @@ struct RightsSheet: View {
     }
 
     private func deleteRight(user: RightUser) async {
+        guard !isUpdating else { return }
+
         isUpdating = true
+        pickerActive = false
         defer { isUpdating = false }
         do {
             let _: DeleteResponse = try await api.delete("property/\(user._id)")
-            await load(silent: true)
+            await settleAndReload()
             hasSavedChanges = true
             onChanged?()
         } catch {

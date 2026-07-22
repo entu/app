@@ -29,6 +29,25 @@ extension EntityEditView {
 
         if let match, let serverId = match._id {
             value._id = serverId
+
+            // Reserved auth properties: copy the server-generated fields
+            // back onto the row (mirrors webapp's `addValue` in
+            // `property/edit.vue`). The local entity cache is skipped for
+            // these — their rows are button-driven, so the blur-compare
+            // short-circuit the cache exists for never runs on them.
+            if propertyName == "entu_api_key" {
+                // The one-time raw key — GET responses mask it to `***`.
+                value.stringValue = match.string ?? value.stringValue
+                return
+            }
+            if propertyName == "entu_user" {
+                // Server replaced the sentinel string with an invite JWT.
+                value.stringValue = ""
+                value.invite = match.invite
+                value.email = match.email
+                return
+            }
+
             updateLocalEntityCache(propertyName: propertyName, propertyId: serverId, value: value, definition: def)
         }
     }
@@ -88,7 +107,7 @@ extension EntityEditView {
            let value = try? JSONDecoder().decode(PropertyValue.self, from: data) {
             return value
         }
-        return PropertyValue(_id: nil, string: nil, number: nil, boolean: nil, reference: reference, date: nil, datetime: nil, filename: nil, filesize: nil, language: nil, provider: nil, email: nil, ordinal: nil, inherited: nil)
+        return PropertyValue(_id: nil, string: nil, number: nil, boolean: nil, reference: reference, date: nil, datetime: nil, filename: nil, filesize: nil, language: nil, provider: nil, email: nil, invite: nil, ordinal: nil, inherited: nil)
     }
 
     /// Build a `PropertyValue` for the local cache from an `EditableValue`.
@@ -123,7 +142,7 @@ extension EntityEditView {
            let decoded = try? JSONDecoder().decode(PropertyValue.self, from: data) {
             return decoded
         }
-        return PropertyValue(_id: _id, string: stringValue, number: numberValue, boolean: def.type == "boolean" ? value.boolValue : nil, reference: value.referenceId, date: def.type == "date" ? dateIso : nil, datetime: def.type == "datetime" ? dateIso : nil, filename: nil, filesize: nil, language: value.language, provider: nil, email: nil, ordinal: nil, inherited: nil)
+        return PropertyValue(_id: _id, string: stringValue, number: numberValue, boolean: def.type == "boolean" ? value.boolValue : nil, reference: value.referenceId, date: def.type == "date" ? dateIso : nil, datetime: def.type == "datetime" ? dateIso : nil, filename: nil, filesize: nil, language: value.language, provider: nil, email: nil, invite: nil, ordinal: nil, inherited: nil)
     }
 
     /// Reassemble an `EntityDetail` with a new `properties` map. Required

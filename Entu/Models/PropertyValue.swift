@@ -23,6 +23,10 @@ struct PropertyValue: Codable {
     /// provider and email behind a person's authentication property.
     let provider: String?
     let email: String?
+    /// Pending-invite marker on `entu_user` values. GET responses mask the
+    /// invite JWT to `"***"`; upsert responses carry it raw so the client
+    /// can hand it to the invite-completion flow ("Add Login Method").
+    let invite: String?
     let ordinal: Double?
 
     /// Set on rights values (`_owner`, `_editor`, …) copied down from a

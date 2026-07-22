@@ -74,7 +74,14 @@ struct PropertyRow: View {
             case "datetime": datetimeValue(value)
             case "file": fileValue(value)
             case "text": textValue(value)
-            default: stringValue(value)
+            default:
+                if definition.name == "entu_passkey" {
+                    passkeyValue(value)
+                } else if definition.name == "entu_api_key" {
+                    apiKeyValue
+                } else {
+                    stringValue(value)
+                }
             }
         }
     }
@@ -180,29 +187,22 @@ struct PropertyRow: View {
 
     // MARK: - Auth provider
 
-    /// Login-linked value (e.g. `entu_user`) — provider icon + email/string.
-    /// Mirrors the webapp's `property/value.vue` provider branch.
+    /// Login-linked value (e.g. `entu_user`) — provider glyph + email in
+    /// the shared auth pill, same capsule language as reference/file chips.
     private func providerValue(_ value: PropertyValue) -> some View {
-        HStack(spacing: 8) {
-            providerIcon(value.provider)
-            Text(value.email ?? value.string ?? "")
-                .textSelection(.enabled)
-        }
+        AuthChip(provider: value.provider, label: value.email ?? value.string ?? "")
     }
 
-    /// Provider glyph — reuses `AuthProvider`'s icon (custom asset or `sf:`
-    /// SF Symbol), falling back to a generic glyph for unknown providers.
-    @ViewBuilder
-    private func providerIcon(_ provider: String?) -> some View {
-        if let icon = provider.flatMap({ AuthProvider(rawValue: $0) })?.icon {
-            if icon.hasPrefix("sf:") {
-                Image(systemName: String(icon.dropFirst(3)))
-            } else {
-                Image(icon).resizable().scaledToFit().frame(width: 16, height: 16)
-            }
-        } else {
-            Image(systemName: "person.circle").foregroundStyle(.secondary)
-        }
+    /// Saved passkey value — masked "{device} {last4}" name in the auth
+    /// pill with the passkey glyph.
+    private func passkeyValue(_ value: PropertyValue) -> some View {
+        AuthChip(provider: nil, fallbackIcon: "person.badge.key", label: value.string ?? "")
+    }
+
+    /// API key value — always server-masked to `***`, shown as a labeled
+    /// key pill instead of the raw mask.
+    private var apiKeyValue: some View {
+        AuthChip(provider: nil, fallbackIcon: "key", label: String(localized: "apiKey", bundle: .currentLocalized))
     }
 
     // MARK: - File (QuickLook preview)
@@ -354,5 +354,72 @@ struct FileChip: View {
             guard let url = await api.propertyThumbnailURL(propertyId: propertyId, size: 50) else { return }
             thumbnail = await loadImage(from: url)
         }
+    }
+}
+
+// MARK: - Auth chip
+
+/// Gray pill for auth values — `entu_user` logins (provider glyph +
+/// email) and `entu_passkey` passkeys (key glyph + masked device name).
+/// Same capsule language as `FileChip`, in the neutral gray tier since
+/// auth values aren't tappable. The edit sheet passes `onDelete` to get
+/// the trailing ×.
+struct AuthChip: View {
+    /// `AuthProvider` raw value driving the glyph; nil (or an unknown
+    /// provider) falls back to `fallbackIcon`.
+    let provider: String?
+    var fallbackIcon: String = "person.circle"
+    let label: String
+    var onDelete: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                glyph
+                Text(verbatim: label)
+                    .lineLimit(1)
+            }
+
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "xmark")
+                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
+                        .opacity(0.6)
+                        .padding(2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("removeValue")
+            }
+        }
+        .font(ValueChipMetrics.font)
+        .fontWeight(.medium)
+        .foregroundStyle(.secondary)
+        .frame(height: ValueChipMetrics.contentHeight)
+        .padding(2)
+        .padding(.leading, 6)
+        .padding(.trailing, 6)
+        .background(.fill.tertiary, in: Capsule())
+    }
+
+    /// Provider glyph in a fixed 12pt box so it centres against the text
+    /// regardless of the asset's intrinsic size.
+    private var glyph: some View {
+        Group {
+            if let icon = provider.flatMap({ AuthProvider(rawValue: $0) })?.icon {
+                if icon.hasPrefix("sf:") {
+                    Image(systemName: String(icon.dropFirst(3)))
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(icon).resizable().scaledToFit()
+                }
+            } else {
+                Image(systemName: fallbackIcon)
+                    .resizable()
+                    .scaledToFit()
+            }
+        }
+        .frame(width: 12, height: 12)
     }
 }

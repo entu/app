@@ -57,6 +57,18 @@ final class DeepLinkRouter {
 
     var pendingRowAction: PendingRowAction?
 
+    /// Invite link (`/{db}/invite?token=…`) — the webapp's invite-acceptance
+    /// page URL, sent by invite emails. `WindowRootView` presents it as the
+    /// provider sheet that completes the invite. Kept separate from the
+    /// entity pending state so `MainView`'s consumption never sees it.
+    struct PendingInvite: Equatable, Identifiable {
+        let databaseId: String
+        let token: String
+        var id: String { "\(databaseId):\(token)" }
+    }
+
+    var pendingInvite: PendingInvite?
+
     /// Parse `url` and stash any matching deep-link state.
     /// Returns `true` when the URL was consumed (entu.app entity/database link),
     /// `false` when the caller should fall through (auth callback, foreign host, etc).
@@ -70,20 +82,30 @@ final class DeepLinkRouter {
         // redirect using that same slug.
         guard let first = segments.first, isDatabaseId(first) else { return false }
 
-        let second: String?
-        if segments.count >= 2 {
-            guard isObjectId(segments[1]) else { return false }
-            second = segments[1]
-        } else {
-            second = nil
-        }
-
         var queryDict: [String: String] = [:]
         if let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
             for item in items {
                 guard let value = item.value else { continue }
                 queryDict[item.name] = value.removingPercentEncoding ?? value
             }
+        }
+
+        // Invite-acceptance link — `/{db}/invite?token=…` (webapp's invite
+        // page, linked from invite emails). Routed separately from entity
+        // links; a missing token makes the link meaningless, so fall through.
+        if segments.count == 2, segments[1] == "invite" {
+            guard let token = queryDict["token"], !token.isEmpty else { return false }
+
+            pendingInvite = PendingInvite(databaseId: first, token: token)
+            return true
+        }
+
+        let second: String?
+        if segments.count >= 2 {
+            guard isObjectId(segments[1]) else { return false }
+            second = segments[1]
+        } else {
+            second = nil
         }
 
         pendingDatabaseId = first
@@ -102,6 +124,7 @@ final class DeepLinkRouter {
         pendingEntityId = nil
         pendingQuery = [:]
         pendingRowAction = nil
+        pendingInvite = nil
         targetWindowId = nil
     }
 
@@ -110,12 +133,14 @@ final class DeepLinkRouter {
         return s.allSatisfy { $0.isHexDigit }
     }
 
-    /// A database id in a link is an account slug — lowercase letters, digits,
+    /// A database id in a link is an account slug — ASCII letters, digits,
     /// `-`/`_` (e.g. `roots`). 24-hex ObjectIds also satisfy this, so both
-    /// forms are accepted for the first path segment.
+    /// forms are accepted for the first path segment. ASCII-only on purpose:
+    /// Unicode homoglyphs (Cyrillic "о" in "rооts") would otherwise render a
+    /// spoofed database name in trusted UI like the invite sheet title.
     private func isDatabaseId(_ s: String) -> Bool {
         guard !s.isEmpty, s.count <= 64 else { return false }
 
-        return s.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        return s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
     }
 }

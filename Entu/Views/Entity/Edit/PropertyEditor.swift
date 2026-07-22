@@ -63,6 +63,15 @@ struct PropertyEditor: View {
     /// without `_id`) since focus has nothing to land on.
     var autoFocusOnAppear: Bool = false
 
+    /// True when the edited entity is the signed-in user's own — gates the
+    /// own-entity-only states of the reserved auth editors ("Add Login
+    /// Method", "Register Passkey"). See `PropertyEditor+Auth`.
+    var isOwnEntity: Bool = false
+
+    /// `entu_passkey` only — fires the native WebAuthn registration flow.
+    /// Parent runs `PasskeyService.register()` and updates the row.
+    var onRegisterPasskey: () async -> Void = {}
+
     @FocusState private var isFocused: Bool
     @State private var showingDescription = false
 
@@ -73,6 +82,10 @@ struct PropertyEditor: View {
     /// Drives the confirmation dialog presented when the user taps the
     /// trash button on a saved file row.
     @State var showingDeleteFileConfirm = false
+
+    /// Drives the confirmation dialog presented when the user taps the ×
+    /// on a saved auth value (login, passkey, API key, pending invite).
+    @State var showingDeleteAuthConfirm = false
 
     /// Red when mandatory + empty (mirrors webapp's `text-red-700`);
     /// otherwise the design's muted label tier.
@@ -87,6 +100,9 @@ struct PropertyEditor: View {
     /// file / reference rows ignore the tap — those would misfire on an
     /// accidental hit (reference rows open the picker only from the pill).
     private func activate() {
+        // Reserved auth rows are button-driven — nothing to focus.
+        if isReservedAuthProperty { return }
+
         switch definition.type {
         case "reference":
             break
@@ -146,8 +162,9 @@ struct PropertyEditor: View {
         case "text", "number":
             return true
         case "string":
-            // Set-backed string is a Picker (no text field to focus).
-            return definition.set.isEmpty
+            // Set-backed string is a Picker (no text field to focus);
+            // reserved auth rows are button-driven.
+            return definition.set.isEmpty && !isReservedAuthProperty
         case "counter":
             // Generate button until the value exists; once saved it shows
             // a TextField — but auto-focus only runs on first appear, so
@@ -300,7 +317,12 @@ struct PropertyEditor: View {
         case "reference": referenceEditor
         case "file":    fileEditor
         case "counter": counterEditor
-        default:        stringEditor
+        default:
+            if isReservedAuthProperty {
+                authPropertyEditor
+            } else {
+                stringEditor
+            }
         }
     }
 

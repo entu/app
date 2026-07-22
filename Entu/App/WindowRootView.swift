@@ -62,6 +62,22 @@ struct WindowRootView: View {
     var body: some View {
         ContentView()
             .publicDatabaseEntry(isPresented: $showingPublicEntry)
+            // Invite deep link (`/{db}/invite?token=…`) — presented here,
+            // above the auth/picker/main router, so accepting an invite
+            // works in every screen state, signed out included.
+            .sheet(item: pendingInviteBinding) { invite in
+                AddLoginMethodSheet(
+                    inviteToken: invite.token,
+                    databaseId: invite.databaseId,
+                    title: String(localized: "inviteTitle \(invite.databaseId)", bundle: .currentLocalized)
+                ) {
+                    // Accepted — the fresh token's database list includes
+                    // the invited database; jump straight into it.
+                    if let database = auth.databases.first(where: { $0._id == invite.databaseId }) {
+                        auth.selectDatabase(database)
+                    }
+                }
+            }
             .environment(search)
             .environment(session)
             .environment(palette)
@@ -124,6 +140,28 @@ struct WindowRootView: View {
         if !router.handle(url: url, in: windowState.windowId) {
             authService.handleIncoming(url: url)
         }
+    }
+
+    /// The router's pending invite, scoped to this window (the router is
+    /// app-shared — only the window whose URL handler received the link
+    /// presents the sheet). Dismissing consumes it.
+    private var pendingInviteBinding: Binding<DeepLinkRouter.PendingInvite?> {
+        Binding(
+            get: {
+                guard router.targetWindowId == windowState.windowId else { return nil }
+                return router.pendingInvite
+            },
+            set: { newValue in
+                guard newValue == nil else { return }
+
+                router.pendingInvite = nil
+                // Keep the router invariant "target set ⇒ something pending"
+                // — but never drop a claim an entity link still holds.
+                if router.pendingDatabaseId == nil {
+                    router.targetWindowId = nil
+                }
+            }
+        )
     }
 
     /// Reset every per-window model plus this window's stored snapshot.

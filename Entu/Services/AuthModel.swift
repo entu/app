@@ -166,9 +166,13 @@ final class AuthModel {
     // MARK: - Auth callback
 
     /// Exchange a temporary auth key for a permanent JWT token and database list.
-    func handleAuthCallback(key: String, databaseId: String?) async throws {
+    /// `invite` carries an invite JWT (with `db` naming the same database) so
+    /// the API attaches the fresh credentials to the invited entity — the
+    /// webapp's `/auth/callback` invite path (`GET /auth?db=…&invite=…`).
+    func handleAuthCallback(key: String, databaseId: String?, invite: String? = nil) async throws {
         var params: [String: String] = [:]
         if let databaseId { params["db"] = databaseId }
+        if let invite { params["invite"] = invite }
 
         let response: AuthResponse = try await api.requestWithToken("auth", params: params, bearerToken: key)
 
@@ -179,6 +183,14 @@ final class AuthModel {
         guard let newDatabases = response.accounts, !newDatabases.isEmpty else {
             throw APIError.noAccessibleDatabases
         }
+
+        // Identity comparison must read pre-exchange state. `currentUserId`
+        // (the person entity in the active database) is the stable identity
+        // marker — the session-level user id changes even when the same
+        // person adds a login method via self-invite.
+        let hadSession = api.token != nil
+        let previousUserId = currentUserId
+
         databases = newDatabases
 
         if let newToken = response.token {
@@ -186,6 +198,36 @@ final class AuthModel {
         }
 
         user = response.user
+
+        // Completing an invite while signed in can finish as a *different*
+        // identity (the invite sheet is reachable from any screen state).
+        // Replacing the token in place must not leak the previous user's
+        // cached content into the new session — run the sign-out sweep
+        // minus credentials when the active database's user changed.
+        if hadSession, api.databaseId != nil, previousUserId != currentUserId {
+            if currentUserId == nil {
+                // New identity has no access to the active database —
+                // fall back to the database picker.
+                api.databaseId = nil
+            }
+            resetSessionState()
+        }
+    }
+
+    /// Cache/session sweep for an identity change without a sign-out —
+    /// same as `logOut()` minus credential storage (a fresh token was just
+    /// saved). The `logOutToken` bump resets every window's in-memory state.
+    private func resetSessionState() {
+        MenuModel.clearCache()
+        EntityColorCache.shared.clear()
+        EntityDetailModel.clearCache()
+        SessionState.clearStored()
+        SessionState.bumpEpoch()
+        WindowSessionStore.clearStored()
+        CommandPaletteModel.clearStored()
+        ImageCache.shared.clear()
+        FileManager.default.clearTemporaryFiles()
+        logOutToken &+= 1
     }
 
     // MARK: - Database selection

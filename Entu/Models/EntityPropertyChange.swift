@@ -115,16 +115,22 @@ struct EntityUpsertResponse: Decodable {
 }
 
 /// Lightweight projection of one property from an upsert response.
-/// We bind only by `_id`, `type`, and `language` — the value fields
-/// (`string`, `number`, `date`, …) are deliberately not decoded
-/// because the server returns them in shapes that don't always match
-/// the wire types we send (e.g. dates come back as ISO 8601 strings
-/// after `new Date(...)` conversion in `insertProperties`). Decoding
-/// only what we read keeps the call resilient to those mismatches.
+/// We bind only by `_id`, `type`, and `language` — most value fields
+/// (`number`, `date`, …) are deliberately not decoded because the
+/// server returns them in shapes that don't always match the wire
+/// types we send (e.g. dates come back as ISO 8601 strings after
+/// `new Date(...)` conversion in `insertProperties`). Decoding only
+/// what we read keeps the call resilient to those mismatches.
 struct UpsertedProperty: Decodable {
     let _id: String?
     let type: String?
     let language: String?
     /// Set on file-property responses — carries the presigned PUT info.
     let upload: UploadIntent?
+    /// Reserved auth properties only: the one-time raw API key
+    /// (`entu_api_key`) — shown once, the server stores only its hash.
+    let string: String?
+    /// `entu_user` responses: raw invite JWT + invitee email.
+    let invite: String?
+    let email: String?
 }

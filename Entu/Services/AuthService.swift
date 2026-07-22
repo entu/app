@@ -51,13 +51,15 @@ final class AuthService {
 
     /// Open the OAuth browser sheet for the given provider and complete the auth callback.
     /// The API redirects back to `https://entu.app/auth/app-callback?key=...` after successful auth.
-    func signIn(with provider: AuthProvider) async throws {
+    /// `invite` + `databaseId` run the exchange through the invite-acceptance
+    /// path — used by "Add Login Method" on the user's own entity.
+    func signIn(with provider: AuthProvider, invite: String? = nil, databaseId: String? = nil) async throws {
         let callbackURL = "https://\(callbackHost)\(callbackPath)?key="
         let encoded = callbackURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackURL
         let authURL = URL(string: "\(APIClient.baseURL)/auth/\(provider.rawValue)?next=\(encoded)")!
 
         let key = try await startWebAuth(url: authURL)
-        try await auth.handleAuthCallback(key: key, databaseId: nil)
+        try await auth.handleAuthCallback(key: key, databaseId: databaseId, invite: invite)
     }
 
     /// Handle a callback URL delivered externally (e.g. via Universal Link after email magic link or Smart-ID).

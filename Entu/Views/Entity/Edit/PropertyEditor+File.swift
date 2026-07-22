@@ -37,10 +37,11 @@ extension PropertyEditor {
         )
         .quickLookPreview($previewURL)
         .confirmationDialog(
-            Text("removeFileConfirmTitle \(value.stringValue)"),
+            Text("deleteFileConfirmTitle \(value.stringValue)"),
             isPresented: $showingDeleteFileConfirm,
             titleVisibility: .visible
         ) {
+            // Question and action share the verb (ET: Kustuta fail …? → Kustuta).
             Button("delete", role: .destructive) {
                 Task { await onDelete() }
             }
