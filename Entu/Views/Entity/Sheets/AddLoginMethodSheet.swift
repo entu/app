@@ -3,12 +3,18 @@
 // user's own entity redirects to. Signing in with any provider while the
 // exchange carries the invite JWT attaches that provider as a new login
 // (`GET /auth?db=…&invite=…` — see `AuthModel.handleAuthCallback`).
+//
+// Visual design mirrors `AuthView`: the providers in the same grouped
+// hairline-separated cards (`AuthButton` rows on `cardSurface`), minus the
+// promoted passkey button — a passkey is registered via `entu_passkey`,
+// not invites.
 
 import AuthenticationServices
 import SwiftUI
 
-/// Sheet listing the auth providers; picking one runs the regular OAuth
-/// flow with the invite token threaded through the token exchange.
+/// Sheet listing the auth providers in `AuthView`'s grouped-card design;
+/// picking one runs the regular OAuth flow with the invite token threaded
+/// through the token exchange.
 struct AddLoginMethodSheet: View {
     @Environment(AuthService.self) private var authService
     @Environment(APIClient.self) private var api
@@ -25,60 +31,64 @@ struct AddLoginMethodSheet: View {
     /// page's "You have been invited…" wording; nil keeps "Add Login Method".
     var title: String?
 
+    /// Subtitle (disclaimer) override — the invite deep link passes the
+    /// "accept your invitation" wording; nil keeps the add-login-method
+    /// wording for the self-invite path.
+    var subtitle: String?
+
     /// Fires after a provider flow completes the invite — the self-invite
     /// caller refetches the entity, the deep-link caller selects the
     /// invited database.
     var onCompleted: () -> Void
 
-    /// Provider whose flow is in flight — rows disable and the active one
-    /// shows a spinner. One attempt at a time.
-    @State private var signingIn: AuthProvider?
     @State private var error: String?
 
-    /// Same catalog as the webapp's invite page — every provider except
-    /// passkey (a passkey is registered via `entu_passkey`, not invites),
-    /// filtered to what this platform supports.
-    private var providers: [AuthProvider] {
-        AuthProvider.allCases.filter { $0 != .passkey && $0.isAvailableOnCurrentPlatform }
-    }
+    /// True while a sign-in attempt is pending — disables every provider
+    /// row so a second attempt can't start mid-flight (same model as
+    /// `AuthView`; the active row's `AuthButton` shows its own spinner).
+    @State private var isAuthenticating = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 #if os(macOS)
-                SheetHeader(title: headerTitle)
+                SheetHeader(title: headerTitle, subtitle: headerSubtitle)
                 #endif
 
-                List(providers, id: \.self) { provider in
-                    providerRow(provider)
+                ScrollView {
+                    VStack(spacing: CardMetrics.gap) {
+                        AuthProviderCard(group: .main) { await signIn(with: $0) }
+                        AuthProviderCard(group: .estonian) { await signIn(with: $0) }
+                    }
+                    .disabled(isAuthenticating)
+                    .frame(maxWidth: 320)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 14)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity)
                 }
-                .listStyle(.plain)
 
                 if let error {
                     Text(verbatim: error)
                         .font(.footnote)
                         .foregroundStyle(.red)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 16)
                 }
-
-                Text("addLoginMethodDescription")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 16)
             }
-            .sheetNavigationTitle(headerTitle)
+            .background(Color("WindowBackground"))
+            .sheetNavigationTitle(headerTitle, subtitle: headerSubtitle)
             .blocksCommandPalette()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CloseButton(isDisabled: signingIn != nil) { dismiss() }
+                    CloseButton(isDisabled: isAuthenticating) { dismiss() }
                 }
             }
         }
         #if os(macOS)
-        .frame(minWidth: 340, minHeight: 300)
+        .frame(minWidth: 380, minHeight: 440)
         #else
         // Standard centered form sheet, same policy as `TypePickerSheet`.
         .presentationSizing(.form)
@@ -90,35 +100,18 @@ struct AddLoginMethodSheet: View {
         title ?? String(localized: "addLoginMethod", bundle: .currentLocalized)
     }
 
-    private func providerRow(_ provider: AuthProvider) -> some View {
-        Button {
-            guard signingIn == nil else { return }
-            Task { await signIn(with: provider) }
-        } label: {
-            HStack(spacing: 10) {
-                AuthRowIcon(isWorking: signingIn == provider) {
-                    if provider.icon.hasPrefix("sf:") {
-                        Image(systemName: String(provider.icon.dropFirst(3)))
-                    } else {
-                        Image(provider.icon).resizable().scaledToFit()
-                    }
-                }
-                .foregroundStyle(.secondary)
-
-                Text(provider.label)
-
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(signingIn != nil && signingIn != provider)
+    /// The disclaimer rides in the title's subtitle slot — same pattern as
+    /// `EntityEditView`'s entity-name subtitle.
+    private var headerSubtitle: String {
+        subtitle ?? String(localized: "addLoginMethodDescription", bundle: .currentLocalized)
     }
 
     private func signIn(with provider: AuthProvider) async {
         error = nil
-        signingIn = provider
-        defer { signingIn = nil }
+        // One attempt at a time — every provider row is disabled while a
+        // sign-in is pending.
+        isAuthenticating = true
+        defer { isAuthenticating = false }
 
         do {
             try await authService.signIn(with: provider, invite: inviteToken, databaseId: databaseId ?? api.databaseId)

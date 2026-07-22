@@ -526,22 +526,7 @@ struct PropertyEditor: View {
             Button {
                 pickerActive = true
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.caption2.weight(.medium))
-                    Text("selectReference")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .overlay {
-                    Capsule().strokeBorder(
-                        .quaternary,
-                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                    )
-                }
-                .contentShape(Capsule())
+                DashedAddLabel(titleKey: "selectReference", systemImage: "plus")
             }
             .buttonStyle(.plain)
         }

@@ -57,8 +57,8 @@ struct AuthView: View {
                     // attempt is pending (the passkey button manages its
                     // own disabled state to keep its spinner look).
                     VStack(spacing: CardMetrics.gap) {
-                        providerCard(for: .main)
-                        providerCard(for: .estonian)
+                        AuthProviderCard(group: .main) { await signIn(with: $0) }
+                        AuthProviderCard(group: .estonian) { await signIn(with: $0) }
 
                         BrowsePublicDatabaseButton(
                             isWorking: showingPublicEntry || isProbingPublicDatabase
@@ -145,31 +145,6 @@ struct AuthView: View {
         .disabled(isAuthenticating && !isPasskeySigningIn)
     }
 
-    /// Providers of one visual group, filtered to the current platform.
-    private func providers(in group: AuthProviderGroup) -> [AuthProvider] {
-        AuthProvider.allCases.filter {
-            $0.group == group && $0.isAvailableOnCurrentPlatform
-        }
-    }
-
-    /// One white card with a hairline-separated row per provider.
-    private func providerCard(for group: AuthProviderGroup) -> some View {
-        let providers = providers(in: group)
-
-        return VStack(spacing: 0) {
-            ForEach(providers, id: \.self) { provider in
-                AuthButton(provider: provider) {
-                    await signIn(with: provider)
-                }
-
-                if provider != providers.last {
-                    Divider()
-                }
-            }
-        }
-        .cardSurface()
-    }
-
     private func signIn(with provider: AuthProvider) async {
         error = nil
         // One attempt at a time — every auth option is disabled while a
@@ -195,46 +170,3 @@ struct AuthView: View {
     }
 }
 
-/// Single auth-provider row with its own spinner state — a slow provider
-/// can't gate the others.
-private struct AuthButton: View {
-    let provider: AuthProvider
-    let action: () async -> Void
-
-    @State private var isWorking = false
-
-    var body: some View {
-        Button {
-            guard !isWorking else { return }
-            Task {
-                isWorking = true
-                await action()
-                isWorking = false
-            }
-        } label: {
-            HStack(spacing: 10) {
-                AuthRowIcon(isWorking: isWorking) {
-                    if provider.icon.hasPrefix("sf:") {
-                        Image(systemName: String(provider.icon.dropFirst(3)))
-                    } else {
-                        Image(provider.icon).resizable().scaledToFit()
-                    }
-                }
-                .foregroundStyle(.secondary)
-
-                Text(provider.label)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-    }
-}

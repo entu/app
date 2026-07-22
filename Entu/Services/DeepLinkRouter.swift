@@ -118,6 +118,16 @@ final class DeepLinkRouter {
         return true
     }
 
+    /// Consume the pending invite (sheet dismissed or completed) — owns
+    /// the invariant "target set ⇒ something pending": the window claim is
+    /// released unless an entity link still holds it.
+    func consumeInvite() {
+        pendingInvite = nil
+        if pendingDatabaseId == nil {
+            targetWindowId = nil
+        }
+    }
+
     /// Clear pending state once MainView has applied it.
     func clear() {
         pendingDatabaseId = nil

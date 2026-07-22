@@ -69,7 +69,8 @@ struct WindowRootView: View {
                 AddLoginMethodSheet(
                     inviteToken: invite.token,
                     databaseId: invite.databaseId,
-                    title: String(localized: "inviteTitle \(invite.databaseId)", bundle: .currentLocalized)
+                    title: String(localized: "inviteTitle \(invite.databaseId)", bundle: .currentLocalized),
+                    subtitle: String(localized: "inviteDescription", bundle: .currentLocalized)
                 ) {
                     // Accepted — the fresh token's database list includes
                     // the invited database; jump straight into it.
@@ -152,14 +153,7 @@ struct WindowRootView: View {
                 return router.pendingInvite
             },
             set: { newValue in
-                guard newValue == nil else { return }
-
-                router.pendingInvite = nil
-                // Keep the router invariant "target set ⇒ something pending"
-                // — but never drop a claim an entity link still holds.
-                if router.pendingDatabaseId == nil {
-                    router.targetWindowId = nil
-                }
+                if newValue == nil { router.consumeInvite() }
             }
         )
     }

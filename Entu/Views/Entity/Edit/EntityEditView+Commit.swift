@@ -83,6 +83,9 @@ extension EntityEditView {
             // webapp's redirect to `/{account}/invite?token=…`. Masked
             // `***` invites from GET never pass through this path.
             if def.name == "entu_user", isOwnEntity, let token = value.invite, token != "***" {
+                if let propertyId = value._id {
+                    selfInviteCleanup = SelfInviteCleanup(propertyName: def.name, value: value, propertyId: propertyId)
+                }
                 pendingSelfInvite = PendingSelfInvite(token: token)
             }
         } catch {

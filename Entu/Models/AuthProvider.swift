@@ -43,6 +43,13 @@ enum AuthProvider: String, CaseIterable {
         }
     }
 
+    /// SF Symbol name when `icon` uses the `sf:` scheme, nil for custom
+    /// assets. The single place the scheme is parsed — every icon renderer
+    /// (`AuthProviderGlyph`, `AuthChip.glyph`) goes through this.
+    var systemImageName: String? {
+        icon.hasPrefix("sf:") ? String(icon.dropFirst(3)) : nil
+    }
+
     /// Icon name — `sf:` prefix means SF Symbols (Apple's built-in icons),
     /// otherwise it's a custom image from the asset catalog.
     var icon: String {

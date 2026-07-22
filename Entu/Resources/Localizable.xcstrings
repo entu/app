@@ -93,13 +93,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sign in with one of the options above to accept your invitation."
+            "value" : "Sign in to add a new login method."
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kutse vastuvõtmiseks logi sisse ülaltoodud valikuga."
+            "value" : "Uue sisselogimisviisi lisamiseks logi sisse."
           }
         }
       }
@@ -1824,6 +1824,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sellele objektile laienevad peamise objekti õigused. Õiguste muutmiseks lisa erisused objekti spetsiifiliste õiguste alla."
+          }
+        }
+      }
+    },
+    "inviteDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to accept your invitation."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kutse vastuvõtmiseks logi sisse."
           }
         }
       }

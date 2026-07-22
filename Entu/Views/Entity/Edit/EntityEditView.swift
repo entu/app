@@ -38,6 +38,14 @@ struct PendingSelfInvite: Identifiable {
     var id: String { token }
 }
 
+/// What to delete when a self-invite provider sheet is cancelled — the
+/// invite property the sentinel commit just created.
+struct SelfInviteCleanup {
+    let propertyName: String
+    let value: EditableValue
+    let propertyId: String
+}
+
 /// Modal sheet that creates or edits a single entity, autosaving per-field.
 struct EntityEditView: View {
     // Internal (non-private) so extensions in companion files
@@ -105,6 +113,13 @@ struct EntityEditView: View {
     /// Mirrors webapp's redirect to `/{account}/invite?token=…`.
     @State var pendingSelfInvite: PendingSelfInvite?
 
+    /// Rollback handle for a cancelled self-invite. The sentinel commit
+    /// creates the invite property *before* the provider sheet opens;
+    /// dismissing the sheet without completing must delete it again so
+    /// cancel leaves no trace. (Deliberate deviation: the webapp leaves
+    /// the orphaned invite behind — native modal cancel semantics don't.)
+    @State var selfInviteCleanup: SelfInviteCleanup?
+
     /// True when the edited entity is the signed-in user's own person
     /// entity — mirrors webapp's `isOwnEntity` in `property/edit.vue`.
     var isOwnEntity: Bool {
@@ -169,9 +184,21 @@ struct EntityEditView: View {
         } message: {
             if let commitError { Text(commitError) }
         }
-        .sheet(item: $pendingSelfInvite) { invite in
+        .sheet(item: $pendingSelfInvite, onDismiss: {
+            // Cancelled without completing — delete the invite property the
+            // sentinel commit created, restoring the "Add Login Method" chip.
+            guard let cleanup = selfInviteCleanup else { return }
+
+            selfInviteCleanup = nil
+            Task {
+                await deleteValue(propertyName: cleanup.propertyName, value: cleanup.value, propertyId: cleanup.propertyId)
+            }
+        }) { invite in
             AddLoginMethodSheet(inviteToken: invite.token) {
-                // Invite consumed — refetch so the new login row appears.
+                // Completed — keep the property (the exchange replaced it
+                // with credentials server-side); refetch so the new login
+                // row appears. Runs before dismiss, so onDismiss skips.
+                selfInviteCleanup = nil
                 Task { await load() }
             }
         }

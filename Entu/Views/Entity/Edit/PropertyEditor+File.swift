@@ -149,22 +149,10 @@ extension PropertyEditor {
 
     /// Dashed upload chip, per the design.
     var uploadChipLabel: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "arrow.up")
-                .font(.caption2.weight(.medium))
-            Text(definition.list ? "uploadFiles" : "uploadFile")
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.vertical, 4)
-        .padding(.horizontal, 10)
-        .overlay {
-            Capsule().strokeBorder(
-                .quaternary,
-                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-            )
-        }
-        .contentShape(Capsule())
+        DashedAddLabel(
+            titleKey: definition.list ? "uploadFiles" : "uploadFile",
+            systemImage: "arrow.up"
+        )
     }
 
     /// Copy each picked URL into the app's temp dir so it survives the

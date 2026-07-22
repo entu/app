@@ -56,9 +56,23 @@ extension PropertyEditor {
             return String(localized: "apiKey", bundle: .currentLocalized)
         case "entu_user":
             if value.invite != nil { return value.email ?? "" }
-            return value.stringValue.isEmpty ? (value.email ?? "") : value.stringValue
+            return userDisplayLabel
         default:
             return value.stringValue
+        }
+    }
+
+    /// Registered-login display text — the login string, falling back to
+    /// the email. Shared by the pill and the confirm title.
+    private var userDisplayLabel: String {
+        value.stringValue.isEmpty ? (value.email ?? "") : value.stringValue
+    }
+
+    /// Saved-value row: the pill hugging leading, like the other chips.
+    private func authChipRow(_ chip: AuthChip) -> some View {
+        HStack(spacing: 8) {
+            chip
+            Spacer(minLength: 0)
         }
     }
 
@@ -70,16 +84,12 @@ extension PropertyEditor {
     @ViewBuilder
     private var apiKeyEditor: some View {
         if value._id != nil && value.stringValue == "***" {
-            HStack(spacing: 8) {
-                AuthChip(
-                    provider: nil,
-                    fallbackIcon: "key",
-                    label: String(localized: "apiKey", bundle: .currentLocalized),
-                    onDelete: { showingDeleteAuthConfirm = true }
-                )
-
-                Spacer(minLength: 0)
-            }
+            authChipRow(AuthChip(
+                provider: nil,
+                fallbackIcon: "key",
+                label: String(localized: "apiKey", bundle: .currentLocalized),
+                onDelete: { showingDeleteAuthConfirm = true }
+            ))
         } else if value._id != nil {
             HStack(spacing: 8) {
                 Text(verbatim: value.stringValue)
@@ -128,31 +138,19 @@ extension PropertyEditor {
                 }
 
                 // Same × as the auth pills — cancels the pending invite.
-                Button(role: .destructive) {
+                ChipDeleteButton(accessibilityKey: "cancelInvite") {
                     showingDeleteAuthConfirm = true
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .opacity(0.6)
-                        .padding(2)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("cancelInvite")
+                .foregroundStyle(.secondary)
 
                 Spacer(minLength: 0)
             }
         } else if value._id != nil {
-            HStack(spacing: 8) {
-                AuthChip(
-                    provider: value.provider,
-                    label: value.stringValue.isEmpty ? (value.email ?? "") : value.stringValue,
-                    onDelete: { showingDeleteAuthConfirm = true }
-                )
-
-                Spacer(minLength: 0)
-            }
+            authChipRow(AuthChip(
+                provider: value.provider,
+                label: userDisplayLabel,
+                onDelete: { showingDeleteAuthConfirm = true }
+            ))
         } else if isOwnEntity {
             authAddChip("addLoginMethod", systemImage: "envelope") {
                 value.stringValue = "self-invite"
@@ -178,16 +176,12 @@ extension PropertyEditor {
     @ViewBuilder
     private var passkeyEditor: some View {
         if value._id != nil {
-            HStack(spacing: 8) {
-                AuthChip(
-                    provider: nil,
-                    fallbackIcon: "person.badge.key",
-                    label: value.stringValue,
-                    onDelete: { showingDeleteAuthConfirm = true }
-                )
-
-                Spacer(minLength: 0)
-            }
+            authChipRow(AuthChip(
+                provider: nil,
+                fallbackIcon: "person.badge.key",
+                label: value.stringValue,
+                onDelete: { showingDeleteAuthConfirm = true }
+            ))
         } else if isOwnEntity {
             authAddChip("registerPasskey", systemImage: "person.badge.key") {
                 await onRegisterPasskey()
@@ -201,9 +195,8 @@ extension PropertyEditor {
 
     // MARK: - Shared pieces
 
-    /// Dashed add chip — same construction as the file editor's upload
-    /// chip (`PropertyEditor+File.uploadChipLabel`) and the reference
-    /// editor's "+ Add" chip. Used for every add-type auth action.
+    /// Dashed add chip (shared `DashedAddLabel`) wrapping an async action —
+    /// used for every add-type auth action.
     private func authAddChip(
         _ titleKey: LocalizedStringKey,
         systemImage: String,
@@ -212,22 +205,7 @@ extension PropertyEditor {
         Button {
             Task { await action() }
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.caption2.weight(.medium))
-                Text(titleKey)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 4)
-            .padding(.horizontal, 10)
-            .overlay {
-                Capsule().strokeBorder(
-                    .quaternary,
-                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                )
-            }
-            .contentShape(Capsule())
+            DashedAddLabel(titleKey: titleKey, systemImage: systemImage)
         }
         .buttonStyle(.plain)
     }

@@ -66,6 +66,8 @@ struct PropertyRow: View {
             referenceButton(id: ref, name: value.string)
         } else if value.provider != nil {
             providerValue(value)
+        } else if value.invite != nil, let email = value.email {
+            invitePendingValue(email)
         } else {
             switch definition.type {
             case "boolean": booleanValue(value)
@@ -193,6 +195,14 @@ struct PropertyRow: View {
         AuthChip(provider: value.provider, label: value.email ?? value.string ?? "")
     }
 
+    /// Pending invite on `entu_user` — "Invite sent to {email}". Mirrors
+    /// webapp's `property/value.vue` invite branch; same text the edit
+    /// sheet's pending row shows.
+    private func invitePendingValue(_ email: String) -> some View {
+        Text("invitePending \(email)")
+            .foregroundStyle(.secondary)
+    }
+
     /// Saved passkey value — masked "{device} {last4}" name in the auth
     /// pill with the passkey glyph.
     private func passkeyValue(_ value: PropertyValue) -> some View {
@@ -241,6 +251,26 @@ enum ValueChipMetrics {
     #endif
 }
 
+/// Trailing × delete button shared by the value chips (`ReferenceChip`,
+/// `FileChip`, `AuthChip`) and the auth editor's pending-invite row.
+/// Inherits its foreground from the host chip's style.
+struct ChipDeleteButton: View {
+    var accessibilityKey: LocalizedStringKey = "removeValue"
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: .destructive, action: action) {
+            Image(systemName: "xmark")
+                .font(ValueChipMetrics.deleteFont.weight(.semibold))
+                .opacity(0.6)
+                .padding(2)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityKey)
+    }
+}
+
 struct ReferenceChip: View {
     let entityId: String
     let name: String?
@@ -262,15 +292,7 @@ struct ReferenceChip: View {
             .buttonStyle(.plain)
 
             if let onDelete {
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
-                        .opacity(0.6)
-                        .padding(2)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("removeValue")
+                ChipDeleteButton(action: onDelete)
             }
         }
         .font(ValueChipMetrics.font)
@@ -327,15 +349,7 @@ struct FileChip: View {
             .buttonStyle(.plain)
 
             if let onDelete {
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
-                        .opacity(0.6)
-                        .padding(2)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("removeValue")
+                ChipDeleteButton(action: onDelete)
             }
         }
         .font(ValueChipMetrics.font)
@@ -381,15 +395,7 @@ struct AuthChip: View {
             }
 
             if let onDelete {
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(ValueChipMetrics.deleteFont.weight(.semibold))
-                        .opacity(0.6)
-                        .padding(2)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("removeValue")
+                ChipDeleteButton(action: onDelete)
             }
         }
         .font(ValueChipMetrics.font)
@@ -406,13 +412,11 @@ struct AuthChip: View {
     /// regardless of the asset's intrinsic size.
     private var glyph: some View {
         Group {
-            if let icon = provider.flatMap({ AuthProvider(rawValue: $0) })?.icon {
-                if icon.hasPrefix("sf:") {
-                    Image(systemName: String(icon.dropFirst(3)))
-                        .resizable()
-                        .scaledToFit()
+            if let authProvider = provider.flatMap(AuthProvider.init(rawValue:)) {
+                if let symbol = authProvider.systemImageName {
+                    Image(systemName: symbol).resizable().scaledToFit()
                 } else {
-                    Image(icon).resizable().scaledToFit()
+                    Image(authProvider.icon).resizable().scaledToFit()
                 }
             } else {
                 Image(systemName: fallbackIcon)
