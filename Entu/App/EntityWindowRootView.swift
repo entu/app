@@ -87,8 +87,13 @@ struct EntityWindowRootView: View {
         .task {
             // A window restored while signed out / with no database
             // selected has nothing to show — close it instead of
-            // rendering an error state.
-            guard api.databaseId != nil else {
+            // rendering an error state. The id-shape check covers the one
+            // id source nothing else validates — the persisted scene value
+            // (deep links validate in `DeepLinkRouter`, API-returned ids
+            // are server-owned) — so a tampered snapshot can't put an
+            // arbitrary path segment into the entity request.
+            guard api.databaseId != nil,
+                  entityId.count == 24, entityId.allSatisfy(\.isHexDigit) else {
                 dismiss()
                 return
             }
