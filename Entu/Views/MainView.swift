@@ -47,7 +47,8 @@ struct MainView: View {
     @FocusState private var searchFieldFocused: Bool
 
     /// Shared across the two/three-column swap so a collapsed sidebar stays
-    /// collapsed.
+    /// collapsed. Per window group, not per tab — macOS syncs sidebar
+    /// visibility across a native tab group by design (see CLAUDE-APP.md).
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
 
     /// Bumped by detail-side operations (currently: duplicate) to force
@@ -58,11 +59,10 @@ struct MainView: View {
     /// reported by `EntityDetailView`. Feeds the native-tab label (macOS).
     @State private var entityTitle: String = ""
 
-    /// Extra top inset the native tab bar adds when this window is tabbed
-    /// (~36pt), 0 otherwise — measured from the window's top safe area minus
-    /// the toolbar height. Injected via `\.windowTabBarInset` so the columns'
-    /// top-bleeding headers clear the tab bar instead of hiding behind it.
-    @State private var tabBarInset: CGFloat = 0
+    /// App menu Settings… (⌘,) — presents the account sheet. Separate from
+    /// the sidebar user pill's own presentation so the command also works
+    /// while the sidebar is collapsed.
+    @State private var showingAccountSheet = false
 
     @AppStorage("ui.sidebarWidth") private var sidebarWidth: Double = ColumnMetrics.sidebarDefault
     @AppStorage("ui.contentWidth") private var contentWidth: Double = ColumnMetrics.listDefault
@@ -111,6 +111,13 @@ struct MainView: View {
     /// (text or advanced) is active.
     private var showDashboard: Bool {
         session.selectedMenuId == nil && !search.isActive
+    }
+
+    /// True when main results render as the full-width table — the toggle
+    /// is on and the window is regular width (mirrors webapp's
+    /// `isQuery && showTable`; the dashboard branch covers `isQuery`).
+    private var tableModeActive: Bool {
+        session.showTable && horizontalSizeClass != .compact
     }
 
     /// Name of the active database — the display name for an authenticated
@@ -194,8 +201,15 @@ struct MainView: View {
 
     /// Open `content` in a new window. On macOS the system tabs it next to
     /// the current tab (per the user's "Prefer tabs" setting); on iPad it's
-    /// a new scene window.
+    /// a new scene window. An entity opens in its own auxiliary window
+    /// (`EntityWindowRootView`, Mail-style) instead of another full main
+    /// window; reopening an already-open entity fronts its window.
     private func openInNewWindow(_ content: TabRequest.Content) {
+        if case .entity(let entityId) = content {
+            openWindow(id: EntityWindowRootView.windowID, value: entityId)
+            return
+        }
+
         openWindow(value: TabRequest(content: content))
     }
 
@@ -216,14 +230,14 @@ struct MainView: View {
 
     /// Detail-side navigation (reference chips, parent/type chips, table
     /// rows) — pushes onto the history stack unless ⌘-click routes it to a
-    /// new tab.
+    /// new window.
     private func navigate(to entityId: String) {
         if intercepts(opening: .entity(entityId)) { return }
 
         session.entityHistory.append(entityId)
     }
 
-    /// List-selection binding — intercepts ⌘-click into a new tab (keeping
+    /// List-selection binding — intercepts ⌘-click into the entity window (keeping
     /// the current selection), otherwise writes through to the session.
     private var entitySelection: Binding<String?> {
         Binding(
@@ -477,6 +491,9 @@ struct MainView: View {
         case .dashboard:
             applySnapshot(nil)
         case .entity(let entityId):
+            // Legacy seed — entities now open in the auxiliary entity
+            // window (`EntityWindowRootView`); kept so main windows saved
+            // before that change still restore.
             applySnapshot(SessionState.Snapshot(pinnedId: entityId))
         case .menu(let menuId):
             applySnapshot(SessionState.Snapshot(menuId: menuId))
@@ -538,6 +555,8 @@ struct MainView: View {
         let layout = Group {
             if showDashboard {
                 twoColumnView(menu: menu)
+            } else if tableModeActive {
+                tableColumnView(menu: menu)
             } else {
                 threeColumnView(menu: menu)
             }
@@ -545,25 +564,10 @@ struct MainView: View {
         .modifier(MenuScopedSearchable(text: $search.text, focused: $searchFieldFocused, enabled: showSearchField))
         .sheet(isPresented: $search.showAdvanced) { advancedSearchSheet }
         .modifier(ChatPresentation(chat: chat, onOpenEntity: openPinnedEntity))
-        #if os(macOS)
-        // Blank title — the redesign's toolbar carries only the search field;
-        // database context lives in the sidebar's bottom user pill. The
-        // toolbar background is hidden so the window color runs behind the
-        // floating search field instead of a white band.
-        .navigationTitle("")
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        // The window's top inset grows by the tab-bar height when tabbed —
-        // measured here (where the toolbar establishes it) and fed to the
-        // columns so their top-bleeding headers clear the tab bar.
-        .onGeometryChange(for: CGFloat.self) {
-            max(0, $0.safeAreaInsets.top - ColumnMetrics.toolbarHeight)
-        } action: { newInset in
-            tabBarInset = newInset
-        }
-        // Label this window's native tab — the redesign keeps the window
-        // title empty, so without this the tab shows no name.
-        .background(WindowTabTitle(title: windowTitle))
-        #endif
+        // Blank window title with the name on the native tab, hidden
+        // toolbar background, tab-bar inset measurement — shared with the
+        // auxiliary entity window (no-op on iOS). See `WindowTabChrome`.
+        .windowTabChrome(title: windowTitle)
 
         // Split off the event handlers into a second expression — the whole
         // chain otherwise overwhelms the type-checker.
@@ -584,16 +588,30 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: palette.isOpen)
-        // Row context menus offer "open in new tab/window" — always-equal
-        // action (see `OpenEntityInNewTabAction`) so injecting it every
+        // Row context menus offer "Open in New Window" — always-equal
+        // action (see `OpenEntityInNewWindowAction`) so injecting it every
         // render never invalidates readers; iPhone hides the item via
         // `\.supportsMultipleWindows` at the menu itself.
-        .environment(\.openEntityInNewTab, OpenEntityInNewTabAction { openInNewWindow(.entity($0)) })
-        .environment(\.windowTabBarInset, tabBarInset)
+        .environment(\.openEntityInNewWindow, OpenEntityInNewWindowAction { openInNewWindow(.entity($0)) })
         // View > Command Palette (⌘K) — see `PaletteCommands`.
         .focusedSceneValue(\.commandPalette, CommandPaletteToggle(windowId: windowState.windowId) {
             palette.toggle(databaseId: api.databaseId)
         })
+        // View > as List / as Table (⌘1/⌘2) — per-window mode; `isOn`
+        // rides in the command so the menu checkmarks track this window.
+        .focusedSceneValue(\.toggleTableView, ToggleTableViewCommand(windowId: windowState.windowId, isOn: session.showTable) {
+            session.showTable = $0
+        })
+        // App menu Settings… (⌘,) — the account sheet is the app's
+        // settings surface. Presented here (not via the sidebar's own
+        // presentation) so the command works with the sidebar collapsed.
+        .focusedSceneValue(\.accountSettings, AccountSettingsCommand(windowId: windowState.windowId) {
+            showingAccountSheet = true
+        })
+        .sheet(isPresented: $showingAccountSheet) {
+            AccountSheet(openPinnedEntity: openPinnedEntity)
+                .blocksCommandPalette()
+        }
         // Edit > Search (⌘F) — see `SearchFieldCommands`. Same modal
         // guard as the palette: the field would gain focus behind a sheet.
         .focusedSceneValue(\.focusSearch, FocusSearchCommand(windowId: windowState.windowId) {
@@ -632,6 +650,7 @@ struct MainView: View {
             .onChange(of: session.selectedMenuId) { persistSession() }
             .onChange(of: session.entityHistory) { persistSession() }
             .onChange(of: session.pinnedEntityId) { persistSession() }
+            .onChange(of: session.showTable) { persistSession() }
             .onChange(of: search.advancedQuery) { persistSession() }
             .onChange(of: chat.isOpen) { persistSession() }
             .onChange(of: api.databaseId) {
@@ -829,6 +848,33 @@ struct MainView: View {
         }
         .environment(menu)
     }
+
+    // MARK: - Table mode
+
+    /// Table mode — sidebar + the full-width main table, replacing the
+    /// list+detail split (webapp parity: `entity-table` fills the content
+    /// area). The table is a read-only overview: rows don't open the
+    /// entity; all entity actions live in the row context menu (same menu
+    /// as the list rows — its actions route through the entity window, see
+    /// `MainEntityTable.tableBody`).
+    private func tableColumnView(menu: MenuModel) -> some View {
+        NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
+            sidebarColumn(menu: menu)
+        } detail: {
+            MainEntityTable(
+                query: activeQuery,
+                menuId: session.selectedMenuId,
+                refreshToken: listRefreshToken,
+                onOpenAdvancedSearch: { search.showAdvanced = true }
+            )
+        }
+        // Balanced, not automatic: with two columns iPad resolves to
+        // prominent-detail — the sidebar OVERLAYS the full-bleed table
+        // (columns run underneath it) and the dimmed detail underneath
+        // ignores interaction, reading as "table doesn't scroll".
+        .navigationSplitViewStyle(.balanced)
+        .environment(menu)
+    }
 }
 
 // MARK: - Conditional searchable
@@ -949,7 +995,48 @@ private struct WindowTabTitle: NSViewRepresentable {
         }
     }
 }
+
+/// The redesign's shared macOS window chrome — blank window title (the
+/// toolbar carries only content; the name goes on the native tab via
+/// `WindowTabTitle`), hidden toolbar background so the window color runs
+/// behind it, and the tab-bar inset measured and injected as
+/// `\.windowTabBarInset` so top-bleeding headers clear a native tab bar.
+/// One home for the inset formula — used by `MainView` and the auxiliary
+/// `EntityWindowRootView`.
+private struct WindowTabChrome: ViewModifier {
+    let title: String
+
+    /// Extra top inset the native tab bar adds when this window is tabbed
+    /// (~36pt), 0 otherwise — the window's top safe area minus the
+    /// toolbar height.
+    @State private var tabBarInset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle("")
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            .onGeometryChange(for: CGFloat.self) {
+                max(0, $0.safeAreaInsets.top - ColumnMetrics.toolbarHeight)
+            } action: { newInset in
+                tabBarInset = newInset
+            }
+            .background(WindowTabTitle(title: title))
+            .environment(\.windowTabBarInset, tabBarInset)
+    }
+}
 #endif
+
+extension View {
+    /// Blank-title macOS window chrome with `title` on the native tab and
+    /// the tab-bar inset injected; no-op on iOS. See `WindowTabChrome`.
+    func windowTabChrome(title: String) -> some View {
+        #if os(macOS)
+        modifier(WindowTabChrome(title: title))
+        #else
+        self
+        #endif
+    }
+}
 
 extension View {
     /// While `history` is non-empty, replaces the system back button with

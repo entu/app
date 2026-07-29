@@ -61,17 +61,28 @@ struct EntuApp: App {
         }
     }
 
+    /// The app-wide services every window scene injects — one list shared
+    /// by the main and entity WindowGroups, so a new service can't be added
+    /// to one scene and forgotten on the other (`@Environment(T.self)`
+    /// traps at runtime when a value is missing). `windowSessions` is
+    /// main-window-only and injected at its call site.
+    private func withAppServices(_ content: some View) -> some View {
+        content
+            .environment(api)
+            .environment(auth)
+            .environment(authService)
+            .environment(passkeyService)
+            .environment(network)
+            .environment(router)
+            .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+    }
+
     var body: some Scene {
         WindowGroup(id: "main", for: TabRequest.self) { $request in
-            WindowRootView(api: api, request: request)
-                .environment(api)
-                .environment(auth)
-                .environment(authService)
-                .environment(passkeyService)
-                .environment(network)
-                .environment(router)
-                .environment(windowSessions)
-                .environment(\.locale, appLanguage.isEmpty ? .current : Locale(identifier: appLanguage))
+            withAppServices(
+                WindowRootView(api: api, request: request)
+                    .environment(windowSessions)
+            )
         } defaultValue: {
             TabRequest()
         }
@@ -143,6 +154,12 @@ struct EntuApp: App {
             // value `MainView` publishes; a no-op outside the main view.
             PaletteCommands()
 
+            // View > as List / as Table (⌘1/⌘2) — main-results view mode.
+            ViewToggleCommands()
+
+            // App menu > Settings… (⌘,) — opens the account sheet.
+            AccountCommands()
+
             // Edit > Search (⌘F) — focuses the toolbar search field.
             SearchFieldCommands()
 
@@ -153,5 +170,19 @@ struct EntuApp: App {
             // View > Reload Entity (⌘R) / Clear Cache (⇧⌘R).
             ReloadCommands()
         }
+
+        // Auxiliary entity windows — one entity per window, Mail-style
+        // (HIG: an auxiliary window "presents a specific area… dedicated
+        // to one experience"). Value = entity id; opening an already-open
+        // entity fronts its window instead of duplicating it. A separate
+        // WindowGroup gets its own tabbing identifier, so entity windows
+        // tab together — never with main windows — per the user's system
+        // "Prefer tabs" setting.
+        WindowGroup(id: EntityWindowRootView.windowID, for: String.self) { $entityId in
+            if let entityId {
+                withAppServices(EntityWindowRootView(api: api, entityId: entityId))
+            }
+        }
+        .defaultSize(width: 760, height: 900)
     }
 }

@@ -538,7 +538,7 @@ struct CommandPaletteView: View {
         let actionTable: [(id: String, icon: String, title: String.LocalizationValue, key: String?, run: (() -> Void)?)] = [
             ("edit", "pencil", "edit", "⌘E", actions.edit),
             ("duplicate", "doc.on.doc", "duplicate", "⌘D", actions.duplicate),
-            ("parents", "arrow.up.folder", "parents", nil, actions.parents),
+            ("parents", "arrow.up.folder", "parents", "⌘↑", actions.parents),
             ("rights", "person.2", "rights", "⌘I", actions.rights),
             ("history", "clock.arrow.circlepath", "history", "⌘Y", actions.history)
         ]
@@ -553,19 +553,14 @@ struct CommandPaletteView: View {
             ))
         }
 
-        // Open in a new tab/window — last, after the entity actions. Nil
-        // (hidden) on iPhone. Same closure as the Entity menu's ⌥⌘O item.
-        if let openInNewTab = actions.openInNewTab {
-            #if os(macOS)
-            let title: String.LocalizationValue = "openInNewTab"
-            #else
-            let title: String.LocalizationValue = "openInNewWindow"
-            #endif
+        // Open in a new window — last, after the entity actions. Nil
+        // (hidden) on iPhone. Same closure as the Entity menu's ⌘O item.
+        if let openInNewWindow = actions.openInNewWindow {
             rows.append(PaletteRow(
-                id: "openInNewTab",
-                content: .action(icon: "macwindow.badge.plus", title: loc(title)),
-                keyHint: "⌥⌘O",
-                run: openInNewTab
+                id: "openInNewWindow",
+                content: .action(icon: "macwindow.badge.plus", title: loc("openInNewWindow")),
+                keyHint: "⌘O",
+                run: openInNewWindow
             ))
         }
         return rows

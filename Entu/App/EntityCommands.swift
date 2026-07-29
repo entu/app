@@ -161,6 +161,65 @@ struct PaletteCommands: Commands {
     }
 }
 
+/// View > as List (⌘1) / as Table (⌘2) — Finder-style view-mode items
+/// (Finder: "as Icons" ⌘1, "as List" ⌘2 …) switching the active window's
+/// main results between the list and the full-width table; the same
+/// per-window state the toolbar's list/table button drives, with the
+/// checkmark tracking the window's mode. Focused-value driven (the state
+/// is per window, not app-global); not `.disabled` when absent for the
+/// same iPadOS reason as `PaletteCommands`.
+///
+/// Menu-bar strings resolve against the system language (plain
+/// `String(localized:)`, not `.currentLocalized`) — see `EntityCommands`.
+struct ViewToggleCommands: Commands {
+    @FocusedValue(\.toggleTableView) private var toggleTableView
+
+    var body: some Commands {
+        CommandGroup(before: .sidebar) {
+            Toggle(isOn: Binding(
+                get: { toggleTableView?.isOn == false },
+                set: { if $0 { toggleTableView?.set(false) } }
+            )) {
+                Text(String(localized: "menuViewAsList"))
+            }
+            .keyboardShortcut("1")
+
+            Toggle(isOn: Binding(
+                get: { toggleTableView?.isOn == true },
+                set: { if $0 { toggleTableView?.set(true) } }
+            )) {
+                Text(String(localized: "menuViewAsTable"))
+            }
+            .keyboardShortcut("2")
+
+            Divider()
+        }
+    }
+}
+
+/// App menu > Settings… (⌘,) — opens the account sheet (profile, in-app
+/// language, usage, sign-out) in the active window; it is the app's
+/// settings surface, so it takes the standard Settings slot and shortcut.
+/// Focused-value driven; not `.disabled` when absent for the same iPadOS
+/// reason as `PaletteCommands`.
+///
+/// Menu-bar strings resolve against the system language (plain
+/// `String(localized:)`, not `.currentLocalized`) — see `EntityCommands`.
+struct AccountCommands: Commands {
+    @FocusedValue(\.accountSettings) private var accountSettings
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button {
+                accountSettings?.invoke()
+            } label: {
+                Text(String(localized: "menuSettings"))
+            }
+            .keyboardShortcut(",")
+        }
+    }
+}
+
 /// Edit > Search (⌘F) — focuses the toolbar search field. Same focused
 /// scene-value mechanism (and iPadOS not-disabled rationale) as
 /// `PaletteCommands`.
@@ -278,9 +337,12 @@ struct EntityCommands: Commands {
             .keyboardShortcut("d")
             .disabled(actions?.duplicate == nil)
 
+            // ⌘↑ follows Finder's Enclosing Folder — the standard
+            // "go to parent" shortcut.
             Button(String(localized: "parents")) {
                 actions?.parents?()
             }
+            .keyboardShortcut(.upArrow, modifiers: .command)
             .disabled(actions?.parents == nil)
 
             Divider()
@@ -301,18 +363,15 @@ struct EntityCommands: Commands {
 
             Divider()
 
-            // ⌥⌘O — open the shown entity in a new tab (macOS) / window
-            // (iPad). Absent (nil) on iPhone; disabled with no entity open.
-            #if os(macOS)
-            let openLabel = String(localized: "openInNewTab")
-            #else
-            let openLabel = String(localized: "openInNewWindow")
-            #endif
-            Button(openLabel) {
-                actions?.openInNewTab?()
+            // ⌘O — the standard Open shortcut; "open" here means the
+            // entity's auxiliary window (rows show the detail in place on
+            // plain selection). Absent (nil) on iPhone; disabled with no
+            // entity open.
+            Button(String(localized: "openInNewWindow")) {
+                actions?.openInNewWindow?()
             }
-            .keyboardShortcut("o", modifiers: [.command, .option])
-            .disabled(actions?.openInNewTab == nil)
+            .keyboardShortcut("o")
+            .disabled(actions?.openInNewWindow == nil)
         }
     }
 }

@@ -21,7 +21,10 @@ struct TabRequest: Codable, Hashable {
         /// ⌘T "New Tab" — fresh dashboard with clean navigation and search.
         case dashboard
 
-        /// ⌘-click on an entity link — that entity pinned, everything else clean.
+        /// Legacy seed — entities now open in the auxiliary entity window
+        /// (`EntityWindowRootView`); kept so main windows saved before that
+        /// change still decode and restore (pinned entity, everything else
+        /// clean), and as `WindowState.seed` vocabulary.
         case entity(String)
 
         /// ⌘-click on a sidebar menu item — that menu selected (its entity

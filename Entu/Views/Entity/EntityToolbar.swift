@@ -33,7 +33,9 @@ func entityAddChildTypes(for entity: EntityDetail, menu: MenuModel) -> [AddFromT
 /// Menu-level Add button — shared by the live toolbar and the loading
 /// placeholder, since its visibility depends only on the active menu, not
 /// the entity. `onCreate == nil` renders the disabled placeholder variant.
-private struct MenuLevelAddButton: View {
+/// Shared by the entity toolbar and `MainEntityTable`'s no-selection
+/// toolbar — the menu-level New button, hidden without addable types.
+struct MenuLevelAddButton: View {
     @Environment(AuthModel.self) private var auth
     @Environment(MenuModel.self) private var menu
 
@@ -330,7 +332,7 @@ private struct EntityToolbarHost: ViewModifier {
     @Environment(MenuModel.self) private var menu
     @Environment(DeepLinkRouter.self) private var router
     @Environment(WindowState.self) private var windowState
-    @Environment(\.openEntityInNewTab) private var openEntityInNewTab
+    @Environment(\.openEntityInNewWindow) private var openEntityInNewWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
 
     let entity: EntityDetail
@@ -520,17 +522,17 @@ private struct EntityToolbarHost: ViewModifier {
             rights: rights.owner ? { showingRights = true } : nil,
             history: rights.editor ? { showingHistory = true } : nil,
             reload: onReload,
-            openInNewTab: openInNewTabAction
+            openInNewWindow: openInNewWindowAction
         )
     }
 
-    /// ⌥⌘O — open the shown entity in a new tab/window. Nil on iPhone so
+    /// ⌘O — open the shown entity's auxiliary window. Nil on iPhone so
     /// the menu item and palette row disappear there.
-    private var openInNewTabAction: (() -> Void)? {
-        guard supportsMultipleWindows, let openEntityInNewTab else { return nil }
+    private var openInNewWindowAction: (() -> Void)? {
+        guard supportsMultipleWindows, let openEntityInNewWindow else { return nil }
 
         let entityId = entity._id
-        return { openEntityInNewTab.invoke(entityId) }
+        return { openEntityInNewWindow.invoke(entityId) }
     }
 
     /// Add-child options — expander-gated, one per addable child type, each

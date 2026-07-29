@@ -37,9 +37,9 @@ struct EntityActions: Equatable {
     var history: (() -> Void)?
     var reload: (() -> Void)?
 
-    /// Open this entity in a new tab (macOS) / window (iPad) — ⌥⌘O. Nil on
+    /// Open this entity's auxiliary window — ⌘O. Nil on
     /// iPhone (`supportsMultipleWindows` is false there).
-    var openInNewTab: (() -> Void)?
+    var openInNewWindow: (() -> Void)?
 
     static func == (lhs: EntityActions, rhs: EntityActions) -> Bool {
         lhs.windowId == rhs.windowId
@@ -52,7 +52,7 @@ struct EntityActions: Equatable {
             && (lhs.rights == nil) == (rhs.rights == nil)
             && (lhs.history == nil) == (rhs.history == nil)
             && (lhs.reload == nil) == (rhs.reload == nil)
-            && (lhs.openInNewTab == nil) == (rhs.openInNewTab == nil)
+            && (lhs.openInNewWindow == nil) == (rhs.openInNewWindow == nil)
     }
 }
 
@@ -93,6 +93,32 @@ struct EntityCreateCommand: Equatable {
 // windowId is constant, so republish dedupe still works.
 
 /// View-menu "clear cache" command (⇧⌘R) published by `MainView`.
+/// View > Table View — toggles the publishing window's list/table mode.
+/// `isOn` is part of equality so the menu checkmark re-renders when the
+/// mode flips (windowId per the focused-value rule; see CLAUDE-APP.md).
+struct ToggleTableViewCommand: Equatable {
+    let windowId: UUID
+    let isOn: Bool
+
+    /// Sets the window's table mode directly — the menu carries two
+    /// Finder-style view-mode items (as List ⌘1 / as Table ⌘2), so the
+    /// command sets a target state instead of toggling.
+    let set: (Bool) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.windowId == rhs.windowId && lhs.isOn == rhs.isOn
+    }
+}
+
+/// App menu Settings… (⌘,) published by `MainView` — opens the account
+/// sheet (profile, language, sign-out) in the active window.
+struct AccountSettingsCommand: Equatable {
+    let windowId: UUID
+    let invoke: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.windowId == rhs.windowId }
+}
+
 struct ClearCacheCommand: Equatable {
     let windowId: UUID
     let invoke: () -> Void
@@ -156,6 +182,10 @@ extension FocusedValues {
 
     /// Focus-the-search-field command (⌘F) — published by `MainView`.
     @Entry var focusSearch: FocusSearchCommand?
+
+    /// View > Table View toggle — published by `MainView`, per window.
+    @Entry var toggleTableView: ToggleTableViewCommand?
+    @Entry var accountSettings: AccountSettingsCommand?
 
     /// Browse-public-database trigger — published by `WindowRootView`.
     @Entry var browsePublicDatabase: BrowsePublicDatabaseCommand?

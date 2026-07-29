@@ -119,8 +119,7 @@ struct EntityListView: View {
                 }
                 Spacer()
             }
-            .padding(.leading, columnOriginX < 50 ? 150 : 16)
-            .padding(.trailing, 16)
+            .headerStripPadding(columnOriginX: columnOriginX)
             // The strip matches the window-toolbar height, content centered
             // vertically — both the single-line count and the stacked
             // title+count sit on the toolbar's optical line. When the window
@@ -142,13 +141,18 @@ struct EntityListView: View {
         #if os(macOS)
         .ignoresSafeArea(edges: .top)
         .toolbar {
-            if auth.currentUserId != nil, let onOpenAdvancedSearch {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        onOpenAdvancedSearch()
-                    } label: {
-                        advancedSearchLabel
-                    }
+            // ONE builder for the whole trailing cluster — items from a
+            // separately-attached `.toolbar` block render AHEAD of
+            // earlier ones, and separate conditional items interleave
+            // unpredictably. Order: New (own pill, from
+            // `addToolbarContent`) · then the toggle · filter group.
+            addToolbarContent
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                ViewToggleButton()
+
+                if auth.currentUserId != nil, let onOpenAdvancedSearch {
+                    AdvancedSearchButton(isFiltering: search.advancedQuery != nil, action: onOpenAdvancedSearch)
                 }
             }
         }
@@ -161,19 +165,30 @@ struct EntityListView: View {
         .navigationSubtitle(showsMenuTitle ? Text("entityCount \(totalCount)") : Text(verbatim: ""))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // iPad trailing cluster, ONE builder for deterministic order:
+            // New (own pill, from `addToolbarContent`) · then the
+            // toggle · filter group. Toggle is iPad-only (iPhone always
+            // shows the list; webapp's mobile table is name-only, out of
+            // scope) — gated on the device idiom, NOT the size class: the
+            // list COLUMN is compact-width (~375pt) even on a 13" iPad.
+            addToolbarContent
+
+            if !isPhone {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    ViewToggleButton()
+
+                    if auth.currentUserId != nil, let onOpenAdvancedSearch {
+                        AdvancedSearchButton(isFiltering: search.advancedQuery != nil, action: onOpenAdvancedSearch)
+                    }
+                }
+            }
+
             // iPhone bottom bar, Mail/Notes-style: filter · search · New.
             // The filter is declared before the search item so it sits
-            // leading; New (`addToolbarContent`) follows trailing.
-            if auth.currentUserId != nil, let onOpenAdvancedSearch {
-                ToolbarItem(placement: isPhone ? .bottomBar : .topBarTrailing) {
-                    Button {
-                        onOpenAdvancedSearch()
-                    } label: {
-                        Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
-                    }
-                    // iOS toolbar buttons ignore the label's foreground
-                    // style — tint the button itself when filtering.
-                    .tint(search.advancedQuery != nil ? Color.accentColor : nil)
+            // leading.
+            if isPhone, auth.currentUserId != nil, let onOpenAdvancedSearch {
+                ToolbarItem(placement: .bottomBar) {
+                    AdvancedSearchButton(isFiltering: search.advancedQuery != nil, action: onOpenAdvancedSearch)
                 }
             }
 
@@ -232,7 +247,6 @@ struct EntityListView: View {
                 await loadEntities()
             }
         }
-        .toolbar { addToolbarContent }
         // File > New (⌘N) — same menu-level add types and create-sheet state
         // as the toolbar's Add button. Present whenever a menu is selected,
         // so ⌘N works from the list and while an entity is open.
@@ -259,25 +273,12 @@ struct EntityListView: View {
                 pendingNewType = chosen
             }
         }
-        .sheet(
-            item: $pendingCreate,
-            onDismiss: {
-                if let id = pendingCreatedId {
-                    selectedEntityId = id
-                    Task { await loadEntities() }
-                }
-                pendingCreatedId = nil
+        .createEntitySheet(mode: $pendingCreate, createdId: $pendingCreatedId) {
+            if let id = pendingCreatedId {
+                selectedEntityId = id
+                Task { await loadEntities() }
             }
-        ) { mode in
-            NavigationStack {
-                EntityEditView(mode: mode) { newId in
-                    pendingCreatedId = newId
-                }
-            }
-            .blocksCommandPalette()
-            // Wider page-sheet sizing on iPad (same as Rights) — the
-            // two-column rows need the room.
-            .presentationSizing(.page)
+            pendingCreatedId = nil
         }
     }
 
@@ -404,18 +405,6 @@ struct EntityListView: View {
                 return .handled
             }
             #endif
-        }
-    }
-
-    /// Filter icon — accent-tinted while an advanced search is applied,
-    /// so the active filter is visible at a glance.
-    @ViewBuilder
-    private var advancedSearchLabel: some View {
-        if search.advancedQuery != nil {
-            Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
-                .foregroundStyle(Color.accentColor)
-        } else {
-            Label("advancedSearch", systemImage: "line.3.horizontal.decrease")
         }
     }
 
@@ -558,9 +547,12 @@ struct EntityListView: View {
     @ToolbarContentBuilder
     private var addToolbarContent: some ToolbarContent {
         if let types = availableAddTypes, !isPhone {
+            // New leads the cluster; the fixed spacer after it splits it
+            // into its own pill, separate from the toggle · filter group.
             ToolbarItem(placement: .primaryAction) {
                 addButton(types: types)
             }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
         }
     }
 
@@ -609,3 +601,18 @@ struct EntityListView: View {
         isLoadingMore = false
     }
 }
+
+#if os(macOS)
+extension View {
+    /// Horizontal padding for a column's macOS header strip. The strip
+    /// bleeds into the (hidden-background) window-toolbar area, so when
+    /// its column is the leftmost one (origin near 0 — sidebar collapsed)
+    /// the window controls + sidebar toggle sit over it and the content
+    /// shifts right to clear them. One home for the clearance numbers —
+    /// used by `EntityListView`'s and `MainEntityTable`'s headers.
+    func headerStripPadding(columnOriginX: CGFloat) -> some View {
+        padding(.leading, columnOriginX < 50 ? 150 : 16)
+            .padding(.trailing, 16)
+    }
+}
+#endif

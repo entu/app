@@ -22,6 +22,108 @@ struct EntityTableColumn: Identifiable {
     var id: String { name }
 }
 
+/// Type-aware table cell shared by the child/reference tables
+/// (`EntityTable`) and the main-list table (`MainEntityTable`) — formats
+/// one property value by column type. Numbers right-align, booleans +
+/// dates centre, everything else leads.
+struct EntityTableCell: View {
+    @Environment(\.locale) private var locale
+
+    let entity: EntitySummary
+    let column: EntityTableColumn
+
+    var body: some View {
+        let values = column.name == "name" ? entity.name : entity.additionalProperties?[column.name]
+        let value = PropertyValue.best(values)
+
+        // ZStack, not Group: an empty cell (no value) resolves to
+        // EmptyView, which a transparent Group drops from layout entirely
+        // — the surrounding `.frame` would vanish with it and the row's
+        // remaining cells would shift. ZStack materializes the frame.
+        ZStack {
+            switch column.type {
+            case "number":
+                if let num = value?.number {
+                    let format: FloatingPointFormatStyle<Double> = .number
+                        .precision(.fractionLength(column.decimals ?? 0))
+                        .locale(locale)
+                    Text(num, format: format)
+                }
+            case "boolean":
+                if value?.boolean == true {
+                    Image(systemName: "checkmark").foregroundStyle(.green)
+                }
+            case "date":
+                if let iso = value?.date, let date = ISO8601DateFormatter.parse(iso) {
+                    Text(date, format: Date.FormatStyle(date: .numeric, time: .omitted, locale: locale))
+                } else if let str = value?.string {
+                    Text(str)
+                }
+            case "datetime":
+                if let iso = value?.datetime, let date = ISO8601DateFormatter.parse(iso) {
+                    Text(date, format: Date.FormatStyle(date: .numeric, time: .shortened, locale: locale))
+                } else if let str = value?.string {
+                    Text(str)
+                }
+            // "file" is the declared property type (child tables);
+            // "filename"/"filesize" are the value-detected types the main
+            // table's webapp-parity auto-detection produces.
+            case "file", "filename":
+                if let filename = value?.filename {
+                    HStack(spacing: 6) {
+                        Text(filename)
+                        if let size = value?.filesize {
+                            Text(size.fileSizeString)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            case "filesize":
+                if let size = value?.filesize {
+                    Text(size.fileSizeString)
+                }
+            case "reference":
+                Text(value?.string ?? value?.reference ?? "")
+            default:
+                Text(value?.string ?? (column.name == "name" ? entity._id : ""))
+            }
+        }
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: Self.alignment(for: column.type))
+    }
+
+    /// Cell-content alignment by property type — numbers trailing,
+    /// booleans + dates centre, everything else leading.
+    static func alignment(for type: String) -> Alignment {
+        switch type {
+        case "number": return .trailing
+        case "boolean", "date", "datetime": return .center
+        default: return .leading
+        }
+    }
+}
+
+/// Sort-header label — column text plus the direction chevron when the
+/// column is the active sort. Shared by the child tables' `Grid` header
+/// and the main table's iPad header.
+struct SortColumnHeaderLabel: View {
+    let text: String
+    let isActive: Bool
+    let ascending: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(verbatim: text)
+                .lineLimit(1)
+            if isActive {
+                Image(systemName: ascending ? "chevron.up" : "chevron.down")
+                    .font(.caption2)
+            }
+        }
+    }
+}
+
 /// Sortable table for one child/referencing entity group. Paging state is
 /// owned by `ChildEntitiesSection` (the pager sits on its segment row);
 /// the table reloads on page/pageSize changes and reports the row count
@@ -85,7 +187,7 @@ struct EntityTable: View {
                 GridRow {
                     EntityAvatar(name: entity.displayName, entityId: entity._id, hasPhoto: entity.hasPhoto, size: 18)
                     ForEach(columns) { column in
-                        cellContent(entity: entity, column: column)
+                        EntityTableCell(entity: entity, column: column)
                     }
                 }
                 .padding(.vertical, rowVerticalPadding)
@@ -128,14 +230,12 @@ struct EntityTable: View {
                         page = 1
                     }
                 } label: {
-                    HStack(spacing: 4) {
-                        Text(column.label.isEmpty ? column.name : column.label)
-                        if sortColumn == column.name {
-                            Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
-                                .font(.caption2)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: cellAlignment(for: column.type))
+                    SortColumnHeaderLabel(
+                        text: column.label.isEmpty ? column.name : column.label,
+                        isActive: sortColumn == column.name,
+                        ascending: sortAscending
+                    )
+                    .frame(maxWidth: .infinity, alignment: EntityTableCell.alignment(for: column.type))
                 }
                 .buttonStyle(.plain)
                 .font(.caption)
@@ -144,71 +244,6 @@ struct EntityTable: View {
             }
         }
         .padding(.vertical, 4)
-    }
-
-    // MARK: - Cell content (type-specific rendering)
-
-    /// Render a single grid cell, formatting by the column's declared type.
-    /// Numbers right-align, booleans + dates centre, everything else leads.
-    @ViewBuilder
-    private func cellContent(entity: EntitySummary, column: EntityTableColumn) -> some View {
-        let values = column.name == "name" ? entity.name : entity.additionalProperties?[column.name]
-        let value = PropertyValue.best(values)
-
-        Group {
-            switch column.type {
-            case "number":
-                if let num = value?.number {
-                    let format: FloatingPointFormatStyle<Double> = .number
-                        .precision(.fractionLength(column.decimals ?? 0))
-                        .locale(locale)
-                    Text(num, format: format)
-                }
-            case "boolean":
-                if value?.boolean == true {
-                    Image(systemName: "checkmark").foregroundStyle(.green)
-                }
-            case "date":
-                if let iso = value?.date, let date = ISO8601DateFormatter.parse(iso) {
-                    Text(date, format: Date.FormatStyle(date: .numeric, time: .omitted, locale: locale))
-                } else if let str = value?.string {
-                    Text(str)
-                }
-            case "datetime":
-                if let iso = value?.datetime, let date = ISO8601DateFormatter.parse(iso) {
-                    Text(date, format: Date.FormatStyle(date: .numeric, time: .shortened, locale: locale))
-                } else if let str = value?.string {
-                    Text(str)
-                }
-            case "file":
-                if let filename = value?.filename {
-                    HStack(spacing: 6) {
-                        Text(filename)
-                        if let size = value?.filesize {
-                            Text(size.fileSizeString)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            case "reference":
-                Text(value?.string ?? value?.reference ?? "")
-            default:
-                Text(value?.string ?? (column.name == "name" ? entity._id : ""))
-            }
-        }
-        .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: cellAlignment(for: column.type))
-    }
-
-    /// Cell-content alignment by property type — numbers trailing,
-    /// booleans + dates centre, everything else leading.
-    private func cellAlignment(for type: String) -> Alignment {
-        switch type {
-        case "number": return .trailing
-        case "boolean", "date", "datetime": return .center
-        default: return .leading
-        }
     }
 
     // MARK: - Data loading

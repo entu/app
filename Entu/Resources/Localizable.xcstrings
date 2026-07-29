@@ -1972,6 +1972,22 @@
         }
       }
     },
+    "listView" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "List view"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loendivaade"
+          }
+        }
+      }
+    },
     "loadError" : {
       "localizations" : {
         "en" : {
@@ -2170,6 +2186,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mobiil-ID"
+          }
+        }
+      }
+    },
+    "menuSettings" : {
+      "comment" : "App menu: Settings… (Cmd-,) — opens the account sheet.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings…"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seaded…"
+          }
+        }
+      }
+    },
+    "menuViewAsList" : {
+      "comment" : "View menu: show main results as the list (Cmd-1, Finder-style).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "as List"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loendina"
+          }
+        }
+      }
+    },
+    "menuViewAsTable" : {
+      "comment" : "View menu: show main results as the table (Cmd-2, Finder-style).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "as Table"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tabelina"
           }
         }
       }
@@ -2382,25 +2449,8 @@
         }
       }
     },
-    "openInNewTab" : {
-      "comment" : "Row context menu: open the entity in a new tab (macOS).",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open in New Tab"
-          }
-        },
-        "et" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ava uuel vahelehel"
-          }
-        }
-      }
-    },
     "openInNewWindow" : {
-      "comment" : "Row context menu: open the entity in a new window (iPad).",
+      "comment" : "Row context menu: open the entity in its own auxiliary window.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3889,6 +3939,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "kasutatud sel kuul · nullitakse %@"
+          }
+        }
+      }
+    },
+    "tableView" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Table view"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tabelivaade"
           }
         }
       }

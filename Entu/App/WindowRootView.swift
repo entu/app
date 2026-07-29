@@ -10,8 +10,11 @@ import SwiftUI
 @MainActor @Observable
 final class WindowState {
     /// Stable identity for this window — deep-link consumption and the
-    /// window-session registry key on it. Reuses the scene value's nonce,
-    /// which is already unique per window and survives relaunch with it.
+    /// window-session registry key on it. Main windows reuse the scene
+    /// value's nonce, which is already unique per window and survives
+    /// relaunch with it; auxiliary entity windows get a fresh id (their
+    /// scene value is the entity id, so the id is NOT relaunch-stable
+    /// there — don't key persisted state on it).
     let windowId: UUID
 
     /// What this window was opened to show — ⌘T dashboard, ⌘-click entity
@@ -22,9 +25,13 @@ final class WindowState {
     /// re-restoring after the `.id(appLanguage)` rebuild on language change.
     var hasRestored = false
 
-    init(request: TabRequest) {
-        windowId = request.nonce
-        seed = request.content
+    init(windowId: UUID = UUID(), seed: TabRequest.Content) {
+        self.windowId = windowId
+        self.seed = seed
+    }
+
+    convenience init(request: TabRequest) {
+        self.init(windowId: request.nonce, seed: request.content)
     }
 }
 

@@ -31,6 +31,30 @@ enum EntityEditMode: Hashable, Identifiable {
     }
 }
 
+extension View {
+    /// The app's standard create-entity sheet chrome — `EntityEditView`
+    /// in a NavigationStack, palette-blocked, page-sized (the two-column
+    /// rows need the room). `createdId` fills on the first commit;
+    /// callers act on it in `onDismiss` — selecting the new entity only
+    /// after the sheet closes, since the user may keep editing fields.
+    /// Shared by the list and the main table.
+    func createEntitySheet(
+        mode: Binding<EntityEditMode?>,
+        createdId: Binding<String?>,
+        onDismiss: @escaping () -> Void
+    ) -> some View {
+        sheet(item: mode, onDismiss: onDismiss) { presented in
+            NavigationStack {
+                EntityEditView(mode: presented) { newId in
+                    createdId.wrappedValue = newId
+                }
+            }
+            .blocksCommandPalette()
+            .presentationSizing(.page)
+        }
+    }
+}
+
 /// Raw invite JWT from a committed self-invite, driving the
 /// `AddLoginMethodSheet` presentation via `.sheet(item:)`.
 struct PendingSelfInvite: Identifiable {

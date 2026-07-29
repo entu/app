@@ -19,6 +19,10 @@ final class SessionState {
     var entityHistory: [String] = []
     var pinnedEntityId: String?
 
+    /// Main results as table instead of list+detail — per-window (each tab
+    /// picks its own view), persisted in the snapshot like the rest.
+    var showTable = false
+
     /// True while a saved snapshot is being applied (launch or database
     /// switch). MainView's side-effect `onChange` handlers — which reset the
     /// history when the selection changes, or clear the pinned entity when
@@ -39,6 +43,9 @@ final class SessionState {
         var searchText: String = ""
         var advancedQuery: String? = nil
         var chatOpen: Bool = false
+        /// Optional so snapshots persisted before the field existed still
+        /// decode (synthesized Codable uses `decodeIfPresent` for optionals).
+        var showTable: Bool? = nil
     }
 
     /// A per-window snapshot for `WindowSessionStore` — the snapshot plus the
@@ -83,7 +90,8 @@ final class SessionState {
             pinnedId: pinnedEntityId,
             searchText: searchText,
             advancedQuery: advancedQuery,
-            chatOpen: chatOpen
+            chatOpen: chatOpen,
+            showTable: showTable
         )
     }
 
@@ -113,6 +121,7 @@ final class SessionState {
         selectedEntityId = snapshot.entityId
         entityHistory = snapshot.history
         pinnedEntityId = snapshot.pinnedId
+        showTable = snapshot.showTable ?? false
     }
 
     /// Reset navigation to the empty (dashboard) state.
@@ -121,6 +130,7 @@ final class SessionState {
         selectedEntityId = nil
         entityHistory = []
         pinnedEntityId = nil
+        showTable = false
     }
 
     /// Run `body` with persistence and MainView's side-effect handlers

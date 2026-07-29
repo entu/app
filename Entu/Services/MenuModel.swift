@@ -55,15 +55,26 @@ final class MenuModel {
 
     private let api: APIClient
 
-    /// Shared across screens — keyed by `"<lang>:<databaseId>"` so menus
-    /// resolved in different languages (or for different databases) coexist
-    /// and switching back to a previously-seen language is instant.
-    private static var cache: [String: CachedMenu] = [:]
+    /// Shared across screens and windows — memoizes the fetch *task* (not
+    /// just its result), keyed by `"<lang>:<databaseId>"`, so concurrent
+    /// loaders (e.g. several restored windows at launch) await ONE shared
+    /// request instead of each firing their own. Menus resolved in
+    /// different languages (or for different databases) coexist and
+    /// switching back to a previously-seen language is instant. A failed
+    /// fetch removes its task in `load()` so the next call retries.
+    private static var cache: [String: Task<CachedMenu?, Never>] = [:]
+
+    /// Completed results by the same key — the synchronous fast path, so a
+    /// cache hit (e.g. switching back to a previously-seen language) applies
+    /// without even a task-await suspension.
+    private static var completed: [String: CachedMenu] = [:]
 
     /// Clears the menu cache — call on sign-out so a new user can't see the
-    /// previous user's menu while their fetch is in flight.
+    /// previous user's menu. Dropping the tasks also orphans any in-flight
+    /// fetch: its result stays unreachable for later loaders.
     static func clearCache() {
         cache = [:]
+        completed = [:]
     }
 
     init(api: APIClient) {
@@ -73,20 +84,52 @@ final class MenuModel {
     // MARK: - Load
 
     /// Fetch all menu-type entities, then group and sort them for sidebar display.
-    /// Hits the language-keyed cache first; only fetches on a miss.
+    /// Joins the shared per-language/database fetch task; only a miss fetches.
     func load() async {
         let key = Self.cacheKey(databaseId: api.databaseId)
 
-        if let cached = Self.cache[key] {
-            groups = cached.groups
-            queryById = cached.queryById
-            addFromTypes = cached.addFromTypes
-            parentTypesByChild = cached.parentTypesByChild
+        if let cached = Self.completed[key] {
+            apply(cached)
             return
         }
 
+        let task = Self.cache[key] ?? {
+            let task = Task { [api] in await Self.fetch(api: api) }
+            Self.cache[key] = task
+            return task
+        }()
+
         isLoading = true
         defer { isLoading = false }
+
+        guard let cached = await task.value else {
+            // Failed — drop the shared task (unless a retry already
+            // replaced it) so the next load fetches again.
+            if Self.cache[key] == task { Self.cache[key] = nil }
+            groups = []
+            queryById = [:]
+            addFromTypes = [:]
+            parentTypesByChild = [:]
+            return
+        }
+
+        Self.completed[key] = cached
+        apply(cached)
+    }
+
+    private func apply(_ cached: CachedMenu) {
+        groups = cached.groups
+        queryById = cached.queryById
+        addFromTypes = cached.addFromTypes
+        parentTypesByChild = cached.parentTypesByChild
+    }
+
+    /// The actual fetch behind the shared cache task — menu entities and
+    /// `add_from` types are independent requests, run concurrently. Returns
+    /// nil on failure (the menu fetch is the load-bearing one; `add_from`
+    /// degrades to empty maps on its own errors).
+    private static func fetch(api: APIClient) async -> CachedMenu? {
+        async let addFrom = fetchAddFromTypes(api: api)
 
         do {
             let response: EntityListResponse = try await api.get("entity", params: [
@@ -129,25 +172,16 @@ final class MenuModel {
                 )
             }.sorted { entuSort($0.ordinal, $0.name, $1.ordinal, $1.name) }
 
-            // Fetch all entity-type entities that declare an `add_from`,
-            // then group them by which menu/type they can be added under.
-            let (addFromMap, parentMap) = await fetchAddFromTypes()
-
-            queryById = newQueryById
-            groups = newGroups
-            addFromTypes = addFromMap
-            parentTypesByChild = parentMap
-            Self.cache[key] = CachedMenu(
+            let (addFromMap, parentMap) = await addFrom
+            return CachedMenu(
                 groups: newGroups,
                 queryById: newQueryById,
                 addFromTypes: addFromMap,
                 parentTypesByChild: parentMap
             )
         } catch {
-            groups = []
-            queryById = [:]
-            addFromTypes = [:]
-            parentTypesByChild = [:]
+            _ = await addFrom
+            return nil
         }
     }
 
@@ -159,7 +193,7 @@ final class MenuModel {
     ///     toolbar Add and Add child).
     ///   - child type → list of parent type IDs that allow it (drives the
     ///     Parents drawer's candidate filter).
-    private func fetchAddFromTypes() async -> (addFrom: [String: [AddFromType]], parents: [String: [String]]) {
+    private static func fetchAddFromTypes(api: APIClient) async -> (addFrom: [String: [AddFromType]], parents: [String: [String]]) {
         let response: EntityListResponse?
         do {
             response = try await api.get("entity", params: [
