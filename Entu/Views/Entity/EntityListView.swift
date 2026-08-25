@@ -17,6 +17,8 @@ struct EntityListView: View {
     @Environment(SearchModel.self) private var search
     @Environment(MenuModel.self) private var menu
     @Environment(WindowState.self) private var windowState
+    @Environment(\.openEntityInNewWindow) private var openEntityInNewWindow
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     @Environment(\.windowTabBarInset) private var windowTabBarInset
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -90,6 +92,11 @@ struct EntityListView: View {
     /// dismiss the sheet on the very first autosave; users want to
     /// keep typing into other fields before closing.
     @State private var pendingCreatedId: String?
+
+    /// The query the current `items` belong to — lets the appear-driven
+    /// `.task` tell a real query change from a plain re-appearance (see
+    /// the comment there).
+    @State private var loadedQuery: String?
 
     private var hasMore: Bool { items.count < totalCount }
 
@@ -223,9 +230,18 @@ struct EntityListView: View {
             }
         }
         .task(id: query) {
-            items = []
-            totalCount = 0
-            await loadEntities()
+            // Re-runs on EVERY appearance, not just query changes — on
+            // iPhone the pushed detail removes the list, so popping back
+            // re-fires this. Refetch only when the query actually changed
+            // (or nothing is loaded, e.g. after a failed fetch); a reset
+            // on plain re-appear would wipe the paged-in rows and jump
+            // the scroll position back to the top.
+            if loadedQuery != query || items.isEmpty {
+                loadedQuery = query
+                items = []
+                totalCount = 0
+                await loadEntities()
+            }
             // Hand focus to the list so arrow keys move selection without
             // requiring a click first. Harmless when no hardware keyboard
             // is attached — focused state is invisible on touch.
@@ -443,6 +459,17 @@ struct EntityListView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        // Double-click opens the entity's auxiliary window, same as the
+        // table. Simultaneous with the Button, not an ordered tap-count
+        // pair: the first click still selects instantly (no double-tap
+        // disambiguation delay on the list's hottest gesture) and the
+        // second click's repeat selection is a no-op — AppKit's own
+        // select-then-open double-click behavior.
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            guard supportsMultipleWindows else { return }
+
+            openEntityInNewWindow?.invoke(item._id)
+        })
         // Right-click (macOS) / long-press (iPad, iPhone) — the entity
         // actions, mirroring the toolbar. The action selects the row and
         // runs once the detail has loaded, with the same rights gating.
