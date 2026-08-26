@@ -6,9 +6,9 @@ import SwiftUI
 /// Available sign-in methods (Apple, Google, email, Estonian ID).
 enum AuthProvider: String, CaseIterable {
     case passkey
-    case email = "e-mail"
     case apple
     case google
+    case email = "e-mail"
     case smartId = "smart-id"
     case mobileId = "mobile-id"
     case idCard = "id-card"

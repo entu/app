@@ -27,13 +27,13 @@ private final class PresentationContextProvider: NSObject, ASWebAuthenticationPr
     }
 }
 
-/// Handles OAuth sign-in via ASWebAuthenticationSession + Universal Link callback.
+/// Handles OAuth sign-in via ASWebAuthenticationSession + custom URL scheme callback.
 @Observable
 @MainActor
 final class AuthService {
     private let auth: AuthModel
-    private let callbackHost = "entu.app"
-    private let callbackPath = "/auth/app-callback"
+    private let callbackScheme = "entu"
+    private let callbackSchemeHost = "auth-callback"
     private let contextProvider = PresentationContextProvider()
 
     private var pendingSession: ASWebAuthenticationSession?
@@ -50,11 +50,12 @@ final class AuthService {
     }
 
     /// Open the OAuth browser sheet for the given provider and complete the auth callback.
-    /// The API redirects back to `https://entu.app/auth/app-callback?key=...` after successful auth.
+    /// The API redirects back to `entu://auth-callback?key=...` after successful auth —
+    /// a custom scheme, so returning through any default browser reopens the app.
     /// `invite` + `databaseId` run the exchange through the invite-acceptance
     /// path — used by "Add Login Method" on the user's own entity.
     func signIn(with provider: AuthProvider, invite: String? = nil, databaseId: String? = nil) async throws {
-        let callbackURL = "https://\(callbackHost)\(callbackPath)?key="
+        let callbackURL = "\(callbackScheme)://\(callbackSchemeHost)?key="
         let encoded = callbackURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackURL
         let authURL = URL(string: "\(APIClient.baseURL)/auth/\(provider.rawValue)?next=\(encoded)")!
 
@@ -62,10 +63,9 @@ final class AuthService {
         try await auth.handleAuthCallback(key: key, databaseId: databaseId, invite: invite)
     }
 
-    /// Handle a callback URL delivered externally (e.g. via Universal Link after email magic link or Smart-ID).
-    /// Only URLs matching the configured host + path are accepted; anything else is ignored silently.
+    /// Handles a custom-scheme auth callback URL arriving outside the sheet (e.g. email, Smart-ID).
     func handleIncoming(url: URL) {
-        guard url.host == callbackHost, url.path == callbackPath else { return }
+        guard url.scheme == callbackScheme, url.host == callbackSchemeHost else { return }
 
         #if os(macOS)
         NSApp.activate(ignoringOtherApps: true)
@@ -81,7 +81,7 @@ final class AuthService {
     }
 
     /// Wrap the callback-based ASWebAuthenticationSession in async/await and return the OAuth key.
-    /// The session opens a browser sheet; when the provider redirects back to the Universal Link URL,
+    /// The session opens a browser sheet; when the provider redirects back to the custom-scheme URL,
     /// the callback fires either inside the sheet (Apple/Google) or via `handleIncoming` (email, Smart-ID).
     private func startWebAuth(url: URL) async throws -> String {
         resume(.failure(CancellationError()))
@@ -94,9 +94,9 @@ final class AuthService {
 
         // Safety timeout — if the OS never fires the completion callback,
         // the awaiter would hang and the per-button spinner would spin
-        // forever. Resume after 60 s; no-op if the session already resumed.
+        // forever. Resume after 5 min (the server's flow budget); no-op if the session already resumed.
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(60))
+            try? await Task.sleep(for: .seconds(300))
             await MainActor.run {
                 self?.resume(.failure(CancellationError()))
             }
@@ -108,7 +108,7 @@ final class AuthService {
             // this callback off-main from its XPC reply queue.
             let session = ASWebAuthenticationSession(
                 url: url,
-                callback: .https(host: callbackHost, path: callbackPath)
+                callback: .customScheme(callbackScheme)
             ) { @Sendable [weak self] callbackURL, error in
                 Task { @MainActor in
                     guard let self else { return }

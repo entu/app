@@ -19,7 +19,7 @@ Build and run from Xcode. The app talks to the production API at `https://api.en
 
 Supported providers: Apple, Google, e-mail magic link, Smart-ID, Mobile-ID, ID-card, passkey.
 
-Auth returns via Universal Link on `https://entu.app/auth/app-callback` — the webapp's associated-domains file registers this app (Team ID `6B4F7S5J46`, bundle ID `app.entu`) as the handler.
+Auth returns via the custom URL scheme `entu://auth-callback?key=...` — a custom scheme so the redirect reopens the app from any default browser. Passkeys and content deep links still use the webapp's associated-domains file (Team ID `6B4F7S5J46`, bundle ID `app.entu`).
 
 ## Related repos
 
