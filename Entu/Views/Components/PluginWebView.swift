@@ -32,9 +32,11 @@ struct PluginWebView: View {
         self.onEntuLink = onEntuLink
         let decider = PluginNavigationDecider()
         _decider = State(initialValue: decider)
-        // Inline playback keeps getUserMedia camera previews inside the sheet on iPhone.
         var configuration = WebPage.Configuration()
+        #if !os(macOS)
+        // Inline playback keeps getUserMedia camera previews inside the sheet on iPhone; the API does not exist on macOS.
         configuration.mediaPlaybackBehavior = .allowsInlinePlayback
+        #endif
         _page = State(initialValue: WebPage(configuration: configuration, navigationDecider: decider))
     }
 
