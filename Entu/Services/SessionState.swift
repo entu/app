@@ -23,6 +23,10 @@ final class SessionState {
     /// picks its own view), persisted in the snapshot like the rest.
     var showTable = false
 
+    /// Ids of expanded sidebar groups; nil = never seeded (SidebarView seeds
+    /// the first group), while an empty set is a valid all-collapsed choice.
+    var expandedGroupIds: Set<String>?
+
     /// True while a saved snapshot is being applied (launch or database
     /// switch). MainView's side-effect `onChange` handlers — which reset the
     /// history when the selection changes, or clear the pinned entity when
@@ -46,6 +50,9 @@ final class SessionState {
         /// Optional so snapshots persisted before the field existed still
         /// decode (synthesized Codable uses `decodeIfPresent` for optionals).
         var showTable: Bool? = nil
+        /// Optional for the same back-compat reason; nil also means "never
+        /// seeded" so SidebarView knows to expand the first group.
+        var expandedGroupIds: Set<String>? = nil
     }
 
     /// A per-window snapshot for `WindowSessionStore` — the snapshot plus the
@@ -91,7 +98,8 @@ final class SessionState {
             searchText: searchText,
             advancedQuery: advancedQuery,
             chatOpen: chatOpen,
-            showTable: showTable
+            showTable: showTable,
+            expandedGroupIds: expandedGroupIds
         )
     }
 
@@ -122,6 +130,7 @@ final class SessionState {
         entityHistory = snapshot.history
         pinnedEntityId = snapshot.pinnedId
         showTable = snapshot.showTable ?? false
+        expandedGroupIds = snapshot.expandedGroupIds
     }
 
     /// Reset navigation to the empty (dashboard) state.
@@ -131,6 +140,7 @@ final class SessionState {
         entityHistory = []
         pinnedEntityId = nil
         showTable = false
+        expandedGroupIds = nil
     }
 
     /// Run `body` with persistence and MainView's side-effect handlers

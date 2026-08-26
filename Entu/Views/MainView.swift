@@ -651,6 +651,7 @@ struct MainView: View {
             .onChange(of: session.entityHistory) { persistSession() }
             .onChange(of: session.pinnedEntityId) { persistSession() }
             .onChange(of: session.showTable) { persistSession() }
+            .onChange(of: session.expandedGroupIds) { persistSession() }
             .onChange(of: search.advancedQuery) { persistSession() }
             .onChange(of: chat.isOpen) { persistSession() }
             .onChange(of: api.databaseId) {

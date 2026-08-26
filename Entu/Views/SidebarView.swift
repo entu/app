@@ -14,6 +14,7 @@ struct SidebarView: View {
     @Environment(APIClient.self) private var api
     @Environment(MenuModel.self) private var menu
     @Environment(AIChatModel.self) private var chat
+    @Environment(SessionState.self) private var session
 
     @Binding var selectedMenuId: String?
     let openPinnedEntity: (String) -> Void
@@ -23,15 +24,6 @@ struct SidebarView: View {
     /// Signed thumbnail URL for the bottom-bar user pill's avatar.
     @State private var userThumbnail: String?
     #endif
-
-
-    /// Ids of expanded groups. Seeded once when groups first arrive
-    /// (first group expanded, rest collapsed). Stored as a `Set` so
-    /// each section's binding only writes its own id; SwiftUI's
-    /// `Section(isExpanded:)` setter never overwrites another
-    /// section's state via a shared default fallback.
-    @State private var expandedGroupIds: Set<String> = []
-    @State private var didSeedExpansion = false
 
     private var currentDatabase: Database? {
         auth.database(for: api.databaseId)
@@ -238,26 +230,29 @@ struct SidebarView: View {
 
     // MARK: - Expansion seed + binding
 
-    /// Seeds `expandedGroupIds` to contain only the first group the
-    /// first time menu groups are available. Called both from
-    /// `.onAppear` and on `menu.groups.count` change so it runs
-    /// regardless of whether groups arrive before or after the view
-    /// first appears.
+    /// Seeds the session's expansion set to only the first group when it was
+    /// never seeded (nil) — an empty set is a valid all-collapsed choice.
+    /// Called from `.onAppear` and on `menu.groups.count` change so it runs
+    /// regardless of whether groups arrive before or after first appearance.
     private func seedExpansionIfNeeded() {
-        guard !didSeedExpansion, let first = menu.groups.first else { return }
-        expandedGroupIds = [first.id]
-        didSeedExpansion = true
+        guard session.expandedGroupIds == nil, let first = menu.groups.first else { return }
+
+        session.expandedGroupIds = [first.id]
     }
 
+    /// Per-section expansion binding backed by the session's set, so each
+    /// section only writes its own id and the state survives view recreation.
     private func expansionBinding(for groupId: String) -> Binding<Bool> {
         Binding(
-            get: { expandedGroupIds.contains(groupId) },
+            get: { session.expandedGroupIds?.contains(groupId) ?? false },
             set: { isExpanded in
+                var ids = session.expandedGroupIds ?? []
                 if isExpanded {
-                    expandedGroupIds.insert(groupId)
+                    ids.insert(groupId)
                 } else {
-                    expandedGroupIds.remove(groupId)
+                    ids.remove(groupId)
                 }
+                session.expandedGroupIds = ids
             }
         )
     }
