@@ -99,11 +99,18 @@ struct AuthButton<Glyph: View>: View {
                     .foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, Self.verticalPadding)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
     }
+
+    /// Touch rows get a taller tap target than pointer rows.
+    #if os(iOS)
+    private static var verticalPadding: CGFloat { 16 }
+    #else
+    private static var verticalPadding: CGFloat { 12 }
+    #endif
 }
 
 extension AuthButton where Glyph == AuthProviderGlyph {

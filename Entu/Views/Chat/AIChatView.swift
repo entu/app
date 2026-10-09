@@ -1,7 +1,6 @@
-// Entu AI assistant panel. Presents the conversation, the close + input
-// controls (standard bottom-toolbar items on iOS; a hand-built glass bar
-// on macOS, whose custom column has no bottom toolbar), example prompts on
-// an empty conversation, and the proposal review flow. Mirrors the webapp's
+// Entu AI assistant panel. Presents the conversation, a glass close + input
+// bar whose input spans the panel width (bottom-toolbar items can't stretch),
+// example prompts on an empty conversation, and the proposal review flow. Mirrors the webapp's
 // `components/chat/drawer.vue`. Presented from the sidebar's Entu AI
 // button; account-scoped state lives in `AIChatModel`.
 
@@ -36,36 +35,10 @@ struct AIChatView: View {
             .onAppear { inputFocused = true }
     }
 
-    /// iOS hosts close + input as standard bottom-toolbar items (system
-    /// glass, matching the sidebar's toolbars) — the `NavigationStack`
-    /// exists only to provide the toolbar context. macOS keeps the
-    /// hand-built glass bar: its custom trailing column has no bottom
-    /// toolbar to target.
-    @ViewBuilder
+    /// Close + input as a hand-built glass bar on every platform. Bottom
+    /// toolbar items size to their content, so a toolbar input can't span
+    /// the panel width; the bar's input fills the row instead.
     private var platformBody: some View {
-        #if os(iOS)
-        NavigationStack {
-            messageList
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Panel tone — the white card surface, a step lighter
-                // than the window background.
-                .background(Color("CardBackground").ignoresSafeArea())
-                .toolbar {
-                    ToolbarItem(placement: .bottomBar) {
-                        closeButton
-                    }
-
-                    // Fixed spacer splits the shared glass pod — close and
-                    // input render as separate capsules (same pattern as
-                    // the list column's filter · search · New).
-                    ToolbarSpacer(.fixed, placement: .bottomBar)
-
-                    ToolbarItem(placement: .bottomBar) {
-                        inputCore
-                    }
-                }
-        }
-        #else
         VStack(spacing: 0) {
             // No in-content title — the panel is self-evidently the
             // assistant.
@@ -78,7 +51,6 @@ struct AIChatView: View {
         // Panel tone — the white card surface, a step lighter than the
         // window background, covering the toolbar strip too.
         .background(Color("CardBackground").ignoresSafeArea())
-        #endif
     }
 
     /// Extracts the entity id from an AI-generated entity link — the last
@@ -173,11 +145,10 @@ struct AIChatView: View {
 
     // MARK: - Input
 
-    /// The bare input field. iOS: single-line in a bottom-toolbar item
-    /// (the toolbar supplies the glass); Return sends via `onSubmit` —
-    /// a multi-line field would swallow the software keyboard's Return
-    /// as a newline. macOS: multi-line, wrapped in its own glass surface
-    /// (`inputField`).
+    /// The bare input field, wrapped in its glass surface by `inputField`.
+    /// iOS: single-line; Return sends via `onSubmit` — a multi-line field
+    /// would swallow the software keyboard's Return as a newline. macOS:
+    /// multi-line.
     @ViewBuilder
     private var inputCore: some View {
         #if os(iOS)
@@ -208,21 +179,6 @@ struct AIChatView: View {
         #endif
     }
 
-    #if os(iOS)
-    /// Standard toolbar close button — plain, system-drawn chrome, like
-    /// the sidebar's toolbar buttons.
-    private var closeButton: some View {
-        Button {
-            chat.isOpen = false
-        } label: {
-            Image(systemName: "xmark")
-        }
-        .accessibilityLabel("close")
-    }
-
-    #endif
-
-    #if os(macOS)
     /// Circular glass close (X) next to the glass input field. Wrapped in a
     /// `GlassEffectContainer` so the two glass shapes blend correctly when
     /// they come close.
@@ -256,7 +212,6 @@ struct AIChatView: View {
             // via the shared GlassEffectContainer.
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
-    #endif
 
     // MARK: - Actions
 

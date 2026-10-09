@@ -24,17 +24,14 @@ enum AuthPresentationAnchor {
             return NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first ?? ASPresentationAnchor()
             #else
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
 
-            if let window = scene?.keyWindow ?? scene?.windows.first {
-                return window
+            // Sign-in is always started from a connected scene, so one exists;
+            // the scene-less `ASPresentationAnchor()` is deprecated in iOS 26.
+            guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+                preconditionFailure("No window scene to anchor the auth sheet")
             }
 
-            if let scene {
-                return UIWindow(windowScene: scene)
-            }
-
-            return ASPresentationAnchor()
+            return scene.keyWindow ?? scene.windows.first ?? UIWindow(windowScene: scene)
             #endif
         }
     }
