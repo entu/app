@@ -1022,7 +1022,7 @@
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jätka turvavõtmega"
+            "value" : "Jätka pääsuvõtmega"
           }
         }
       }
@@ -1120,6 +1120,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loo %lld koopiat"
+          }
+        }
+      }
+    },
+    "createPasskey" : {
+      "comment" : "Creates a new passkey as the login that completes an invite (invite sheet).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a Passkey"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loo pääsuvõti"
           }
         }
       }
@@ -1828,6 +1845,22 @@
         }
       }
     },
+    "inviteConflict" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This login is already linked to another entity in this database, so the invite was not accepted."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See sisselogimisviis on selles andmebaasis juba seotud teise objektiga, seega kutset ei võetud vastu."
+          }
+        }
+      }
+    },
     "inviteDescription" : {
       "localizations" : {
         "en" : {
@@ -1840,6 +1873,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kutse vastuvõtmiseks logi sisse."
+          }
+        }
+      }
+    },
+    "inviteInvalid" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This invite is invalid or has expired. Ask for a new one."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See kutse on kehtetu või aegunud. Küsi uut kutset."
           }
         }
       }
@@ -3000,23 +3049,23 @@
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Turvavõti"
+            "value" : "Pääsuvõti"
           }
         }
       }
     },
-    "passkeyOwnOnly" : {
+    "passkeyNotRecognized" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Only user can create their own passkey"
+            "value" : "This passkey is not linked to any Entu database. It may have been removed."
           }
         },
         "et" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Turvavõtit saab luua ainult kasutaja ise"
+            "value" : "See pääsuvõti pole seotud ühegi Entu andmebaasiga. Võimalik, et see on eemaldatud."
           }
         }
       }
@@ -3184,22 +3233,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Regulaaravaldis"
-          }
-        }
-      }
-    },
-    "registerPasskey" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Register Passkey"
-          }
-        },
-        "et" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Registreeri turvavõti"
           }
         }
       }
@@ -4019,6 +4052,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lae failid üles"
+          }
+        }
+      }
+    },
+    "usePasskey" : {
+      "comment" : "Signs in with a stored passkey in the invite sheet.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use a Passkey"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kasuta pääsuvõtit"
           }
         }
       }

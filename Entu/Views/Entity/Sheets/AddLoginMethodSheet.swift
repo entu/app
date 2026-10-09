@@ -1,22 +1,28 @@
-// Provider chooser completing a self-invite — the native stand-in for the
-// webapp's `/{account}/invite?token=…` page that "Add Login Method" on the
-// user's own entity redirects to. Signing in with any provider while the
-// exchange carries the invite JWT attaches that provider as a new login
-// (`GET /auth?db=…&invite=…` — see `AuthModel.handleAuthCallback`).
+// Provider chooser completing an invite — the native stand-in for the
+// webapp's `/{account}/invite?token=…` page. Two callers: "Add Login
+// Method" on the user's own entity (self-invite) and the invite deep link.
+// Signing in with any provider while the exchange carries the invite JWT
+// attaches that login to the invited person (`GET /auth?db=…&invite=…`, or
+// `db` + `invite` in the passkey POST bodies) — see
+// `AuthModel.applyAuthResponse`.
 //
-// Visual design mirrors `AuthView`: the providers in the same grouped
-// hairline-separated cards (`AuthButton` rows on `cardSurface`), minus the
-// promoted passkey button — a passkey is registered via `entu_passkey`,
-// not invites.
+// Visual design mirrors `AuthView`: a passkey card (use a stored passkey or
+// create a new one) above the providers' grouped hairline-separated cards
+// (`AuthButton` rows on `cardSurface`).
+//
+// A self-invite keeps the current session: the new login is linked
+// server-side and the response's token is discarded, so finishing it with
+// another identity never swaps who is signed in.
 
 import AuthenticationServices
 import SwiftUI
 
-/// Sheet listing the auth providers in `AuthView`'s grouped-card design;
-/// picking one runs the regular OAuth flow with the invite token threaded
-/// through the token exchange.
+/// Sheet listing the passkey actions and auth providers in `AuthView`'s
+/// grouped-card design; picking one runs the regular sign-in flow with the
+/// invite token threaded through the token exchange.
 struct AddLoginMethodSheet: View {
     @Environment(AuthService.self) private var authService
+    @Environment(PasskeyService.self) private var passkeyService
     @Environment(APIClient.self) private var api
     @Environment(\.dismiss) private var dismiss
 
@@ -26,6 +32,10 @@ struct AddLoginMethodSheet: View {
     /// back to the active database; the invite deep link passes the slug
     /// from the URL — the user may not even be signed in yet.
     var databaseId: String?
+
+    /// True for the self-invite: complete the invite but keep the current
+    /// session instead of signing in with the new login.
+    var keepSession = false
 
     /// Header title override — the invite deep link uses the webapp invite
     /// page's "You have been invited…" wording; nil keeps "Add Login Method".
@@ -57,6 +67,15 @@ struct AddLoginMethodSheet: View {
 
                 ScrollView {
                     VStack(spacing: CardMetrics.gap) {
+                        PasskeyActionsCard {
+                            await complete {
+                                try await passkeyService.signIn(invite: inviteToken, databaseId: inviteDatabaseId, keepSession: keepSession)
+                            }
+                        } create: {
+                            await complete {
+                                try await passkeyService.create(invite: inviteToken, databaseId: inviteDatabaseId, keepSession: keepSession)
+                            }
+                        }
                         AuthProviderCard(group: .main) { await signIn(with: $0) }
                         AuthProviderCard(group: .estonian) { await signIn(with: $0) }
                     }
@@ -106,19 +125,34 @@ struct AddLoginMethodSheet: View {
         subtitle ?? String(localized: "addLoginMethodDescription", bundle: .currentLocalized)
     }
 
+    /// The invite's database — the self-invite falls back to the active one.
+    private var inviteDatabaseId: String? {
+        databaseId ?? api.databaseId
+    }
+
     private func signIn(with provider: AuthProvider) async {
+        await complete {
+            try await authService.signIn(with: provider, invite: inviteToken, databaseId: inviteDatabaseId, keepSession: keepSession)
+        }
+    }
+
+    /// Run one invite-completing attempt; on success report back and close.
+    /// An invalid invite or a conflicting identity surfaces as the error line.
+    private func complete(_ attempt: () async throws -> Void) async {
         error = nil
-        // One attempt at a time — every provider row is disabled while a
-        // sign-in is pending.
+        // One attempt at a time — every row is disabled while a sign-in is
+        // pending.
         isAuthenticating = true
         defer { isAuthenticating = false }
 
         do {
-            try await authService.signIn(with: provider, invite: inviteToken, databaseId: databaseId ?? api.databaseId)
+            try await attempt()
             onCompleted()
             dismiss()
         } catch let authError as ASWebAuthenticationSessionError where authError.code == .canceledLogin {
             // User dismissed the OAuth browser — not an error
+        } catch let authError as ASAuthorizationError where authError.code == .canceled {
+            // User dismissed the passkey sheet — not an error
         } catch is CancellationError {
             // Rapid double-tap cancelled the prior pending session — not an error
         } catch {

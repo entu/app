@@ -129,17 +129,7 @@ final class AuthModel {
     func refreshToken() async throws {
         let response: AuthResponse = try await api.requestSkippingRefresh("auth/refresh")
 
-        if let newDatabases = response.accounts, !newDatabases.isEmpty {
-            databases = newDatabases
-        }
-
-        if let newToken = response.token {
-            storeToken(newToken, expires: response.expires)
-        }
-
-        if let newUser = response.user {
-            user = newUser
-        }
+        try applyAuthResponse(response)
     }
 
     /// Refresh the token if it is close to expiry. Deduplicates concurrent
@@ -163,50 +153,77 @@ final class AuthModel {
         await task.value
     }
 
-    // MARK: - Auth callback
+    // MARK: - Sign-in responses
 
-    /// Exchange a temporary auth key for a permanent JWT token and database list.
-    /// `invite` carries an invite JWT (with `db` naming the same database) so
-    /// the API attaches the fresh credentials to the invited entity — the
-    /// webapp's `/auth/callback` invite path (`GET /auth?db=…&invite=…`).
-    func handleAuthCallback(key: String, databaseId: String?, invite: String? = nil) async throws {
+    /// Exchange a temporary OAuth key for a JWT and database list
+    /// (`GET /auth`). `invite` carries an invite JWT (with `db` naming the
+    /// same database) so the API attaches the login to the invited entity —
+    /// the webapp's `/auth/callback` invite path. `keepSession` is the
+    /// self-invite: the login is linked server-side, the current session stays.
+    func handleAuthCallback(key: String, databaseId: String?, invite: String? = nil, keepSession: Bool = false) async throws {
         var params: [String: String] = [:]
         if let databaseId { params["db"] = databaseId }
         if let invite { params["invite"] = invite }
 
-        let response: AuthResponse = try await api.requestWithToken("auth", params: params, bearerToken: key)
+        let response: AuthResponse = try await exchange {
+            try await api.requestWithToken("auth", params: params, bearerToken: key)
+        }
 
-        // Reject the response unless the user has at least one database — a
-        // token without databases is unusable and would strand the user on an
-        // empty picker. Validate before saving the token so isAuthenticated
-        // stays false on this branch.
+        try applyAuthResponse(response, keepSession: keepSession)
+    }
+
+    /// Run a sign-in request (`GET /auth` or a passkey POST), translating
+    /// the API's 400 `Invalid or expired invite` into `.inviteInvalid`.
+    func exchange(_ request: () async throws -> AuthResponse) async throws -> AuthResponse {
+        do {
+            return try await request()
+        } catch let error as APIError where error.isServerError(400, message: "Invalid or expired invite") {
+            throw APIError.inviteInvalid
+        }
+    }
+
+    /// The single sink for every auth response — OAuth callback, passkey
+    /// sign-in and creation, token refresh. Validates before touching any
+    /// state, so a rejected response leaves the previous session intact.
+    ///
+    /// - An invite `conflict` throws `.inviteConflict`: the invite was not
+    ///   accepted, so the flow that asked for it failed.
+    /// - `keepSession` (self-invite on the user's own entity) stops there:
+    ///   the new login is already linked server-side, and the response's
+    ///   token and database list are discarded so the session stays as is.
+    /// - An empty database list throws `.noAccessibleDatabases` — the app
+    ///   has no database creation (`PUT /new` is not ported), so a token
+    ///   without databases would strand the user on an empty picker.
+    /// - A different person in the active database runs the sign-out sweep
+    ///   minus credentials, so no cached content leaks across identities.
+    func applyAuthResponse(_ response: AuthResponse, keepSession: Bool = false) throws {
+        if response.conflict == "invite" {
+            throw APIError.inviteConflict
+        }
+
+        if keepSession { return }
+
         guard let newDatabases = response.accounts, !newDatabases.isEmpty else {
             throw APIError.noAccessibleDatabases
         }
 
+        guard let newToken = response.token else {
+            throw APIError.invalidResponse
+        }
+
         // Identity comparison must read pre-exchange state. `currentUserId`
         // (the person entity in the active database) is the stable identity
-        // marker — the session-level user id changes even when the same
-        // person adds a login method via self-invite.
+        // marker — the login identity differs per provider for one person.
         let hadSession = api.token != nil
         let previousUserId = currentUserId
 
         databases = newDatabases
-
-        if let newToken = response.token {
-            storeToken(newToken, expires: response.expires)
-        }
-
+        storeToken(newToken, expires: response.expires)
         user = response.user
 
-        // Completing an invite while signed in can finish as a *different*
-        // identity (the invite sheet is reachable from any screen state).
-        // Replacing the token in place must not leak the previous user's
-        // cached content into the new session — run the sign-out sweep
-        // minus credentials when the active database's user changed.
         if hadSession, api.databaseId != nil, previousUserId != currentUserId {
             if currentUserId == nil {
-                // New identity has no access to the active database —
+                // The new identity has no access to the active database —
                 // fall back to the database picker.
                 api.databaseId = nil
             }
@@ -214,9 +231,10 @@ final class AuthModel {
         }
     }
 
-    /// Cache/session sweep for an identity change without a sign-out —
-    /// same as `logOut()` minus credential storage (a fresh token was just
-    /// saved). The `logOutToken` bump resets every window's in-memory state.
+    /// Cache/session sweep for an identity change without a sign-out — the
+    /// shared part of `logOut()`, minus credential storage (a fresh token
+    /// was just saved). The `logOutToken` bump resets every window's
+    /// in-memory state.
     private func resetSessionState() {
         MenuModel.clearCache()
         EntityColorCache.shared.clear()
@@ -279,16 +297,7 @@ final class AuthModel {
         publicDatabases = []
         user = nil
         UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
-        MenuModel.clearCache()
-        EntityColorCache.shared.clear()
-        EntityDetailModel.clearCache()
-        SessionState.clearStored()
-        SessionState.bumpEpoch()
-        WindowSessionStore.clearStored()
-        CommandPaletteModel.clearStored()
-        ImageCache.shared.clear()
-        FileManager.default.clearTemporaryFiles()
-        logOutToken &+= 1
+        resetSessionState()
     }
 
     /// ⇧⌘R — drop everything local except credentials: every cache, temp
@@ -317,8 +326,8 @@ final class AuthModel {
 
     /// Permanently delete the signed-in user's person entity in the active
     /// database. Before deleting the entity, hard-deletes the user's auth
-    /// properties (`entu_user`, `entu_passkey`, `entu_api_key`) so a stale
-    /// passkey or OAuth provider mapping cannot be matched on a later sign-in.
+    /// properties (`entu_user`, `entu_api_key`) so a stale passkey or OAuth
+    /// provider mapping cannot be matched on a later sign-in.
     /// After success, drops the database from the local list and either
     /// switches to another database or signs out entirely.
     func deleteCurrentAccount() async throws {
@@ -352,7 +361,7 @@ final class AuthModel {
     /// proceeds — the entity-level soft-delete is the source of truth, this
     /// is a belt-and-braces cleanup.
     private func deleteAuthProperties(personId: String) async {
-        let authPropertyNames = ["entu_user", "entu_passkey", "entu_api_key"]
+        let authPropertyNames = ["entu_user", "entu_api_key"]
 
         guard let response: EntityDetailResponse = try? await api.get(
             "entity/\(personId)",

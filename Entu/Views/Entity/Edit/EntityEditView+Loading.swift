@@ -189,7 +189,6 @@ extension EntityEditView {
             // Reserved auth properties (`entu_user`, …) carry extra
             // metadata that drives their bespoke editor states.
             row.invite = existing.invite
-            row.email = existing.email
             row.provider = existing.provider
         }
         return row

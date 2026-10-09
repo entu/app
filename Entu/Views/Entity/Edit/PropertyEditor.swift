@@ -64,13 +64,9 @@ struct PropertyEditor: View {
     var autoFocusOnAppear: Bool = false
 
     /// True when the edited entity is the signed-in user's own — gates the
-    /// own-entity-only states of the reserved auth editors ("Add Login
-    /// Method", "Register Passkey"). See `PropertyEditor+Auth`.
+    /// own-entity-only state of the reserved auth editors ("Add Login
+    /// Method"). See `PropertyEditor+Auth`.
     var isOwnEntity: Bool = false
-
-    /// `entu_passkey` only — fires the native WebAuthn registration flow.
-    /// Parent runs `PasskeyService.register()` and updates the row.
-    var onRegisterPasskey: () async -> Void = {}
 
     @FocusState private var isFocused: Bool
     @State private var showingDescription = false

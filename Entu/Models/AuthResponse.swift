@@ -1,18 +1,24 @@
 // Auth response models — token, accessible databases, user info, and
-// expiry returned by the auth endpoints after sign-in.
+// expiry returned by `GET /auth`, `GET /auth/refresh` and the passkey
+// sign-in / creation POSTs, which all answer in the same shape.
 
 import Foundation
 
-/// API response from the auth endpoint after sign-in.
+/// API response from the auth endpoints after sign-in or refresh.
 struct AuthResponse: Codable {
     let token: String?
     let accounts: [Database]?
     let user: AuthUser?
     /// Token expiry as an ISO 8601 datetime string.
     let expires: String?
+    /// `"invite"` when the invite was not accepted because the login
+    /// identity already is another person in the invite's database.
+    let conflict: String?
 }
 
-/// Basic user info returned by the auth API.
+/// Login identity returned by the auth API. A passkey identity carries no
+/// e-mail; its `name` is the person name from the first database (by name)
+/// that has one.
 struct AuthUser: Codable {
     let _id: String?
     let name: String?

@@ -66,7 +66,7 @@ struct PropertyRow: View {
             referenceButton(id: ref, name: value.string)
         } else if value.provider != nil {
             providerValue(value)
-        } else if value.invite != nil, let email = value.email {
+        } else if value.invite != nil, let email = value.string {
             invitePendingValue(email)
         } else {
             switch definition.type {
@@ -77,9 +77,7 @@ struct PropertyRow: View {
             case "file": fileValue(value)
             case "text": textValue(value)
             default:
-                if definition.name == "entu_passkey" {
-                    passkeyValue(value)
-                } else if definition.name == "entu_api_key" {
+                if definition.name == "entu_api_key" {
                     apiKeyValue
                 } else {
                     stringValue(value)
@@ -189,10 +187,11 @@ struct PropertyRow: View {
 
     // MARK: - Auth provider
 
-    /// Login-linked value (e.g. `entu_user`) — provider glyph + email in
-    /// the shared auth pill, same capsule language as reference/file chips.
+    /// Login-linked value (e.g. `entu_user`) — provider glyph + email, or a
+    /// passkey's masked "{device} {last4}", in the shared auth pill, same
+    /// capsule language as reference/file chips.
     private func providerValue(_ value: PropertyValue) -> some View {
-        AuthChip(provider: value.provider, label: value.email ?? value.string ?? "")
+        AuthChip(provider: value.provider, label: value.string ?? "")
     }
 
     /// Pending invite on `entu_user` — "Invite sent to {email}". Mirrors
@@ -201,12 +200,6 @@ struct PropertyRow: View {
     private func invitePendingValue(_ email: String) -> some View {
         Text("invitePending \(email)")
             .foregroundStyle(.secondary)
-    }
-
-    /// Saved passkey value — masked "{device} {last4}" name in the auth
-    /// pill with the passkey glyph.
-    private func passkeyValue(_ value: PropertyValue) -> some View {
-        AuthChip(provider: nil, fallbackIcon: "person.badge.key", label: value.string ?? "")
     }
 
     /// API key value — always server-masked to `***`, shown as a labeled
@@ -374,7 +367,7 @@ struct FileChip: View {
 // MARK: - Auth chip
 
 /// Gray pill for auth values — `entu_user` logins (provider glyph +
-/// email) and `entu_passkey` passkeys (key glyph + masked device name).
+/// email, or passkey glyph + masked device name) and API keys.
 /// Same capsule language as `FileChip`, in the neutral gray tier since
 /// auth values aren't tappable. The edit sheet passes `onDelete` to get
 /// the trailing ×.

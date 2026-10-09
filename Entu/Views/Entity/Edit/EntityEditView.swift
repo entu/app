@@ -78,7 +78,6 @@ struct EntityEditView: View {
     @Environment(APIClient.self) var api
     @Environment(DeepLinkRouter.self) var router
     @Environment(WindowState.self) var windowState
-    @Environment(PasskeyService.self) var passkeyService
     @Environment(\.dismiss) var dismiss
 
     let mode: EntityEditMode
@@ -218,10 +217,11 @@ struct EntityEditView: View {
                 await deleteValue(propertyName: cleanup.propertyName, value: cleanup.value, propertyId: cleanup.propertyId)
             }
         }) { invite in
-            AddLoginMethodSheet(inviteToken: invite.token) {
+            AddLoginMethodSheet(inviteToken: invite.token, keepSession: true) {
                 // Completed — keep the property (the exchange replaced it
-                // with credentials server-side); refetch so the new login
-                // row appears. Runs before dismiss, so onDismiss skips.
+                // with credentials server-side) and the current session;
+                // refetch so the new login row appears. Runs before
+                // dismiss, so onDismiss skips.
                 selfInviteCleanup = nil
                 Task { await load() }
             }
@@ -477,8 +477,7 @@ struct EntityEditView: View {
                     }
                 },
                 autoFocusOnAppear: isFirstFocusable && index == 0,
-                isOwnEntity: isOwnEntity,
-                onRegisterPasskey: { await registerPasskey(propertyName: def.name, value: row) }
+                isOwnEntity: isOwnEntity
             )
             .id(row.id)
         }

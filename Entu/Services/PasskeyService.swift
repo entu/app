@@ -1,17 +1,27 @@
-// Passkeys are bound to the `entu.app` domain via the Associated
-// Domains entitlement and the apple-app-site-association file served
-// there, so the same passkey registered in the web app can be used
-// here and vice versa.
+// Passkey sign-in and creation through AuthenticationServices. Passkeys
+// are bound to the `entu.app` domain via the Associated Domains
+// entitlement and the apple-app-site-association file served there, so a
+// passkey made in the webapp works here and vice versa.
+//
+// Neither flow needs a session: sign-in is `GET /auth/passkey/options` →
+// assertion → `POST /auth/passkey`, creation is
+// `GET /auth/passkey/register/options` → registration →
+// `POST /auth/passkey/register`. Both answer like `GET /auth` and go through
+// `AuthModel.applyAuthResponse`. Adding a passkey to the user's own person
+// is a self-invite ("Add login method") like any other provider.
+//
+// The Signal API keeps the device's passkey list in step with the server:
+// the person name replaces the "Entu" placeholder after a sign-in or
+// creation, and a passkey the server rejects or never stored is reported
+// unknown so the system can drop it.
 
 import AuthenticationServices
 import Foundation
 #if os(iOS)
 import UIKit
-#else
-import AppKit
 #endif
 
-/// WebAuthn authentication options returned by GET /auth/passkey.
+/// WebAuthn authentication options returned by GET /auth/passkey/options.
 /// `challengeToken` is a short-lived JWT wrapping the challenge — the POST
 /// routes verify it instead of trusting a client-echoed challenge.
 private struct PasskeyAuthOptions: Decodable {
@@ -27,6 +37,8 @@ private struct PasskeyAuthBody: Encodable {
     let type: String
     let response: Response
     let challengeToken: String
+    let db: String?
+    let invite: String?
 
     struct Response: Encodable {
         let clientDataJSON: String
@@ -36,9 +48,11 @@ private struct PasskeyAuthBody: Encodable {
     }
 }
 
-/// WebAuthn registration options returned by GET /{db}/passkey
-/// (`@simplewebauthn/server generateRegistrationOptions` shape).
-private struct PasskeyRegistrationOptions: Decodable {
+/// WebAuthn creation options returned by GET /auth/passkey/register/options
+/// (`@simplewebauthn/server generateRegistrationOptions` shape). `user.id`
+/// is a random handle and `user.name` always "Entu" — a passkey belongs to
+/// no person until an invite, automatic user creation or `PUT /new` links it.
+private struct PasskeyCreationOptions: Decodable {
     let challenge: String
     let rp: RelyingParty
     let user: User
@@ -55,14 +69,16 @@ private struct PasskeyRegistrationOptions: Decodable {
     }
 }
 
-/// WebAuthn attestation body sent to POST /{db}/passkey.
-private struct PasskeyRegisterBody: Encodable {
+/// WebAuthn attestation body sent to POST /auth/passkey/register.
+private struct PasskeyCreationBody: Encodable {
     let id: String
     let rawId: String
     let type: String
     let response: Response
     let challengeToken: String
     let deviceName: String
+    let db: String?
+    let invite: String?
 
     struct Response: Encodable {
         let clientDataJSON: String
@@ -70,35 +86,27 @@ private struct PasskeyRegisterBody: Encodable {
     }
 }
 
-/// Response from POST /{db}/passkey — the just-stored `entu_passkey`
-/// property, `string` pre-masked to "{device} {last-4-of-id}".
-struct PasskeyRegistrationResult: Decodable {
-    let success: Bool
-    let properties: [RegisteredProperty]?
-
-    struct RegisteredProperty: Decodable {
-        let _id: String?
-        let type: String?
-        let string: String?
-    }
-}
-
-/// Handles passkey sign-in and registration via AuthenticationServices.
+/// Handles passkey sign-in and creation via AuthenticationServices.
 @Observable
 @MainActor
 final class PasskeyService: NSObject {
     private let auth: AuthModel
-    private var continuation: CheckedContinuation<ASAuthorization, Error>?
+
+    /// The one in-flight authorization: its controller (to match delegate
+    /// callbacks and to cancel it) and the continuation awaiting it.
+    @ObservationIgnored private var pending: (controller: ASAuthorizationController, continuation: CheckedContinuation<ASAuthorization, Error>)?
 
     init(auth: AuthModel) {
         self.auth = auth
         super.init()
     }
 
-    /// Run passkey sign-in: fetch options, present the system passkey UI,
-    /// then exchange the assertion for a JWT and database list.
-    func signIn() async throws {
-        let options: PasskeyAuthOptions = try await auth.api.get("auth/passkey")
+    /// Sign in with a stored passkey: fetch options, present the system
+    /// passkey UI, exchange the assertion for a JWT and database list.
+    /// `invite` + `databaseId` accept an invite with that passkey;
+    /// `keepSession` is the self-invite, which keeps the current session.
+    func signIn(invite: String? = nil, databaseId: String? = nil, keepSession: Bool = false) async throws {
+        let options: PasskeyAuthOptions = try await auth.api.getWithoutToken("auth/passkey/options")
 
         guard let challengeData = Data(base64URLEncoded: options.challenge) else {
             throw APIError.invalidResponse
@@ -122,29 +130,37 @@ final class PasskeyService: NSObject {
                 signature: assertion.signature.base64URLEncodedString(),
                 userHandle: userHandle
             ),
-            challengeToken: options.challengeToken
+            challengeToken: options.challengeToken,
+            db: databaseId,
+            invite: invite
         )
 
-        let response: AuthResponse = try await auth.api.post("auth/passkey", body: body)
-
-        if let newDatabases = response.accounts, !newDatabases.isEmpty {
-            auth.databases = newDatabases
+        let response: AuthResponse
+        do {
+            response = try await auth.exchange {
+                try await auth.api.postWithoutToken("auth/passkey", body: body)
+            }
+        } catch let error as APIError where error.isServerError(400, message: "Authentication verification failed") {
+            // No database stores this passkey any more — tell the system so
+            // it stops offering it.
+            PasskeySignal.reportUnknown(relyingParty: options.rpId, credentialID: assertion.credentialID)
+            throw APIError.passkeyNotRecognized
         }
 
-        if let newToken = response.token {
-            auth.storeToken(newToken, expires: response.expires)
-        }
+        try auth.applyAuthResponse(response, keepSession: keepSession)
 
-        auth.user = response.user
+        if let name = response.user?.name, !assertion.userID.isEmpty {
+            PasskeySignal.reportName(relyingParty: options.rpId, userHandle: assertion.userID, name: name)
+        }
     }
 
-    /// Register a new passkey on the signed-in user's entity in the active
-    /// database: fetch options from `GET /{db}/passkey`, present the system
-    /// registration UI, commit the attestation via `POST /{db}/passkey`.
-    /// Returns the stored `entu_passkey` property (id + masked display
-    /// string) so the caller can update its row without a refetch.
-    func register() async throws -> PasskeyRegistrationResult.RegisteredProperty? {
-        let options: PasskeyRegistrationOptions = try await auth.api.get("passkey")
+    /// Create a new passkey and sign in with it: fetch creation options,
+    /// present the system registration UI, send the attestation. The API
+    /// stores the passkey only where it gets linked — an invite (with
+    /// `invite` + `databaseId`), or automatic user creation in `databaseId`.
+    /// `keepSession` is the self-invite, which keeps the current session.
+    func create(invite: String? = nil, databaseId: String? = nil, keepSession: Bool = false) async throws {
+        let options: PasskeyCreationOptions = try await auth.api.getWithoutToken("auth/passkey/register/options")
 
         guard let challengeData = Data(base64URLEncoded: options.challenge),
               let userID = Data(base64URLEncoded: options.user.id) else {
@@ -166,21 +182,49 @@ final class PasskeyService: NSObject {
 
         let credentialID = registration.credentialID.base64URLEncodedString()
 
-        let body = PasskeyRegisterBody(
+        let body = PasskeyCreationBody(
             id: credentialID,
             rawId: credentialID,
             type: "public-key",
-            response: PasskeyRegisterBody.Response(
+            response: PasskeyCreationBody.Response(
                 clientDataJSON: registration.rawClientDataJSON.base64URLEncodedString(),
                 attestationObject: attestationObject.base64URLEncodedString()
             ),
             challengeToken: options.challengeToken,
-            deviceName: Self.deviceName
+            deviceName: Self.deviceName,
+            db: databaseId,
+            invite: invite
         )
 
-        let result: PasskeyRegistrationResult = try await auth.api.post("passkey", body: body)
+        let response: AuthResponse
+        do {
+            response = try await auth.exchange {
+                try await auth.api.postWithoutToken("auth/passkey/register", body: body)
+            }
+            try auth.applyAuthResponse(response, keepSession: keepSession)
+        } catch let error as APIError where Self.leavesPasskeyUnlinked(error) {
+            // The server answered without storing the new passkey anywhere —
+            // drop it from the device instead of leaving one that never works.
+            // Network failures are excluded: the server may have stored it.
+            PasskeySignal.reportUnknown(relyingParty: options.rp.id, credentialID: registration.credentialID)
+            throw error
+        }
 
-        return result.properties?.first { $0.type == "entu_passkey" }
+        if let name = response.user?.name {
+            PasskeySignal.reportName(relyingParty: options.rp.id, userHandle: userID, name: name)
+        }
+    }
+
+    /// True for the definite server answers after which a just-created
+    /// passkey is linked to no person: a rejected or conflicting invite, a
+    /// sign-up with no database, or any other 400 (verification failed,
+    /// credential id taken).
+    private static func leavesPasskeyUnlinked(_ error: APIError) -> Bool {
+        switch error {
+        case .inviteInvalid, .inviteConflict, .noAccessibleDatabases: return true
+        case .serverError(let code, _): return code == 400
+        default: return false
+        }
     }
 
     /// Mirrors webapp's `getDeviceName()` in `pages/[account]/passkey.vue`.
@@ -192,7 +236,9 @@ final class PasskeyService: NSObject {
         #endif
     }
 
-    // Wrap the callback-based ASAuthorizationController in async/await and return the assertion.
+    // MARK: - Authorization controller
+
+    /// Present an assertion request and return the assertion.
     private func performAssertion(
         request: ASAuthorizationPlatformPublicKeyCredentialAssertionRequest
     ) async throws -> ASAuthorizationPlatformPublicKeyCredentialAssertion {
@@ -203,7 +249,7 @@ final class PasskeyService: NSObject {
         return assertion
     }
 
-    // Same wrapper for the registration request.
+    /// Present a registration request and return the new credential.
     private func performRegistration(
         request: ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest
     ) async throws -> ASAuthorizationPlatformPublicKeyCredentialRegistration {
@@ -214,14 +260,43 @@ final class PasskeyService: NSObject {
         return registration
     }
 
+    /// Wrap the callback-based ASAuthorizationController in async/await.
+    /// One request at a time: a second one while the system sheet is up
+    /// throws `CancellationError` instead of replacing — and orphaning —
+    /// the pending continuation. Cancelling the awaiting task cancels the
+    /// controller, so the continuation always resumes.
     private func performRequest(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
-        try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            let controller = ASAuthorizationController(authorizationRequests: [request])
-            controller.delegate = self
-            controller.presentationContextProvider = self
-            controller.performRequests()
+        guard pending == nil else { throw CancellationError() }
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        let controllerId = ObjectIdentifier(controller)
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pending = (controller, continuation)
+                controller.delegate = self
+                controller.presentationContextProvider = self
+                controller.performRequests()
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.finish(controllerId, with: .failure(CancellationError()), cancelController: true)
+            }
         }
+    }
+
+    /// Resolve the pending continuation if it belongs to `controllerId` —
+    /// a late callback from an earlier controller is ignored.
+    private func finish(_ controllerId: ObjectIdentifier, with result: Result<ASAuthorization, Error>, cancelController: Bool = false) {
+        guard let current = pending, ObjectIdentifier(current.controller) == controllerId else { return }
+
+        pending = nil
+
+        if cancelController {
+            current.controller.cancel()
+        }
+
+        current.continuation.resume(with: result)
     }
 }
 
@@ -232,9 +307,9 @@ extension PasskeyService: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
+        let controllerId = ObjectIdentifier(controller)
         Task { @MainActor in
-            continuation?.resume(returning: authorization)
-            continuation = nil
+            finish(controllerId, with: .success(authorization))
         }
     }
 
@@ -242,9 +317,9 @@ extension PasskeyService: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
+        let controllerId = ObjectIdentifier(controller)
         Task { @MainActor in
-            continuation?.resume(throwing: error)
-            continuation = nil
+            finish(controllerId, with: .failure(error))
         }
     }
 }
@@ -253,15 +328,50 @@ extension PasskeyService: ASAuthorizationControllerDelegate {
 
 extension PasskeyService: ASAuthorizationControllerPresentationContextProviding {
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            #if os(macOS)
-            return NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first ?? ASPresentationAnchor()
-            #else
-            let scene = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first!
-            return scene.keyWindow ?? UIWindow(windowScene: scene)
-            #endif
+        AuthPresentationAnchor.current()
+    }
+}
+
+// MARK: - Signal API
+
+/// Fire-and-forget Signal API reports. Failures are silent — the reports
+/// only tidy the device's passkey list and must never fail a sign-in.
+/// `ASCredentialDataManager` replaced `ASCredentialUpdater` in 26.2; the
+/// older class covers 26.0–26.1.
+private enum PasskeySignal {
+    /// Show the person name instead of the "Entu" placeholder for this passkey.
+    static func reportName(relyingParty: String, userHandle: Data, name: String) {
+        Task {
+            if #available(iOS 26.2, macOS 26.2, *) {
+                try? await ASCredentialDataManager().reportPublicKeyCredentialUpdate(
+                    relyingPartyIdentifier: relyingParty,
+                    userHandle: userHandle,
+                    newName: name
+                )
+            } else {
+                try? await ASCredentialUpdater().reportPublicKeyCredentialUpdate(
+                    relyingPartyIdentifier: relyingParty,
+                    userHandle: userHandle,
+                    newName: name
+                )
+            }
+        }
+    }
+
+    /// Tell the system the server does not know this passkey.
+    static func reportUnknown(relyingParty: String, credentialID: Data) {
+        Task {
+            if #available(iOS 26.2, macOS 26.2, *) {
+                try? await ASCredentialDataManager().reportUnknownPublicKeyCredential(
+                    relyingPartyIdentifier: relyingParty,
+                    credentialID: credentialID
+                )
+            } else {
+                try? await ASCredentialUpdater().reportUnknownPublicKeyCredential(
+                    relyingPartyIdentifier: relyingParty,
+                    credentialID: credentialID
+                )
+            }
         }
     }
 }

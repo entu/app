@@ -6,8 +6,10 @@
 // losing the stored token. `probePublicDatabase` complements this for
 // the "Browse public database" entry flow — it builds the URL by hand
 // so the candidate id never lands in `databaseId` before it's confirmed
-// readable without a token. Auto-logout on 401 is skipped while
-// browsing a public database.
+// readable without a token. Auto-logout on 401 fires only for requests
+// that carried the stored session token — never while browsing a public
+// database, for the one-time OAuth key, or for the token-less passkey
+// routes.
 
 import Foundation
 
@@ -24,6 +26,14 @@ enum APIError: LocalizedError {
     case serverError(Int, String)
     case invalidResponse
     case noAccessibleDatabases
+    /// 400 `Invalid or expired invite` from `GET /auth` or the passkey POSTs.
+    case inviteInvalid
+    /// `conflict: 'invite'` — the login identity already is another person
+    /// in the invite's database, so the invite was not accepted.
+    case inviteConflict
+    /// 400 `Authentication verification failed` from `POST /auth/passkey` —
+    /// no database stores the passkey that answered.
+    case passkeyNotRecognized
 
     var errorDescription: String? {
         switch self {
@@ -35,7 +45,38 @@ enum APIError: LocalizedError {
             // a B2B Entu account must be invited into a database before
             // sign-in produces anything usable.
             return String(localized: "noAccessibleDatabases", bundle: .currentLocalized)
+        case .inviteInvalid:
+            return String(localized: "inviteInvalid", bundle: .currentLocalized)
+        case .inviteConflict:
+            return String(localized: "inviteConflict", bundle: .currentLocalized)
+        case .passkeyNotRecognized:
+            return String(localized: "passkeyNotRecognized", bundle: .currentLocalized)
         }
+    }
+
+    /// The API's own message for a `serverError` — h3 puts the
+    /// `statusMessage` in `statusText` (and `message`) of its JSON body.
+    var apiMessage: String? {
+        guard case let .serverError(_, body) = self,
+              let data = body.data(using: .utf8),
+              let parsed = try? JSONDecoder().decode(ErrorBody.self, from: data) else {
+            return nil
+        }
+
+        return parsed.statusText ?? parsed.statusMessage ?? parsed.message
+    }
+
+    /// True for a `serverError` with this status code and API message.
+    func isServerError(_ code: Int, message: String) -> Bool {
+        guard case let .serverError(status, _) = self else { return false }
+
+        return status == code && apiMessage == message
+    }
+
+    private struct ErrorBody: Decodable {
+        let statusText: String?
+        let statusMessage: String?
+        let message: String?
     }
 }
 
@@ -52,8 +93,8 @@ final class APIClient {
 
     /// When true, requests omit the Authorization header even if `token` is set.
     /// Toggled by `AuthModel.selectPublicDatabase(_:)` so signed-in users can
-    /// browse a public database as a guest. Auth callbacks bypass this via
-    /// `tokenOverride`. A 401 in this mode is reported back to the caller
+    /// browse a public database as a guest. Auth callbacks bypass this with
+    /// their own one-time key. A 401 in this mode is reported back to the caller
     /// instead of triggering the auto-logout hook (the user has nothing to log
     /// out *of*).
     var suppressToken: Bool = false
@@ -184,15 +225,30 @@ final class APIClient {
         try await post("ai/execute", body: AIExecuteRequest(operations: operations))
     }
 
-    /// GET using a one-time bearer token instead of the stored token — for the auth callback flow.
+    /// GET using a one-time bearer token instead of the stored token — for
+    /// the auth callback flow. A 401 here means the temporary key failed,
+    /// not the stored session, so it never triggers the auto-logout.
     func requestWithToken<T: Decodable>(_ path: String, params: [String: String] = [:], bearerToken: String) async throws -> T {
-        try await performRequest(path, method: "GET", params: params, tokenOverride: bearerToken)
+        try await performRequest(path, method: "GET", params: params, credential: .bearer(bearerToken))
+    }
+
+    /// GET with no Authorization header at all — the passkey option routes,
+    /// which authenticate nobody yet. Never refreshes, never auto-logs out.
+    func getWithoutToken<T: Decodable>(_ path: String) async throws -> T {
+        try await performRequest(path, method: "GET", credential: .none)
+    }
+
+    /// POST with no Authorization header — the passkey assertion or
+    /// attestation in the body is the credential. Never refreshes, never
+    /// auto-logs out.
+    func postWithoutToken<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        try await performRequest(path, method: "POST", bodyData: try JSONEncoder().encode(body), credential: .none)
     }
 
     /// GET that bypasses the pre-request refresh check — used by the refresh
     /// flow itself to avoid recursion.
     func requestSkippingRefresh<T: Decodable>(_ path: String) async throws -> T {
-        try await performRequest(path, method: "GET", skipRefresh: true)
+        try await performRequest(path, method: "GET", credential: .session(refresh: false))
     }
 
     /// Probe whether `{databaseId}` exists and is publicly accessible, without
@@ -229,6 +285,18 @@ final class APIClient {
 
     // MARK: - Internal
 
+    /// Which credential a request carries.
+    private enum Credential {
+        /// The stored session token (unless `suppressToken`); `refresh`
+        /// runs the near-expiry refresh first. Only this kind auto-logs
+        /// out on a 401.
+        case session(refresh: Bool)
+        /// A one-time key (the OAuth session token) instead of the session.
+        case bearer(String)
+        /// No Authorization header.
+        case none
+    }
+
     // "nonisolated" = this method can run off the main thread.
     // It reads main-actor properties via "await", then does the network call
     // on a background thread to avoid blocking the UI.
@@ -237,21 +305,33 @@ final class APIClient {
         method: String,
         params: [String: String] = [:],
         bodyData: Data? = nil,
-        tokenOverride: String? = nil,
-        skipRefresh: Bool = false
+        credential: Credential = .session(refresh: true)
     ) async throws -> T {
         let url = await buildURL(path: path, params: method == "GET" ? params : [:])
         let suppress = await suppressToken
 
         // Refresh a near-expiry token before sending, so the request goes out
-        // with a fresh token. Skipped for token overrides (callback flow),
-        // guest browsing, and the refresh request itself (avoids recursion).
-        if !skipRefresh, tokenOverride == nil, !suppress, let refreshIfNeeded = await refreshIfNeeded {
+        // with a fresh token. Skipped for one-time keys, unauthenticated
+        // requests, guest browsing, and the refresh request itself.
+        if case .session(refresh: true) = credential, !suppress, let refreshIfNeeded = await refreshIfNeeded {
             await refreshIfNeeded()
         }
 
-        let currentToken = await token
-        let bearerToken = tokenOverride ?? (suppress ? nil : currentToken)
+        let bearerToken: String?
+        // The stored session is the only credential whose 401 means "signed out".
+        let usesSession: Bool
+        switch credential {
+        case .session:
+            let storedToken = await token
+            bearerToken = suppress ? nil : storedToken
+            usesSession = !suppress
+        case .bearer(let key):
+            bearerToken = key
+            usesSession = false
+        case .none:
+            bearerToken = nil
+            usesSession = false
+        }
 
         #if DEBUG
         // Token-bearing params (the invite JWT on `GET /auth`) are redacted —
@@ -281,10 +361,10 @@ final class APIClient {
         }
 
         if httpResponse.statusCode == 401 {
-            // Don't auto-logout when the request was already running without a
-            // token (public-database browsing) — the 401 means the database
-            // isn't actually public, not that the user's token went bad.
-            if !suppress {
+            // Auto-logout only when the stored session token was sent. A
+            // guest request (public browsing) or a one-time auth key failing
+            // says nothing about the stored session.
+            if usesSession {
                 await MainActor.run { onUnauthorized?() }
             }
             throw APIError.unauthorized

@@ -1,7 +1,7 @@
 // Bespoke editors for the reserved auth properties (`entu_api_key`,
-// `entu_user`, `entu_passkey`) — string-typed properties whose names carry
-// special server-side behaviour. Mirrors the reserved-name branches of the
-// webapp's `components/property/edit.vue` template (lines 447–547): the
+// `entu_user` — logins and passkeys alike) — string-typed properties whose
+// names carry special server-side behaviour. Mirrors the reserved-name
+// branches of the webapp's `components/property/edit.vue` template: the
 // client sends sentinel strings ('generate' / 'send-invite' / 'self-invite')
 // through the normal property commit and the API does the real work.
 
@@ -17,7 +17,7 @@ extension PropertyEditor {
     /// plain string field. `EntityEditView` also consults this to suppress
     /// the generic list-row delete × (these editors own their delete
     /// affordances) and to skip them for first-field auto-focus.
-    static let reservedAuthNames: Set<String> = ["entu_api_key", "entu_user", "entu_passkey"]
+    static let reservedAuthNames: Set<String> = ["entu_api_key", "entu_user"]
 
     /// True when this row renders via `authPropertyEditor`. Type-gated to
     /// `string` like the webapp's `type === 'string' && property === …`.
@@ -29,8 +29,7 @@ extension PropertyEditor {
         Group {
             switch definition.name {
             case "entu_api_key": apiKeyEditor
-            case "entu_user": userEditor
-            default: passkeyEditor
+            default: userEditor
             }
         }
         // Every × routes here — deletes are confirmed, same as the saved
@@ -54,18 +53,16 @@ extension PropertyEditor {
         switch definition.name {
         case "entu_api_key":
             return String(localized: "apiKey", bundle: .currentLocalized)
-        case "entu_user":
-            if value.invite != nil { return value.email ?? "" }
-            return userDisplayLabel
         default:
-            return value.stringValue
+            return userDisplayLabel
         }
     }
 
-    /// Registered-login display text — the login string, falling back to
-    /// the email. Shared by the pill and the confirm title.
+    /// Display text of an `entu_user` value — the server-masked string (the
+    /// login's or invitee's email, or a passkey's label). Shared by the pill,
+    /// the pending-invite row and the confirm title.
     private var userDisplayLabel: String {
-        value.stringValue.isEmpty ? (value.email ?? "") : value.stringValue
+        value.stringValue
     }
 
     /// Saved-value row: the pill hugging leading, like the other chips.
@@ -122,15 +119,16 @@ extension PropertyEditor {
 
     // MARK: - entu_user
 
-    /// Pending invite → cancel; registered login → provider icon + delete;
+    /// Pending invite → cancel; registered login or passkey → provider icon
+    /// + delete (a passkey's label is the server-masked "{device} {last4}");
     /// empty on another user → send invite; empty on own entity → add
     /// login method (self-invite → provider sheet via `EntityEditView`).
     @ViewBuilder
     private var userEditor: some View {
         if value._id != nil && value.invite != nil {
             HStack(spacing: 8) {
-                if let email = value.email {
-                    Text("invitePending \(email)")
+                if !userDisplayLabel.isEmpty {
+                    Text("invitePending \(userDisplayLabel)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -163,33 +161,6 @@ extension PropertyEditor {
                 value.stringValue = "send-invite"
                 await onCommit()
             }
-        }
-    }
-
-    // MARK: - entu_passkey
-
-    /// Saved passkey → masked-name pill with the trailing ×; empty on own
-    /// entity → register via `PasskeyService`; otherwise an own-entity-only
-    /// note. Deviation from webapp: saved rows also show the server-masked
-    /// "{device} {last4}" name so multiple passkeys stay tellable apart
-    /// (webapp shows only a delete button).
-    @ViewBuilder
-    private var passkeyEditor: some View {
-        if value._id != nil {
-            authChipRow(AuthChip(
-                provider: nil,
-                fallbackIcon: "person.badge.key",
-                label: value.stringValue,
-                onDelete: { showingDeleteAuthConfirm = true }
-            ))
-        } else if isOwnEntity {
-            authAddChip("registerPasskey", systemImage: "person.badge.key") {
-                await onRegisterPasskey()
-            }
-        } else {
-            Text("passkeyOwnOnly")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
     }
 

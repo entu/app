@@ -46,12 +46,30 @@ struct AuthProviderCard: View {
     }
 }
 
-/// Single auth-provider row with its own spinner state — a slow provider
-/// can't gate the others. Shared by the sign-in screen (`AuthView`) and
-/// the invite sheet (`AddLoginMethodSheet`); the host disables the rows
-/// while any attempt is pending.
-struct AuthButton: View {
-    let provider: AuthProvider
+/// The two passkey actions — sign in with a stored passkey, or create a new
+/// one — as one card of `AuthButton` rows. Used by the invite sheet
+/// (`AddLoginMethodSheet`), where either can complete the invite.
+struct PasskeyActionsCard: View {
+    let signIn: () async -> Void
+    let create: () async -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            AuthButton(label: "usePasskey", glyph: AuthProviderGlyph(provider: .passkey), action: signIn)
+            Divider()
+            AuthButton(label: "createPasskey", glyph: Image(systemName: "plus.circle"), action: create)
+        }
+        .cardSurface()
+    }
+}
+
+/// Single auth row with its own spinner state — a slow provider can't gate
+/// the others. Shared by the sign-in screen (`AuthView`) and the invite
+/// sheet (`AddLoginMethodSheet`); the host disables the rows while any
+/// attempt is pending.
+struct AuthButton<Glyph: View>: View {
+    let label: LocalizedStringKey
+    let glyph: Glyph
     let action: () async -> Void
 
     @State private var isWorking = false
@@ -67,11 +85,11 @@ struct AuthButton: View {
         } label: {
             HStack(spacing: 10) {
                 AuthRowIcon(isWorking: isWorking) {
-                    AuthProviderGlyph(provider: provider)
+                    glyph
                 }
                 .foregroundStyle(.secondary)
 
-                Text(provider.label)
+                Text(label)
                     .foregroundStyle(.primary)
 
                 Spacer()
@@ -85,6 +103,13 @@ struct AuthButton: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+}
+
+extension AuthButton where Glyph == AuthProviderGlyph {
+    /// Row for an auth provider — its label and glyph.
+    init(provider: AuthProvider, action: @escaping () async -> Void) {
+        self.init(label: provider.label, glyph: AuthProviderGlyph(provider: provider), action: action)
     }
 }
 

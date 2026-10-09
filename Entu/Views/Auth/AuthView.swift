@@ -1,7 +1,10 @@
 // Sign-in screen — shown when the user has no stored token and no saved
 // public database. Entu logo header, a promoted Continue-with-Passkey pill,
 // the remaining providers in two grouped cards (e-mail/Apple/Google and the
-// Estonian ID methods), and a View-public-database link below.
+// Estonian ID methods), and a View-public-database link below. There is no
+// passkey sign-up here: a new passkey links to nothing without an invite,
+// and the app has no database creation (`PUT /new` is not ported) — passkeys
+// are created through an invite in `AddLoginMethodSheet`.
 
 import AuthenticationServices
 import SwiftUI
@@ -116,7 +119,9 @@ struct AuthView: View {
             guard !isAuthenticating else { return }
             Task {
                 isPasskeySigningIn = true
-                await signIn(with: .passkey)
+                await authenticate {
+                    try await passkeyService.signIn()
+                }
                 isPasskeySigningIn = false
             }
         } label: {
@@ -145,7 +150,16 @@ struct AuthView: View {
         .disabled(isAuthenticating && !isPasskeySigningIn)
     }
 
+    /// OAuth provider rows — passkeys have their own buttons above.
     private func signIn(with provider: AuthProvider) async {
+        await authenticate {
+            try await authService.signIn(with: provider)
+        }
+    }
+
+    /// Run one sign-in attempt, surfacing failures other than the user
+    /// dismissing the system sheet.
+    private func authenticate(_ attempt: () async throws -> Void) async {
         error = nil
         // One attempt at a time — every auth option is disabled while a
         // sign-in (OAuth browser, passkey sheet) is pending.
@@ -153,11 +167,7 @@ struct AuthView: View {
         defer { isAuthenticating = false }
 
         do {
-            if provider == .passkey {
-                try await passkeyService.signIn()
-            } else {
-                try await authService.signIn(with: provider)
-            }
+            try await attempt()
         } catch let authError as ASWebAuthenticationSessionError where authError.code == .canceledLogin {
             // User dismissed the OAuth browser — not an error
         } catch let authError as ASAuthorizationError where authError.code == .canceled {

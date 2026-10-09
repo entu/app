@@ -38,12 +38,11 @@ final class EditableValue: Identifiable {
     /// `filesize` on a saved file row — drives the byte-count label.
     var filesize: Int?
 
-    /// Auth metadata on `entu_user` rows — pending-invite marker (masked
-    /// `"***"` from GET, raw JWT right after a send/self-invite commit),
-    /// invitee email, and the OAuth provider of a registered login. Drives
-    /// the reserved-property editor states in `PropertyEditor+Auth`.
-    var invite: String?
-    var email: String?
+    /// Auth metadata on `entu_user` rows — pending-invite state (the raw
+    /// token only right after a self-invite commit) and the provider of a
+    /// registered login. The row's `stringValue` holds the masked display
+    /// text (email or passkey label). Drives `PropertyEditor+Auth`.
+    var invite: InviteMarker?
     var provider: String?
 
     /// Set during the metadata POST + S3 PUT so the editor can render

@@ -1,29 +1,18 @@
 // OAuth sign-in — runs the provider flows through
-// `ASWebAuthenticationSession` and exchanges the callback for an API token.
+// `ASWebAuthenticationSession` and exchanges the callback for an API token
+// via `AuthModel.handleAuthCallback`.
 
 import AuthenticationServices
 import Foundation
-#if os(iOS)
-import UIKit
-#else
+#if os(macOS)
 import AppKit
 #endif
 
-/// Window anchor for `ASWebAuthenticationSession`'s browser sheet. Returns
-/// an existing window — creating a fresh one here is unsafe because the
-/// system may call this off the main queue on macOS.
+/// Window anchor for `ASWebAuthenticationSession`'s browser sheet — see
+/// `AuthPresentationAnchor`.
 private final class PresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            #if os(macOS)
-            return NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first ?? ASPresentationAnchor()
-            #else
-            let scene = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first!
-            return scene.keyWindow ?? UIWindow(windowScene: scene)
-            #endif
-        }
+        AuthPresentationAnchor.current()
     }
 }
 
@@ -39,6 +28,10 @@ final class AuthService {
     private var pendingSession: ASWebAuthenticationSession?
     private var pendingContinuation: CheckedContinuation<String, Error>?
 
+    /// Identifies the in-flight attempt, so its safety timeout can never
+    /// cancel a later attempt that reused the pending slot.
+    private var pendingAttempt: UUID?
+
     init(auth: AuthModel) {
         self.auth = auth
     }
@@ -53,14 +46,18 @@ final class AuthService {
     /// The API redirects back to `entu://auth-callback?key=...` after successful auth —
     /// a custom scheme, so returning through any default browser reopens the app.
     /// `invite` + `databaseId` run the exchange through the invite-acceptance
-    /// path — used by "Add Login Method" on the user's own entity.
-    func signIn(with provider: AuthProvider, invite: String? = nil, databaseId: String? = nil) async throws {
+    /// path; `keepSession` is the self-invite ("Add login method" on the
+    /// user's own entity), which links the login and keeps the current session.
+    func signIn(with provider: AuthProvider, invite: String? = nil, databaseId: String? = nil, keepSession: Bool = false) async throws {
         let callbackURL = "\(callbackScheme)://\(callbackSchemeHost)?key="
         let encoded = callbackURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackURL
-        let authURL = URL(string: "\(APIClient.baseURL)/auth/\(provider.rawValue)?next=\(encoded)")!
+
+        guard let authURL = URL(string: "\(APIClient.baseURL)/auth/\(provider.rawValue)?next=\(encoded)&lang=\(AppLanguage.resolvedLanguageCode)") else {
+            throw APIError.invalidResponse
+        }
 
         let key = try await startWebAuth(url: authURL)
-        try await auth.handleAuthCallback(key: key, databaseId: databaseId, invite: invite)
+        try await auth.handleAuthCallback(key: key, databaseId: databaseId, invite: invite, keepSession: keepSession)
     }
 
     /// Handles a custom-scheme auth callback URL arriving outside the sheet (e.g. email, Smart-ID).
@@ -92,14 +89,15 @@ final class AuthService {
         // controller. 350 ms covers Apple's standard modal-dismiss duration.
         try? await Task.sleep(for: .milliseconds(350))
 
+        let attempt = UUID()
+
         // Safety timeout — if the OS never fires the completion callback,
         // the awaiter would hang and the per-button spinner would spin
-        // forever. Resume after 5 min (the server's flow budget); no-op if the session already resumed.
+        // forever. Resume after 5 min (the server's flow budget); a no-op
+        // once this attempt resolved or a newer one replaced it.
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(300))
-            await MainActor.run {
-                self?.resume(.failure(CancellationError()))
-            }
+            self?.resume(.failure(CancellationError()), ifAttempt: attempt)
         }
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -114,18 +112,18 @@ final class AuthService {
                     guard let self else { return }
 
                     if let error {
-                        self.resume(.failure(error))
+                        self.resume(.failure(error), ifAttempt: attempt)
                         return
                     }
 
                     guard let callbackURL,
                           let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
                           let key = components.queryItems?.first(where: { $0.name == "key" })?.value else {
-                        self.resume(.failure(APIError.invalidResponse))
+                        self.resume(.failure(APIError.invalidResponse), ifAttempt: attempt)
                         return
                     }
 
-                    self.resume(.success(key))
+                    self.resume(.success(key), ifAttempt: attempt)
                 }
             }
 
@@ -134,6 +132,7 @@ final class AuthService {
 
             self.pendingSession = session
             self.pendingContinuation = continuation
+            self.pendingAttempt = attempt
 
             session.start()
         }
@@ -141,13 +140,18 @@ final class AuthService {
 
     /// Idempotent single sink for resolving the in-flight continuation. State
     /// is cleared before `cancel()` so synchronous re-entry from the session's
-    /// completion handler finds a nil continuation and no-ops.
-    private func resume(_ result: Result<String, Error>) {
+    /// completion handler finds a nil continuation and no-ops. With
+    /// `ifAttempt`, only that attempt is resolved — a stale timeout or
+    /// session callback leaves a newer attempt alone.
+    private func resume(_ result: Result<String, Error>, ifAttempt attempt: UUID? = nil) {
         guard let continuation = pendingContinuation else { return }
+
+        if let attempt, attempt != pendingAttempt { return }
 
         let sessionToCancel = pendingSession
         pendingSession = nil
         pendingContinuation = nil
+        pendingAttempt = nil
 
         sessionToCancel?.cancel()
         continuation.resume(with: result)

@@ -19,14 +19,12 @@ struct PropertyValue: Codable {
     let filename: String?
     let filesize: Int?
     let language: String?
-    /// Auth metadata on login-linked values (mirrors the webapp): the OAuth
-    /// provider and email behind a person's authentication property.
+    /// Auth metadata on `entu_user` values (mirrors the webapp): the login
+    /// provider. The API returns credentials only masked — `string` carries
+    /// the login's email or a passkey's "{device} {last4}" label.
     let provider: String?
-    let email: String?
-    /// Pending-invite marker on `entu_user` values. GET responses mask the
-    /// invite JWT to `"***"`; upsert responses carry it raw so the client
-    /// can hand it to the invite-completion flow ("Add Login Method").
-    let invite: String?
+    /// Pending-invite state on `entu_user` values — see `InviteMarker`.
+    let invite: InviteMarker?
     let ordinal: Double?
 
     /// Set on rights values (`_owner`, `_editor`, …) copied down from a
@@ -56,5 +54,35 @@ struct PropertyValue: Codable {
         case "number": return value?.number.map { String($0) }
         default: return value?.string
         }
+    }
+}
+
+/// Invite state of an `entu_user` value. Every read returns `true` while an
+/// invite is pending; only the create/edit response on the user's own
+/// entity carries the raw token, for the "Add Login Method" flow.
+enum InviteMarker: Codable, Equatable {
+    case pending
+    case token(String)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let token = try? container.decode(String.self) {
+            self = .token(token)
+        } else {
+            self = .pending
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .pending: try container.encode(true)
+        case .token(let token): try container.encode(token)
+        }
+    }
+
+    /// The raw invite token, when this response carried one.
+    var token: String? {
+        if case .token(let token) = self { token } else { nil }
     }
 }

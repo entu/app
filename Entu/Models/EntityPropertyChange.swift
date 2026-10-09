@@ -128,9 +128,10 @@ struct UpsertedProperty: Decodable {
     /// Set on file-property responses — carries the presigned PUT info.
     let upload: UploadIntent?
     /// Reserved auth properties only: the one-time raw API key
-    /// (`entu_api_key`) — shown once, the server stores only its hash.
+    /// (`entu_api_key`) — shown once, the server stores only its hash —
+    /// or an `entu_user` value's masked display text (invitee email).
     let string: String?
-    /// `entu_user` responses: raw invite JWT + invitee email.
-    let invite: String?
-    let email: String?
+    /// `entu_user` responses: the raw invite token on the user's own
+    /// entity, otherwise only the pending flag.
+    let invite: InviteMarker?
 }
