@@ -69,7 +69,7 @@ struct PropertyRow: View {
         } else if value.invite != nil, let email = value.string {
             invitePendingValue(email)
         } else {
-            switch definition.type {
+            switch value.displayType(declared: definition.type) {
             case "boolean": booleanValue(value)
             case "number": numberValue(value)
             case "date": dateValue(value)

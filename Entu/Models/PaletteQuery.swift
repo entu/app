@@ -58,6 +58,16 @@ struct PaletteProperty: Equatable {
         AdvancedSearchModel.searchField(for: type)
     }
 
+    /// Fields to sort on (webapp `paletteSortFields`) — a formula result is
+    /// a number or a string, and a counter sorts by its number.
+    var sortFields: [String] {
+        switch type {
+        case "formula": ["number", "string"]
+        case "counter": ["number"]
+        default: [searchField]
+        }
+    }
+
     /// Ordered datatypes cycle is / before / after; everything else
     /// cycles is / is not / contains.
     var isOrdered: Bool {
@@ -165,7 +175,9 @@ struct PaletteQueryState: Equatable {
             pairs.append((key, value))
         }
         if let sort {
-            pairs.append(("sort", "\(sort.descending ? "-" : "")\(sort.property.name).\(sort.property.searchField)"))
+            let prefix = sort.descending ? "-" : ""
+            let fields = sort.property.sortFields.map { "\(prefix)\(sort.property.name).\($0)" }
+            pairs.append(("sort", fields.joined(separator: ",")))
         }
         return pairs
     }

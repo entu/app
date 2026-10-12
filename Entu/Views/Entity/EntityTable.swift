@@ -35,13 +35,14 @@ struct EntityTableCell: View {
     var body: some View {
         let values = column.name == "name" ? entity.name : entity.additionalProperties?[column.name]
         let value = PropertyValue.best(values)
+        let type = value?.displayType(declared: column.type) ?? column.type
 
         // ZStack, not Group: an empty cell (no value) resolves to
         // EmptyView, which a transparent Group drops from layout entirely
         // — the surrounding `.frame` would vanish with it and the row's
         // remaining cells would shift. ZStack materializes the frame.
         ZStack {
-            switch column.type {
+            switch type {
             case "number":
                 if let num = value?.number {
                     let format: FloatingPointFormatStyle<Double> = .number
@@ -90,7 +91,7 @@ struct EntityTableCell: View {
             }
         }
         .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: Self.alignment(for: column.type))
+        .frame(maxWidth: .infinity, alignment: Self.alignment(for: type))
     }
 
     /// Cell-content alignment by property type — numbers trailing,
@@ -235,7 +236,7 @@ struct EntityTable: View {
                         isActive: sortColumn == column.name,
                         ascending: sortAscending
                     )
-                    .frame(maxWidth: .infinity, alignment: EntityTableCell.alignment(for: column.type))
+                    .frame(maxWidth: .infinity, alignment: EntityTableCell.alignment(for: displayType(of: column)))
                 }
                 .buttonStyle(.plain)
                 .font(.caption)
@@ -244,6 +245,19 @@ struct EntityTable: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Column type to align the header and sort by. Formula columns take
+    /// the shape of their first loaded value (their declared type says
+    /// nothing about the result), falling back to string.
+    private func displayType(of column: EntityTableColumn) -> String {
+        guard column.type == "formula" else { return column.type }
+
+        let value = entities.lazy
+            .compactMap { PropertyValue.best($0.additionalProperties?[column.name]) }
+            .first
+
+        return value?.displayType(declared: column.type) ?? "string"
     }
 
     // MARK: - Data loading
@@ -278,8 +292,9 @@ struct EntityTable: View {
     private func loadEntities() async {
         isLoading = true
 
-        var sortFieldType = columns.first(where: { $0.name == sortColumn })?.type ?? "string"
+        var sortFieldType = columns.first(where: { $0.name == sortColumn }).map { displayType(of: $0) } ?? "string"
         if ["text", "reference"].contains(sortFieldType) { sortFieldType = "string" }
+        if sortFieldType == "counter" { sortFieldType = "number" }
 
         let sortPrefix = sortAscending ? "" : "-"
         let propNames = columns.map { $0.name }.joined(separator: ",")

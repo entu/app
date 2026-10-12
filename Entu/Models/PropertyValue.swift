@@ -55,6 +55,21 @@ struct PropertyValue: Codable {
         default: return value?.string
         }
     }
+
+    /// The type to render this value as. Formula properties store their
+    /// result in whichever column it fits (`{ number: 0 }`, `{ boolean:
+    /// true }`, …), so their values render by shape, like the webapp does;
+    /// every other property keeps its declared type (a counter carries both
+    /// `string` and `number` and shows its string).
+    func displayType(declared: String) -> String {
+        guard declared == "formula" else { return declared }
+
+        if number != nil { return "number" }
+        if boolean != nil { return "boolean" }
+        if datetime != nil { return "datetime" }
+        if date != nil { return "date" }
+        return "string"
+    }
 }
 
 /// Invite state of an `entu_user` value. Every read returns `true` while an
