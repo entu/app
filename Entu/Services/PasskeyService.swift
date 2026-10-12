@@ -11,9 +11,10 @@
 // is a self-invite ("Add login method") like any other provider.
 //
 // The Signal API keeps the device's passkey list in step with the server:
-// the person name replaces the "Entu" placeholder after a sign-in or
-// creation, and a passkey the server rejects or never stored is reported
-// unknown so the system can drop it.
+// both passkey POSTs send `rename: true`, and when the API answers with
+// `rename` that name replaces the "Entu" placeholder (the API sends it once,
+// and again only when the person name changes); a passkey the server
+// rejects or never stored is reported unknown so the system can drop it.
 
 import AuthenticationServices
 import Foundation
@@ -39,6 +40,9 @@ private struct PasskeyAuthBody: Encodable {
     let challengeToken: String
     let db: String?
     let invite: String?
+    /// Always true — the app can rename passkeys, so the API may answer
+    /// with `rename`.
+    let rename = true
 
     struct Response: Encodable {
         let clientDataJSON: String
@@ -79,6 +83,9 @@ private struct PasskeyCreationBody: Encodable {
     let deviceName: String
     let db: String?
     let invite: String?
+    /// Always true — the app can rename passkeys, so the API may answer
+    /// with `rename`.
+    let rename = true
 
     struct Response: Encodable {
         let clientDataJSON: String
@@ -149,7 +156,7 @@ final class PasskeyService: NSObject {
 
         try auth.applyAuthResponse(response, keepSession: keepSession)
 
-        if let name = response.user?.name, !assertion.userID.isEmpty {
+        if let name = response.rename, !assertion.userID.isEmpty {
             PasskeySignal.reportName(relyingParty: options.rpId, userHandle: assertion.userID, name: name)
         }
     }
@@ -210,7 +217,7 @@ final class PasskeyService: NSObject {
             throw error
         }
 
-        if let name = response.user?.name {
+        if let name = response.rename {
             PasskeySignal.reportName(relyingParty: options.rp.id, userHandle: userID, name: name)
         }
     }
@@ -339,7 +346,9 @@ extension PasskeyService: ASAuthorizationControllerPresentationContextProviding 
 /// `ASCredentialDataManager` replaced `ASCredentialUpdater` in 26.2; the
 /// older class covers 26.0–26.1.
 private enum PasskeySignal {
-    /// Show the person name instead of the "Entu" placeholder for this passkey.
+    /// Show the name the API sent in `rename` instead of the "Entu"
+    /// placeholder for this passkey. The API sends it once, and again only
+    /// when the person name changes.
     static func reportName(relyingParty: String, userHandle: Data, name: String) {
         Task {
             if #available(iOS 26.2, macOS 26.2, *) {
