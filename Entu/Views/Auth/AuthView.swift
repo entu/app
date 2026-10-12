@@ -1,7 +1,8 @@
 // Sign-in screen — shown when the user has no stored token and no saved
-// public database. Entu logo header, a promoted Continue-with-Passkey pill,
-// the remaining providers in two grouped cards (e-mail/Apple/Google and the
-// Estonian ID methods), and a View-public-database link below. There is no
+// public database. Entu logo header above the shared `AuthOptionsColumn`
+// (also used by `AddLoginMethodSheet`): a promoted Continue-with-Passkey
+// pill, the remaining providers in two grouped cards (e-mail/Apple/Google
+// and the Estonian ID methods), and a View-public-database link below. There is no
 // passkey sign-up here: a new passkey links to nothing without an invite,
 // and the app has no database creation (`PUT /new` is not ported) — passkeys
 // are created through an invite in `AddLoginMethodSheet`.
@@ -17,7 +18,6 @@ struct AuthView: View {
     @State private var error: String?
     @State private var showingPublicEntry = false
     @State private var isProbingPublicDatabase = false
-    @State private var isPasskeySigningIn = false
 
     /// True while any sign-in attempt is pending — disables every auth
     /// option so a second attempt can't start mid-flight.
@@ -49,38 +49,25 @@ struct AuthView: View {
 
             // MARK: - Auth options (passkey promoted first) + browse public
 
-            ScrollView {
-                VStack(spacing: CardMetrics.gap) {
-                    passkeyButton
-                        // 34 + the stack's 10pt gap = the canonical 44pt
-                        // section gap above the provider cards.
-                        .padding(.bottom, 34)
-
-                    // Provider rows + public link lock while a sign-in
-                    // attempt is pending (the passkey button manages its
-                    // own disabled state to keep its spinner look).
-                    VStack(spacing: CardMetrics.gap) {
-                        AuthProviderCard(group: .main) { await signIn(with: $0) }
-                        AuthProviderCard(group: .estonian) { await signIn(with: $0) }
-
-                        BrowsePublicDatabaseButton(
-                            isWorking: showingPublicEntry || isProbingPublicDatabase
-                        ) {
-                            showingPublicEntry = true
-                        }
-                        // Canonical 44pt gap under the provider cards.
-                        .padding(.top, 34)
+            AuthOptionsColumn(isAuthenticating: isAuthenticating) {
+                await signIn(with: $0)
+            } passkey: {
+                PasskeyPillButton(isAuthenticating: isAuthenticating) {
+                    await authenticate {
+                        try await passkeyService.signIn()
                     }
-                    .disabled(isAuthenticating)
                 }
-                .frame(maxWidth: 320)
-                .padding(.horizontal, 32)
-                // Canonical 44pt section gap below the title block.
-                .padding(.top, 44)
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity)
+            } footer: {
+                AuthLinkButton(
+                    title: "browsePublicDatabase",
+                    isWorking: showingPublicEntry || isProbingPublicDatabase
+                ) {
+                    showingPublicEntry = true
+                }
+                // 34 + the stack's 10pt gap = the canonical 44pt gap under
+                // the provider cards.
+                .padding(.top, 34)
             }
-            .scrollFadeMask()
 
             // MARK: - Error message
 
@@ -113,44 +100,7 @@ struct AuthView: View {
         }
     }
 
-    /// Promoted primary action — scrolls with the provider cards.
-    private var passkeyButton: some View {
-        Button {
-            guard !isAuthenticating else { return }
-            Task {
-                isPasskeySigningIn = true
-                await authenticate {
-                    try await passkeyService.signIn()
-                }
-                isPasskeySigningIn = false
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if isPasskeySigningIn {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.white)
-                } else {
-                    Image(systemName: "person.badge.key.fill")
-                }
-                Text("continueWithPasskey")
-                    .fontWeight(.medium)
-            }
-            // Hugs its content (centered by the stack), unlike the
-            // full-width provider cards.
-            .frame(minHeight: 18)
-            // Matches the ~44pt height of the provider rows below.
-            .padding(.vertical, 10)
-            .padding(.horizontal, 10)
-        }
-        .buttonStyle(.glassProminent)
-        .buttonBorderShape(.capsule)
-        // Disable while ANOTHER attempt is pending; keep enabled-look
-        // during its own attempt (the label shows the spinner).
-        .disabled(isAuthenticating && !isPasskeySigningIn)
-    }
-
-    /// OAuth provider rows — passkeys have their own buttons above.
+    /// OAuth provider rows — the passkey has its own pill above.
     private func signIn(with provider: AuthProvider) async {
         await authenticate {
             try await authService.signIn(with: provider)

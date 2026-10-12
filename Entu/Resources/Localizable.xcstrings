@@ -1125,7 +1125,7 @@
       }
     },
     "createPasskey" : {
-      "comment" : "Creates a new passkey as the login that completes an invite (invite sheet).",
+      "comment" : "Secondary link under the passkey button in the invite sheet; creates a new passkey as the login that completes the invite.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4052,23 +4052,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lae failid üles"
-          }
-        }
-      }
-    },
-    "usePasskey" : {
-      "comment" : "Signs in with a stored passkey in the invite sheet.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Use a Passkey"
-          }
-        },
-        "et" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kasuta pääsuvõtit"
           }
         }
       }

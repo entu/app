@@ -6,9 +6,11 @@
 // `db` + `invite` in the passkey POST bodies) — see
 // `AuthModel.applyAuthResponse`.
 //
-// Visual design mirrors `AuthView`: a passkey card (use a stored passkey or
-// create a new one) above the providers' grouped hairline-separated cards
-// (`AuthButton` rows on `cardSurface`).
+// The content column is `AuthView`'s shared `AuthOptionsColumn`: the
+// promoted "Continue with Passkey" pill (use a stored passkey) with a quiet
+// "Create a Passkey" link directly under it, the 44pt section gap, then the
+// two grouped provider cards. The sheet keeps its own chrome — navigation
+// title/subtitle, close button and error line.
 //
 // A self-invite keeps the current session: the new login is linked
 // server-side and the response's token is discarded, so finishing it with
@@ -17,8 +19,8 @@
 import AuthenticationServices
 import SwiftUI
 
-/// Sheet listing the passkey actions and auth providers in `AuthView`'s
-/// grouped-card design; picking one runs the regular sign-in flow with the
+/// Sheet showing `AuthView`'s passkey pill and provider cards plus a
+/// create-passkey link; picking one runs the regular sign-in flow with the
 /// invite token threaded through the token exchange.
 struct AddLoginMethodSheet: View {
     @Environment(AuthService.self) private var authService
@@ -55,8 +57,12 @@ struct AddLoginMethodSheet: View {
 
     /// True while a sign-in attempt is pending — disables every provider
     /// row so a second attempt can't start mid-flight (same model as
-    /// `AuthView`; the active row's `AuthButton` shows its own spinner).
+    /// `AuthView`; the active row, pill or link shows its own spinner).
     @State private var isAuthenticating = false
+
+    /// True while the "Create a Passkey" link's attempt is pending — drives
+    /// its spinner and keeps it enabled-looking during its own attempt.
+    @State private var isCreatingPasskey = false
 
     var body: some View {
         NavigationStack {
@@ -65,26 +71,23 @@ struct AddLoginMethodSheet: View {
                 SheetHeader(title: headerTitle, subtitle: headerSubtitle)
                 #endif
 
-                ScrollView {
+                AuthOptionsColumn(isAuthenticating: isAuthenticating) {
+                    await signIn(with: $0)
+                } passkey: {
                     VStack(spacing: CardMetrics.gap) {
-                        PasskeyActionsCard {
+                        PasskeyPillButton(isAuthenticating: isAuthenticating) {
                             await complete {
                                 try await passkeyService.signIn(invite: inviteToken, databaseId: inviteDatabaseId, keepSession: keepSession)
                             }
-                        } create: {
-                            await complete {
-                                try await passkeyService.create(invite: inviteToken, databaseId: inviteDatabaseId, keepSession: keepSession)
-                            }
                         }
-                        AuthProviderCard(group: .main) { await signIn(with: $0) }
-                        AuthProviderCard(group: .estonian) { await signIn(with: $0) }
+
+                        AuthLinkButton(title: "createPasskey", isWorking: isCreatingPasskey) {
+                            createPasskey()
+                        }
+                        // Same lock rule as the pill: disabled while another
+                        // attempt is pending, enabled-looking while it spins.
+                        .disabled(isAuthenticating && !isCreatingPasskey)
                     }
-                    .disabled(isAuthenticating)
-                    .frame(maxWidth: 320)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 14)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: .infinity)
                 }
 
                 if let error {
@@ -128,6 +131,18 @@ struct AddLoginMethodSheet: View {
     /// The invite's database — the self-invite falls back to the active one.
     private var inviteDatabaseId: String? {
         databaseId ?? api.databaseId
+    }
+
+    /// Secondary passkey action — creates a new passkey as the invite's login.
+    private func createPasskey() {
+        guard !isAuthenticating else { return }
+        Task {
+            isCreatingPasskey = true
+            await complete {
+                try await passkeyService.create(invite: inviteToken, databaseId: inviteDatabaseId, keepSession: keepSession)
+            }
+            isCreatingPasskey = false
+        }
     }
 
     private func signIn(with provider: AuthProvider) async {

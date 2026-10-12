@@ -90,7 +90,8 @@ struct DatabaseListView: View {
 
                         Spacer()
 
-                        BrowsePublicDatabaseButton(
+                        AuthLinkButton(
+                            title: "browsePublicDatabase",
                             isWorking: showingPublicEntry || isProbingPublicDatabase
                         ) {
                             showingPublicEntry = true
