@@ -13,6 +13,23 @@ struct RGBColor: Equatable {
     let green: Double
     let blue: Double
 
+    init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    /// Parses the thumbnail API's `#rrggbb` dominant color.
+    init?(hex: String) {
+        guard hex.count == 7, hex.hasPrefix("#"), let value = Int(hex.dropFirst(), radix: 16) else { return nil }
+
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
+
     var color: Color {
         Color(red: red, green: green, blue: blue)
     }

@@ -145,18 +145,27 @@ final class APIClient {
         return dest
     }
 
-    /// Resolve an entity's thumbnail to a signed S3 URL via
-    /// `GET /entity/{id}/thumbnail/{size}`, which returns `{ url }`. The
-    /// URL is presigned (60 s) so it loads without an auth header. Returns
-    /// `nil` when the entity has no thumbnailable photo or the request fails.
-    func entityThumbnailURL(entityId: String, size: Int = 200) async -> URL? {
-        struct ThumbnailResponse: Decodable { let url: String? }
+    /// Resolve an entity's thumbnail via `GET /entity/{id}/thumbnail/{size}`,
+    /// which returns `{ url, color }`: a presigned (60 s) S3 URL that loads
+    /// without an auth header, and the image's dominant color computed by the
+    /// API (absent when the image has none). Returns `nil` when the entity
+    /// has no thumbnailable photo or the request fails.
+    func entityThumbnail(entityId: String, size: Int = 200) async -> (url: URL, color: RGBColor?)? {
+        struct ThumbnailResponse: Decodable {
+            let url: String?
+            let color: String?
+        }
         guard let response: ThumbnailResponse = try? await get(
             "entity/\(entityId)/thumbnail/\(size)"
-        ), let urlString = response.url else {
+        ), let urlString = response.url, let url = URL(string: urlString) else {
             return nil
         }
-        return URL(string: urlString)
+        return (url, response.color.flatMap { RGBColor(hex: $0) })
+    }
+
+    /// Signed thumbnail URL only — see `entityThumbnail`.
+    func entityThumbnailURL(entityId: String, size: Int = 200) async -> URL? {
+        await entityThumbnail(entityId: entityId, size: size)?.url
     }
 
     /// Resolve a file property's thumbnail (image + PDF sources) to a signed

@@ -103,16 +103,19 @@ struct EntityDetailContent: View {
             // already derived it.
             coverRGB = EntityColorCache.shared.colors[entity._id]
             guard entity.hasPhoto,
-                  let url = await api.entityThumbnailURL(entityId: entity._id, size: 400),
-                  let platformImage = await loadPlatformImage(from: url) else { return }
-            coverImage = platformToImage(platformImage)
+                  let thumbnail = await api.entityThumbnail(entityId: entity._id, size: 400) else { return }
 
-            if coverRGB == nil, let rgb = dominantRGB(of: platformImage) {
+            // The API computes the cover's dominant color, so the header
+            // can paint it before the image itself has downloaded.
+            if coverRGB == nil, let rgb = thumbnail.color {
                 EntityColorCache.shared.colors[entity._id] = rgb
                 withAnimation(.easeInOut(duration: 0.3)) {
                     coverRGB = rgb
                 }
             }
+
+            guard let platformImage = await loadPlatformImage(from: thumbnail.url) else { return }
+            coverImage = platformToImage(platformImage)
         }
     }
 

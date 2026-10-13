@@ -34,17 +34,17 @@ struct EntityAvatar: View {
             image = nil
             // Small avatars (list + table) — the 50px thumbnail is plenty.
             guard hasPhoto,
-                  let url = await api.entityThumbnailURL(entityId: entityId, size: 50),
-                  let platformImage = await loadPlatformImage(from: url) else { return }
-            image = platformToImage(platformImage)
+                  let thumbnail = await api.entityThumbnail(entityId: entityId, size: 50) else { return }
 
-            // Seed the session color cache from the thumbnail, so the
-            // selection tint and the detail header know the entity's cover
-            // color before the entity is ever opened.
-            if EntityColorCache.shared.colors[entityId] == nil,
-               let rgb = dominantRGB(of: platformImage) {
+            // Seed the session color cache with the API's dominant color, so
+            // the selection tint and the detail header know the entity's
+            // cover color before the entity is ever opened.
+            if EntityColorCache.shared.colors[entityId] == nil, let rgb = thumbnail.color {
                 EntityColorCache.shared.colors[entityId] = rgb
             }
+
+            guard let platformImage = await loadPlatformImage(from: thumbnail.url) else { return }
+            image = platformToImage(platformImage)
         }
     }
 
