@@ -21,6 +21,10 @@ struct EntityDetailContent: View {
     let entity: EntityDetail
     let groupedProperties: [PropertyGroup]
 
+    /// Whether the header shows a cover — also when the type defines a
+    /// `photo` property this entity leaves empty (then the cover is empty).
+    var showsCover = false
+
     /// Localized label of the entity's type — the raw type name fills in
     /// until it resolves.
     var typeLabel: String?
@@ -52,7 +56,7 @@ struct EntityDetailContent: View {
     private var coverOverlap: CGFloat { coverSize / 3 }
     /// Leading inset of the title/chips block — clears the cover.
     private var titleLeading: CGFloat {
-        entity.hasPhoto ? edgePadding + coverSize + 20 : edgePadding
+        showsCover ? edgePadding + coverSize + 20 : edgePadding
     }
 
     var body: some View {
@@ -67,7 +71,7 @@ struct EntityDetailContent: View {
                         Spacer()
                         sharingChip
                     }
-                    .padding(.leading, entity.hasPhoto ? coverSize + 20 : 0)
+                    .padding(.leading, showsCover ? coverSize + 20 : 0)
                     .padding(.top, 14)
                     // 20 + the first group's 20 + its row's 4 = the
                     // canonical 44pt section gap.
@@ -149,7 +153,7 @@ struct EntityDetailContent: View {
         .frame(maxWidth: .infinity, minHeight: bandHeight, alignment: .bottomLeading)
         .background(headerGradient)
         .overlay(alignment: .bottomLeading) {
-            if entity.hasPhoto {
+            if showsCover {
                 cover
                     .padding(.leading, edgePadding)
                     .offset(y: coverOverlap)

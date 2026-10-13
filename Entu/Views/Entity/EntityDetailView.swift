@@ -45,6 +45,7 @@ struct EntityDetailView: View {
                     EntityDetailContent(
                         entity: entity,
                         groupedProperties: model.groupedProperties,
+                        showsCover: model.showsCover,
                         typeLabel: model.typeLabel,
                         onNavigate: onNavigate
                     )

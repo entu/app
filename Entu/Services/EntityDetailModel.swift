@@ -143,6 +143,13 @@ final class EntityDetailModel {
         return json["message"] as? String
     }
 
+    /// Whether the header shows a cover — the entity has a photo, or its
+    /// type defines a `photo` property (an empty cover then marks the slot),
+    /// matching the webapp.
+    var showsCover: Bool {
+        entity?.hasPhoto == true || definitions.contains { $0.name == "photo" }
+    }
+
     /// Properties matched to their definitions, filtered, grouped, and sorted for display.
     var groupedProperties: [PropertyGroup] {
         guard let entity else { return [] }
