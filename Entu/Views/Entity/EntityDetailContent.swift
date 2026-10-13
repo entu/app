@@ -178,7 +178,11 @@ struct EntityDetailContent: View {
             if let coverImage {
                 coverImage.resizable().scaledToFill()
             } else {
-                Rectangle().fill(.white.opacity(0.2))
+                // Empty or still loading: the entity's color at half
+                // strength over a blur of what's behind (matches the webapp).
+                Rectangle()
+                    .fill((coverRGB?.color ?? Color.derived(from: entity._id)).opacity(0.5))
+                    .background(.ultraThinMaterial)
             }
         }
         .frame(width: coverSize, height: coverSize)
