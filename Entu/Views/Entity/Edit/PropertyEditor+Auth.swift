@@ -4,6 +4,9 @@
 // branches of the webapp's `components/property/edit.vue` template: the
 // client sends sentinel strings ('generate' / 'send-invite' / 'self-invite')
 // through the normal property commit and the API does the real work.
+// Adding and removing is gated on `canEditCredentials` (the entity's
+// `_owner` or the person themselves, never Entu support); without it the
+// saved values show read-only.
 
 import SwiftUI
 #if os(macOS)
@@ -16,7 +19,7 @@ extension PropertyEditor {
     /// Reserved property names that get a bespoke editor instead of the
     /// plain string field. `EntityEditView` also consults this to suppress
     /// the generic list-row delete × (these editors own their delete
-    /// affordances) and to skip them for first-field auto-focus.
+    /// affordances).
     static let reservedAuthNames: Set<String> = ["entu_api_key", "entu_user"]
 
     /// True when this row renders via `authPropertyEditor`. Type-gated to
@@ -85,7 +88,7 @@ extension PropertyEditor {
                 provider: nil,
                 fallbackIcon: "key",
                 label: String(localized: "apiKey", bundle: .currentLocalized),
-                onDelete: { showingDeleteAuthConfirm = true }
+                onDelete: canEditCredentials ? { showingDeleteAuthConfirm = true } : nil
             ))
         } else if value._id != nil {
             HStack(spacing: 8) {
@@ -107,7 +110,7 @@ extension PropertyEditor {
 
                 Spacer(minLength: 0)
             }
-        } else {
+        } else if canEditCredentials {
             authAddChip("generateApiKey", systemImage: "plus") {
                 // Sentinel — the API generates a key for any `entu_api_key`
                 // insert; webapp sends the same marker string.
@@ -136,10 +139,12 @@ extension PropertyEditor {
                 }
 
                 // Same × as the auth pills — cancels the pending invite.
-                ChipDeleteButton(accessibilityKey: "cancelInvite") {
-                    showingDeleteAuthConfirm = true
+                if canEditCredentials {
+                    ChipDeleteButton(accessibilityKey: "cancelInvite") {
+                        showingDeleteAuthConfirm = true
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.secondary)
 
                 Spacer(minLength: 0)
             }
@@ -147,8 +152,11 @@ extension PropertyEditor {
             authChipRow(AuthChip(
                 provider: value.provider,
                 label: userDisplayLabel,
-                onDelete: { showingDeleteAuthConfirm = true }
+                onDelete: canEditCredentials ? { showingDeleteAuthConfirm = true } : nil
             ))
+        } else if !canEditCredentials {
+            // No add affordance — only the owner or the person may add one.
+            EmptyView()
         } else if isOwnEntity {
             authAddChip("addLoginMethod", systemImage: "envelope") {
                 value.stringValue = "self-invite"

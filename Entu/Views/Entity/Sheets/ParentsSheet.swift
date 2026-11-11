@@ -233,17 +233,19 @@ struct ParentsSheet: View {
     /// `parentQuery` in `entity/drawer/parents.vue`.
     private var parentQuery: String {
         guard let userId = auth.currentUserId else { return "" }
-        let base = "_expander.reference=\(userId)"
+        // Entu support may expand every entity, so no `_expander` filter.
+        let base = auth.isCurrentDatabaseSupport ? nil : "_expander.reference=\(userId)"
 
         guard let typeId = entity?.properties["_type"]?.first?.reference,
               let parentTypes = menu.parentTypesByChild[typeId],
               !parentTypes.isEmpty else {
-            return base
+            return base ?? ""
         }
-        if parentTypes.count == 1 {
-            return "\(base)&_type.reference=\(parentTypes[0])"
-        }
-        return "\(base)&_type.reference.in=\(parentTypes.joined(separator: ","))"
+        let typeFilter = parentTypes.count == 1
+            ? "_type.reference=\(parentTypes[0])"
+            : "_type.reference.in=\(parentTypes.joined(separator: ","))"
+
+        return [base, typeFilter].compactMap { $0 }.joined(separator: "&")
     }
 
     // MARK: - Loading
@@ -275,6 +277,12 @@ struct ParentsSheet: View {
         let parentIds = parents.compactMap { $0.reference }
         guard !parentIds.isEmpty else {
             canRemoveParents = []
+            return
+        }
+
+        // Entu support holds the expander right on every parent.
+        if auth.isCurrentDatabaseSupport {
+            canRemoveParents = Set(parentIds)
             return
         }
 

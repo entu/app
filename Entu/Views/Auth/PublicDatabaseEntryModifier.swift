@@ -78,7 +78,7 @@ private struct PublicDatabaseEntryModifier: ViewModifier {
         }
 
         // Already known database? Skip the probe entirely.
-        if let existing = auth.databases.first(where: { $0._id == name }) {
+        if let existing = auth.database(for: name) {
             auth.selectDatabase(existing)
             input = ""
             return

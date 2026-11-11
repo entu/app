@@ -4,16 +4,17 @@
 // being browsed as a guest:
 //   Hero: round user avatar (or Entu logo fallback) and a title — user
 //         name when signed in, database id when browsing a public database.
-//   Rows: switch active database (lists authenticated and saved public
-//         databases plus a "Browse public database…" entry), open the
-//         user's profile entity (only when there's a resolved user), switch
-//         the app language.
+//   Rows: switch active database (lists authenticated, support and saved
+//         public databases plus a "Browse public database…" entry), open the
+//         user's profile entity (only when there's a resolved user, never in
+//         a support database), switch the app language.
 //   Toolbar: close (cancellation) and Sign Out (destructive — wipes
 //         credentials and the saved public-database list, returning to
 //         AuthView).
 //   Footer row: delete the user's account in the active database — required
 //         by App Store guideline 5.1.1(v); rendered as a hidden spacer in
-//         public mode so the bottom fade never overlaps the language row.
+//         public mode and in a support database (where the "user" is the
+//         database entity) so the bottom fade never overlaps the language row.
 
 import SwiftUI
 
@@ -207,6 +208,25 @@ struct AccountSheet: View {
                 }
             }
 
+            // Support databases in their own group after the own ones. The
+            // webapp's orange name isn't mirrored: native menu items draw
+            // their titles in the system style and ignore a custom color.
+            if !auth.activeSupportDatabases.isEmpty {
+                Section("supportTitle") {
+                    ForEach(auth.activeSupportDatabases) { database in
+                        Button {
+                            auth.selectDatabase(database)
+                        } label: {
+                            if database._id == api.databaseId {
+                                Label(database.name, systemImage: "checkmark")
+                            } else {
+                                Text(database.name)
+                            }
+                        }
+                    }
+                }
+            }
+
             if !auth.publicDatabases.isEmpty {
                 Section("publicDatabasesSection") {
                     ForEach(auth.publicDatabases, id: \.self) { id in
@@ -242,9 +262,11 @@ struct AccountSheet: View {
     }
 
     /// Pins the signed-in user's person entity in the main detail view.
+    /// Hidden in a support database — support acts as the database entity,
+    /// no person of its own (webapp hides the user menu there).
     @ViewBuilder
     private var personEntityRow: some View {
-        if let userId = activeDatabase?.user?._id {
+        if !auth.isCurrentDatabaseSupport, let userId = activeDatabase?.user?._id {
             Button {
                 openPinnedEntity(userId)
                 dismiss()
@@ -290,7 +312,7 @@ struct AccountSheet: View {
     /// overlaps the language row.
     @ViewBuilder
     private var deleteRow: some View {
-        if activeDatabase?.user?._id != nil {
+        if !auth.isCurrentDatabaseSupport, activeDatabase?.user?._id != nil {
             Button {
                 showDeleteConfirmation = true
             } label: {
@@ -326,7 +348,7 @@ struct AccountSheet: View {
     private func loadUserEntity() async {
         userThumbnail = nil
         userTypeLabel = nil
-        guard let userId = activeDatabase?.user?._id else { return }
+        guard !auth.isCurrentDatabaseSupport, let userId = activeDatabase?.user?._id else { return }
 
         // No photo pre-check — the thumbnail endpoint returns nothing for
         // photo-less entities.

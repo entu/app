@@ -1,5 +1,6 @@
-// Keychain storage — the JWT token and database list live here (never in
-// UserDefaults), using the data-protection keychain.
+// Keychain storage — the JWT token, the database list and the support
+// database list live here (never in UserDefaults), using the
+// data-protection keychain.
 
 import Foundation
 import Security
@@ -132,5 +133,47 @@ enum KeychainService {
 
     static func deleteDatabases() {
         SecItemDelete(databasesQuery as CFDictionary)
+    }
+
+    // MARK: - Support database list (JSON-encoded)
+
+    /// Databases open to Entu support — kept apart from `accounts` because
+    /// access to them ends at each entry's `until`.
+    private static let supportDatabasesKey = "support-accounts"
+
+    private static var supportDatabasesQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: supportDatabasesKey,
+            kSecUseDataProtectionKeychain as String: true
+        ]
+    }
+
+    static func saveSupportDatabases(_ data: Data) {
+        SecItemDelete(supportDatabasesQuery as CFDictionary)
+
+        var attributes = supportDatabasesQuery
+        attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    static func loadSupportDatabases() -> Data? {
+        var query = supportDatabasesQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+
+        return data
+    }
+
+    static func deleteSupportDatabases() {
+        SecItemDelete(supportDatabasesQuery as CFDictionary)
     }
 }

@@ -56,11 +56,11 @@ extension EntityEditView {
     /// Build a fresh `EntityDetail` for a just-created entity so later
     /// commits in the same session can short-circuit unchanged-rows
     /// against this in-memory cache without a refetch.
-    func bootstrapLocalEntity(id: String, typeId: String, parentId: String?) {
+    func bootstrapLocalEntity(id: String, typeId: String, parentIds: [String]) {
         var props: [String: [PropertyValue]] = [:]
         props["_type"] = [makeReferencePropertyValue(reference: typeId)]
-        if let parentId {
-            props["_parent"] = [makeReferencePropertyValue(reference: parentId)]
+        if !parentIds.isEmpty {
+            props["_parent"] = parentIds.map { makeReferencePropertyValue(reference: $0) }
         }
         let json: [String: Any] = ["_id": id]
         if let data = try? JSONSerialization.data(withJSONObject: json),

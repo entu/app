@@ -603,7 +603,8 @@ struct CommandPaletteView: View {
             run: onGoDashboard
         ))
 
-        if let userId = auth.currentUserId {
+        // Support acts as the database entity — no profile of its own.
+        if !auth.isCurrentDatabaseSupport, let userId = auth.currentUserId {
             rows.append(PaletteRow(
                 id: "profile",
                 content: .action(icon: "chevron.right", title: loc("paletteMyProfile")),
@@ -613,7 +614,8 @@ struct CommandPaletteView: View {
             })
         }
 
-        for database in auth.databases where database._id != api.databaseId {
+        // Own databases first, then those open to Entu support.
+        for database in auth.databases + auth.activeSupportDatabases where database._id != api.databaseId {
             rows.append(PaletteRow(
                 id: "db-\(database._id)",
                 content: .action(icon: "chevron.right", title: loc("paletteSwitchDatabase \(database.name)")),

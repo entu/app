@@ -95,26 +95,24 @@ extension EntityEditView {
     }
 
     /// Create the entity from the very first committed value. Sends the
-    /// property + the synthesised `_parent` (when present) and `_type`
-    /// references in one request, matching webapp's `addEntity`. The
-    /// upsert response carries the newly-assigned property `_id`s, so
-    /// no separate GET is needed — we read them straight off the
-    /// response and update the local row + cache.
+    /// property + one synthesised `_parent` per parent id and the `_type`
+    /// reference in one request, matching webapp's `addEntity`. The API adds
+    /// the type's `default_parent` itself. The upsert response carries the
+    /// newly-assigned property `_id`s, so no separate GET is needed — we
+    /// read them straight off the response and update the local row + cache.
     private func createEntity(propertyName: String, value: EditableValue, definition def: PropertyDefinition) async throws {
-        guard case .create(let parentId, let typeId, _) = mode else { return }
+        guard case .create(let parentIds, _, let typeId, _) = mode else { return }
         var changes: [EntityPropertyChange] = []
         if let change = makeChange(propertyName: propertyName, value: value, definition: def) {
             changes.append(change)
         }
-        if let parentId {
-            changes.append(EntityPropertyChange(type: "_parent", reference: parentId))
-        }
+        changes += parentIds.map { EntityPropertyChange(type: "_parent", reference: $0) }
         changes.append(EntityPropertyChange(type: "_type", reference: typeId))
 
         let response: EntityUpsertResponse = try await api.post("entity", body: changes)
         guard let newId = response._id else { return }
         currentEntityId = newId
-        bootstrapLocalEntity(id: newId, typeId: typeId, parentId: parentId)
+        bootstrapLocalEntity(id: newId, typeId: typeId, parentIds: parentIds)
         applyUpsertResponse(response, propertyName: propertyName, value: value, definition: def)
         onSaved?(newId)
     }
@@ -184,15 +182,15 @@ extension EntityEditView {
             if let entityId = currentEntityId {
                 response = try await api.post("entity/\(entityId)", body: [change])
             } else {
-                guard case .create(let parentId, let typeId, _) = mode else { return }
+                guard case .create(let parentIds, _, let typeId, _) = mode else { return }
                 var changes: [EntityPropertyChange] = [change]
-                if let parentId { changes.append(EntityPropertyChange(type: "_parent", reference: parentId)) }
+                changes += parentIds.map { EntityPropertyChange(type: "_parent", reference: $0) }
                 changes.append(EntityPropertyChange(type: "_type", reference: typeId))
 
                 response = try await api.post("entity", body: changes)
                 if let newId = response._id {
                     currentEntityId = newId
-                    bootstrapLocalEntity(id: newId, typeId: typeId, parentId: parentId)
+                    bootstrapLocalEntity(id: newId, typeId: typeId, parentIds: parentIds)
                     onSaved?(newId)
                 }
             }

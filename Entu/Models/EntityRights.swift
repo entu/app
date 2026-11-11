@@ -9,7 +9,8 @@
 //
 // In a public-database session there is no current user
 // (`currentUserId == nil`), so every right is false and write affordances
-// disappear.
+// disappear. In a support database every right is true — resolved by
+// `AuthModel.rights(on:)`, which views call instead of `rights(for:)`.
 
 import Foundation
 
@@ -21,6 +22,9 @@ struct EntityRights {
     let viewer: Bool
 
     static let none = EntityRights(owner: false, editor: false, expander: false, viewer: false)
+
+    /// Every right — Entu support in a database whose owner granted it.
+    static let all = EntityRights(owner: true, editor: true, expander: true, viewer: true)
 }
 
 extension EntityDetail {

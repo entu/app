@@ -3,7 +3,8 @@
 // color (derived id color while it loads / when there is no image), white
 // title and glass parent chips on the band, the square cover hanging over
 // its bottom edge. Below: type + sharing chips, kicker-headed property
-// groups, and the child-tables card.
+// groups, the "Entu support access" control (database entity, owner only),
+// and the child-tables card.
 //
 // Responsive: below `compactThreshold` width (or in a compact size class)
 // the band and cover shrink and paddings tighten.
@@ -31,6 +32,11 @@ struct EntityDetailContent: View {
 
     /// Called when user taps a reference or child entity — navigates to it.
     var onNavigate: ((String) -> Void)?
+
+    /// Set on a database entity its owner sees outside a support session:
+    /// shows the "Entu support access" control, and is called after it
+    /// grants or ends access so the parent reloads the entity.
+    var onSupportAccessChanged: (() -> Void)?
 
     /// Measured width of the view. Used to fold to the compact layout when
     /// the column is narrower than the regular layout needs — e.g. macOS
@@ -81,6 +87,15 @@ struct EntityDetailContent: View {
                         propertyGroupSection(group)
                     }
                     .padding(.top, 20)
+
+                    if let onSupportAccessChanged {
+                        SupportAccessSection(
+                            entityId: entity._id,
+                            values: entity.properties["support_until"] ?? [],
+                            onChanged: onSupportAccessChanged
+                        )
+                        .padding(.top, 40)
+                    }
 
                     // Child entities — 40 + the last row's 4pt padding =
                     // the canonical 44pt section gap.

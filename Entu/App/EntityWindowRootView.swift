@@ -76,6 +76,9 @@ struct EntityWindowRootView: View {
         .environment(search)
         .environment(palette)
         .environment(windowState)
+        // Orange end-time banner on top in a support database, like the
+        // main window.
+        .supportAccessChrome()
         .id(appLanguage)
         // Same window chrome as the main window: blank title (the entity's
         // colored band runs behind the transparent toolbar), tab labeled

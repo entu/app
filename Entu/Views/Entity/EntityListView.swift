@@ -26,8 +26,9 @@ struct EntityListView: View {
     let query: String
 
     /// ID of the currently-selected menu entity, used to look up which
-    /// types can be added under it (`menu.addFromTypes`). Nil while the
-    /// list is showing a global search result rather than a menu.
+    /// types it can create (`menu.menuAddEntities`) and their parents
+    /// (`menu.menuAddParents`). Nil while the list is showing a global
+    /// search result rather than a menu.
     let menuId: String?
 
     /// Selection binding — drives the detail column in `NavigationSplitView`.
@@ -497,13 +498,20 @@ struct EntityListView: View {
     private var newEntityOptions: [EntityCreateOption] {
         guard auth.currentUserId != nil,
               let menuId,
-              let types = menu.addFromTypes[menuId] else { return [] }
+              let types = menu.menuAddEntities[menuId] else { return [] }
 
         return types.map { type in
             EntityCreateOption(id: type._id, label: type.label, menuLabel: type.englishLabel) {
-                pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+                pendingCreate = menuCreateMode(type)
             }
         }
+    }
+
+    /// Create mode for a menu-level New — parented to the active menu's
+    /// `add_parent` ids (the API adds the type's `default_parent` itself).
+    private func menuCreateMode(_ type: AddFromType) -> EntityEditMode {
+        let parentIds = menuId.flatMap { menu.menuAddParents[$0] } ?? []
+        return .create(parentIds: parentIds, isChild: false, typeId: type._id, typeLabel: type.label)
     }
 
     /// File > New (⌘N) command. `nil` (not empty) when unavailable so the
@@ -532,7 +540,7 @@ struct EntityListView: View {
         guard auth.currentUserId != nil,
               selectedEntityId == nil,
               let menuId,
-              let types = menu.addFromTypes[menuId],
+              let types = menu.menuAddEntities[menuId],
               !types.isEmpty else { return nil }
 
         return types
@@ -544,7 +552,7 @@ struct EntityListView: View {
     private func addButton(types: [AddFromType]) -> some View {
         if types.count == 1, let only = types.first {
             Button {
-                pendingCreate = .create(parentId: nil, typeId: only._id, typeLabel: only.label)
+                pendingCreate = menuCreateMode(only)
             } label: {
                 Label {
                     Text("addOne \(only.label.lowercased())")
@@ -556,7 +564,7 @@ struct EntityListView: View {
             Menu {
                 ForEach(types) { type in
                     Button(type.label.lowercased()) {
-                        pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+                        pendingCreate = menuCreateMode(type)
                     }
                 }
             } label: {
@@ -566,7 +574,7 @@ struct EntityListView: View {
     }
 
     /// `<entity-toolbar-add>` in `entity/toolbar.vue` — visible whenever
-    /// the active menu has any types declaring it as an `add_from`.
+    /// the active menu lists any types in its `add_entity`.
     /// Single type: direct button with the type label. Multiple: a Menu.
     /// On iPhone (compact) the button lives in the bottom bar instead —
     /// declared next to the search item so the order stays filter ·

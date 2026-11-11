@@ -258,7 +258,7 @@ struct MainView: View {
     /// open, only the window whose URL handler received the link consumes it.
     ///
     /// Resolves the target database in this order:
-    ///   1. authenticated database — `selectDatabase`
+    ///   1. authenticated database (own, or open to Entu support) — `selectDatabase`
     ///   2. saved public database — `selectPublicDatabase`
     ///   3. unknown database — probe for public access; on success add it to
     ///      the saved list and select. On failure clear the pending state and
@@ -268,7 +268,7 @@ struct MainView: View {
         guard let dbId = router.pendingDatabaseId else { return }
 
         if dbId != api.databaseId {
-            if let target = auth.databases.first(where: { $0._id == dbId }) {
+            if let target = auth.database(for: dbId) {
                 auth.selectDatabase(target)
             } else if auth.publicDatabases.contains(dbId) {
                 auth.selectPublicDatabase(dbId)

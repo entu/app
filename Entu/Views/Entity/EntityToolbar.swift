@@ -35,6 +35,7 @@ func entityAddChildTypes(for entity: EntityDetail, menu: MenuModel) -> [AddFromT
 /// the entity. `onCreate == nil` renders the disabled placeholder variant.
 /// Shared by the entity toolbar and `MainEntityTable`'s no-selection
 /// toolbar — the menu-level New button, hidden without addable types.
+/// Types come from the menu's `add_entity` (`menu.menuAddEntities`).
 struct MenuLevelAddButton: View {
     @Environment(AuthModel.self) private var auth
     @Environment(MenuModel.self) private var menu
@@ -44,7 +45,7 @@ struct MenuLevelAddButton: View {
 
     private var types: [AddFromType] {
         guard let menuId else { return [] }
-        return menu.addFromTypes[menuId] ?? []
+        return menu.menuAddEntities[menuId] ?? []
     }
 
     var body: some View {
@@ -159,7 +160,7 @@ private struct EntityToolbar: ToolbarContent {
     }
 
     private var rights: EntityRights {
-        entity.rights(for: auth.currentUserId)
+        auth.rights(on: entity)
     }
 
     /// Types that can be added under this entity. Mirrors webapp's
@@ -209,7 +210,8 @@ private struct EntityToolbar: ToolbarContent {
 
     private var menuLevelAddButton: some View {
         MenuLevelAddButton(menuId: menuId) { type in
-            editMode = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+            let parentIds = menuId.flatMap { menu.menuAddParents[$0] } ?? []
+            editMode = .create(parentIds: parentIds, isChild: false, typeId: type._id, typeLabel: type.label)
         }
     }
 
@@ -218,7 +220,7 @@ private struct EntityToolbar: ToolbarContent {
         if rights.expander && !addChildTypes.isEmpty {
             if addChildTypes.count == 1, let only = addChildTypes.first {
                 Button {
-                    editMode = .create(parentId: entity._id, typeId: only._id, typeLabel: only.label)
+                    editMode = .create(parentIds: [entity._id], isChild: true, typeId: only._id, typeLabel: only.label)
                 } label: {
                     Label {
                         Text("addOneChild \(only.label.lowercased())")
@@ -230,7 +232,7 @@ private struct EntityToolbar: ToolbarContent {
                 Menu {
                     ForEach(addChildTypes) { type in
                         Button(type.label.lowercased()) {
-                            editMode = .create(parentId: entity._id, typeId: type._id, typeLabel: type.label)
+                            editMode = .create(parentIds: [entity._id], isChild: true, typeId: type._id, typeLabel: type.label)
                         }
                     }
                 } label: {
@@ -510,7 +512,7 @@ private struct EntityToolbarHost: ViewModifier {
     /// The current entity's rights-gated action set for the `Entity` menu.
     /// Gates match `EntityToolbar`'s buttons exactly.
     private var entityActions: EntityActions {
-        let rights = entity.rights(for: auth.currentUserId)
+        let rights = auth.rights(on: entity)
         return EntityActions(
             windowId: windowState.windowId,
             entityId: entity._id,
@@ -538,11 +540,11 @@ private struct EntityToolbarHost: ViewModifier {
     /// Add-child options — expander-gated, one per addable child type, each
     /// opening the create sheet parented to this entity.
     private var childAddOptions: [EntityCreateOption] {
-        guard entity.rights(for: auth.currentUserId).expander else { return [] }
+        guard auth.rights(on: entity).expander else { return [] }
 
         return entityAddChildTypes(for: entity, menu: menu).map { type in
             EntityCreateOption(id: type._id, label: type.label, menuLabel: type.englishLabel) {
-                editMode = .create(parentId: entity._id, typeId: type._id, typeLabel: type.label)
+                editMode = .create(parentIds: [entity._id], isChild: true, typeId: type._id, typeLabel: type.label)
             }
         }
     }
@@ -570,7 +572,7 @@ private struct EntityToolbarHost: ViewModifier {
         guard let pending = router.pendingRowAction, pending.entityId == entity._id else { return }
 
         router.pendingRowAction = nil
-        let rights = entity.rights(for: auth.currentUserId)
+        let rights = auth.rights(on: entity)
         switch pending.kind {
         case .edit:
             if rights.editor { editMode = .edit(entityId: entity._id) }

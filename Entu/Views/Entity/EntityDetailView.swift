@@ -1,11 +1,14 @@
 // Entity detail container — owns loading / error states and data
-// fetching, then hands the loaded entity to `EntityDetailContent`.
+// fetching, then hands the loaded entity to `EntityDetailContent`. On a
+// database entity it also decides whether its owner gets the "Entu support
+// access" control (then the plain `support_until` row is left out).
 
 import SwiftUI
 
 /// Container for entity detail — manages loading, error states, and data fetching.
 struct EntityDetailView: View {
     @Environment(APIClient.self) private var api
+    @Environment(AuthModel.self) private var auth
 
     let entityId: String
 
@@ -42,12 +45,17 @@ struct EntityDetailView: View {
                 if model.isLoading {
                     detailSkeleton
                 } else if let entity = model.entity {
+                    let isSupportGrantor = showsSupportAccess(entity)
+
                     EntityDetailContent(
                         entity: entity,
-                        groupedProperties: model.groupedProperties,
+                        groupedProperties: isSupportGrantor
+                            ? Self.removingSupportUntil(model.groupedProperties)
+                            : model.groupedProperties,
                         showsCover: model.showsCover,
                         typeLabel: model.typeLabel,
-                        onNavigate: onNavigate
+                        onNavigate: onNavigate,
+                        onSupportAccessChanged: isSupportGrantor ? reloadAction(model) : nil
                     )
                     .refreshable { await model.load(entityId: entityId) }
                     .id(entity._id)
@@ -112,6 +120,29 @@ struct EntityDetailView: View {
         // land here without per-path reporting.
         .onChange(of: model?.entity?.displayName, initial: true) { _, name in
             onTitle?(name ?? "")
+        }
+    }
+
+    // MARK: - Support access
+
+    /// The database entity's owners grant Entu support access there;
+    /// support itself never sees the control (webapp `showSupportAccess`).
+    private func showsSupportAccess(_ entity: EntityDetail) -> Bool {
+        entity.typeName == "database" && !auth.isCurrentDatabaseSupport && auth.rights(on: entity).owner
+    }
+
+    /// Reloads the shown entity — after the support control grants or ends access.
+    private func reloadAction(_ model: EntityDetailModel) -> () -> Void {
+        { Task { await model.load(entityId: entityId) } }
+    }
+
+    /// Drops the plain `support_until` row while the control shows the grant.
+    private static func removingSupportUntil(_ groups: [PropertyGroup]) -> [PropertyGroup] {
+        groups.compactMap { group in
+            let properties = group.properties.filter { $0.definition.name != "support_until" }
+            guard !properties.isEmpty else { return nil }
+
+            return PropertyGroup(name: group.name, properties: properties, ordinal: group.ordinal)
         }
     }
 

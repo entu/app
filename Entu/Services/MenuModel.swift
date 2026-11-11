@@ -1,10 +1,12 @@
 // Sidebar menu loading — fetches menu entities, groups and sorts them,
-// resolves each menu's addable types, and caches the result per database.
+// resolves each menu's creatable types (`add_entity`) and parents
+// (`add_parent`), the `add_from` child types, and caches the result per database.
 
 import Foundation
 
-/// Type entity that can be added under a menu (or under another type).
-/// Mirrors the webapp's `addFromEntities` items in `stores/menu.js`.
+/// Entity type that can be created — from a menu (`add_entity`) or under
+/// another entity (`add_from`). Mirrors the webapp's `{ value, label }`
+/// options in `stores/menu.js`.
 struct AddFromType: Identifiable, Hashable {
     let _id: String
     /// Label in the active in-app language — used for in-app UI.
@@ -13,6 +15,19 @@ struct AddFromType: Identifiable, Hashable {
     /// value) — used in the menu bar, which follows the system language.
     let englishLabel: String
     var id: String { _id }
+
+    /// Build from a type entity's `label` / `name` values: the localized
+    /// label, else the name, else the id.
+    init(_id: String, labelValues: [PropertyValue]?, nameValues: [PropertyValue]?) {
+        let label = PropertyValue.localized(labelValues) ?? PropertyValue.localized(nameValues) ?? _id
+        self._id = _id
+        self.label = label
+        // Prefer the English label for the menu bar; fall back to
+        // untagged, then to the active-language label.
+        self.englishLabel = labelValues?.first { $0.language == "en" }?.string
+            ?? labelValues?.first { $0.language == nil }?.string
+            ?? label
+    }
 }
 
 /// Cached, language-aware menu payload. Stored as a value type so the static
@@ -20,8 +35,18 @@ struct AddFromType: Identifiable, Hashable {
 private struct CachedMenu {
     let groups: [MenuGroup]
     let queryById: [String: String]
+    let menuAddEntities: [String: [AddFromType]]
+    let menuAddParents: [String: [String]]
     let addFromTypes: [String: [AddFromType]]
     let parentTypesByChild: [String: [String]]
+}
+
+/// Result of the `add_from` lookup — both inverse maps plus every type the
+/// response carried, so `add_entity` labels can reuse them.
+private struct AddFromResult {
+    var addFrom: [String: [AddFromType]] = [:]
+    var parents: [String: [String]] = [:]
+    var typesById: [String: AddFromType] = [:]
 }
 
 /// Fetches menu entities from the API, groups and sorts them for the sidebar.
@@ -42,10 +67,18 @@ final class MenuModel {
         groups.lazy.flatMap(\.items).first { $0._id == menuId }
     }
 
-    /// Menu (or type) entity ID → list of types that can be added under it.
-    /// Drives the toolbar Add button at menu level (`activeMenu.addFrom`)
-    /// and per-entity child add (`addChildOptions`) — same data source as
-    /// webapp's `addFromEntities` in `stores/menu.js`.
+    /// Menu entity ID → types its `add_entity` lists, sorted by label.
+    /// Drives the menu-level New button and palette rows — webapp's
+    /// `activeMenu.addEntities` in `stores/menu.js`.
+    var menuAddEntities: [String: [AddFromType]] = [:]
+
+    /// Menu entity ID → its `add_parent` ids, sent as one `_parent` each on
+    /// every entity created from that menu (webapp's `activeMenu.addParents`).
+    var menuAddParents: [String: [String]] = [:]
+
+    /// Entity (or type) ID → list of types that can be added under it via
+    /// their `add_from`. Drives per-entity child add (`addChildOptions`) —
+    /// same data source as webapp's `addFromEntities` in `stores/menu.js`.
     var addFromTypes: [String: [AddFromType]] = [:]
 
     /// Inverse of `addFromTypes` — child type ID → list of parent type IDs
@@ -108,6 +141,8 @@ final class MenuModel {
             if Self.cache[key] == task { Self.cache[key] = nil }
             groups = []
             queryById = [:]
+            menuAddEntities = [:]
+            menuAddParents = [:]
             addFromTypes = [:]
             parentTypesByChild = [:]
             return
@@ -120,21 +155,24 @@ final class MenuModel {
     private func apply(_ cached: CachedMenu) {
         groups = cached.groups
         queryById = cached.queryById
+        menuAddEntities = cached.menuAddEntities
+        menuAddParents = cached.menuAddParents
         addFromTypes = cached.addFromTypes
         parentTypesByChild = cached.parentTypesByChild
     }
 
     /// The actual fetch behind the shared cache task — menu entities and
-    /// `add_from` types are independent requests, run concurrently. Returns
-    /// nil on failure (the menu fetch is the load-bearing one; `add_from`
-    /// degrades to empty maps on its own errors).
+    /// `add_from` types are independent requests, run concurrently; then any
+    /// `add_entity` type the `add_from` response didn't carry is fetched for
+    /// its label. Returns nil on failure (the menu fetch is the load-bearing
+    /// one; `add_from` and labels degrade to empty on their own errors).
     private static func fetch(api: APIClient) async -> CachedMenu? {
         async let addFrom = fetchAddFromTypes(api: api)
 
         do {
             let response: EntityListResponse = try await api.get("entity", params: [
                 "_type.string": "menu",
-                "props": "ordinal.number,group,name,query.string"
+                "props": "ordinal.number,group,name,query.string,add_entity.reference,add_parent.reference"
             ])
 
             // Convert raw API entities to MenuEntity models, resolving localized values.
@@ -172,12 +210,35 @@ final class MenuModel {
                 )
             }.sorted { entuSort($0.ordinal, $0.name, $1.ordinal, $1.name) }
 
-            let (addFromMap, parentMap) = await addFrom
+            // Menu ID → add_entity type ids / add_parent ids (deduped, in order).
+            var addEntityIds: [String: [String]] = [:]
+            var addParents: [String: [String]] = [:]
+            for entity in response.entities {
+                let typeIds = uniqueReferences(entity.additionalProperties?["add_entity"])
+                let parentIds = uniqueReferences(entity.additionalProperties?["add_parent"])
+                if !typeIds.isEmpty { addEntityIds[entity._id] = typeIds }
+                if !parentIds.isEmpty { addParents[entity._id] = parentIds }
+            }
+
+            let addFromResult = await addFrom
+            var typesById = addFromResult.typesById
+            let missing = Set(addEntityIds.values.joined()).subtracting(typesById.keys)
+            for (id, type) in await fetchTypes(api: api, ids: missing) {
+                typesById[id] = type
+            }
+
+            // Types whose label couldn't be fetched (e.g. no read right) are dropped.
+            let addEntities = addEntityIds.mapValues { ids in
+                ids.compactMap { typesById[$0] }.sorted(by: labelOrder)
+            }.filter { !$0.value.isEmpty }
+
             return CachedMenu(
                 groups: newGroups,
                 queryById: newQueryById,
-                addFromTypes: addFromMap,
-                parentTypesByChild: parentMap
+                menuAddEntities: addEntities,
+                menuAddParents: addParents,
+                addFromTypes: addFromResult.addFrom,
+                parentTypesByChild: addFromResult.parents
             )
         } catch {
             _ = await addFrom
@@ -185,15 +246,55 @@ final class MenuModel {
         }
     }
 
+    // MARK: - add_entity types
+
+    /// Reference ids of `values`, deduped in their original order.
+    nonisolated private static func uniqueReferences(_ values: [PropertyValue]?) -> [String] {
+        var seen = Set<String>()
+        return (values ?? []).compactMap(\.reference).filter { seen.insert($0).inserted }
+    }
+
+    /// Fetch the `name` / `label` of each type id concurrently — for
+    /// `add_entity` targets the `add_from` response didn't include (webapp's
+    /// one-type-by-id fetch). Failed fetches are left out.
+    private static func fetchTypes(api: APIClient, ids: Set<String>) async -> [String: AddFromType] {
+        await withTaskGroup(of: AddFromType?.self) { group in
+            for id in ids {
+                group.addTask {
+                    let response: EntityDetailResponse? = try? await api.get(
+                        "entity/\(id)",
+                        params: ["props": "name,label"]
+                    )
+                    guard let entity = response?.entity else { return nil }
+                    return AddFromType(
+                        _id: entity._id,
+                        labelValues: entity.properties["label"],
+                        nameValues: entity.properties["name"]
+                    )
+                }
+            }
+            var map: [String: AddFromType] = [:]
+            for await type in group {
+                if let type { map[type._id] = type }
+            }
+            return map
+        }
+    }
+
+    /// Stable alphabetical order by label — mirrors webapp's sort.
+    nonisolated private static func labelOrder(_ lhs: AddFromType, _ rhs: AddFromType) -> Bool {
+        lhs.label.localizedCompare(rhs.label) == .orderedAscending
+    }
+
     // MARK: - add_from types
 
     /// Look up all entity types that declare `add_from`, then build two
     /// inverse maps from the same response:
     ///   - parent → list of child types that can be added under it (drives
-    ///     toolbar Add and Add child).
+    ///     Add child).
     ///   - child type → list of parent type IDs that allow it (drives the
     ///     Parents drawer's candidate filter).
-    private static func fetchAddFromTypes(api: APIClient) async -> (addFrom: [String: [AddFromType]], parents: [String: [String]]) {
+    private static func fetchAddFromTypes(api: APIClient) async -> AddFromResult {
         let response: EntityListResponse?
         do {
             response = try await api.get("entity", params: [
@@ -202,34 +303,29 @@ final class MenuModel {
                 "props": "name,label,add_from.reference"
             ])
         } catch {
-            return ([:], [:])
+            return AddFromResult()
         }
 
-        var addFromMap: [String: [AddFromType]] = [:]
-        var parentMap: [String: [String]] = [:]
+        var result = AddFromResult()
         for type in response?.entities ?? [] {
-            let labelValues = type.additionalProperties?["label"]
-            let label = PropertyValue.localized(labelValues) ??
-                        PropertyValue.localized(type.name) ?? type._id
-            // Prefer the English label for the menu bar; fall back to
-            // untagged, then to the active-language label.
-            let englishLabel = labelValues?.first { $0.language == "en" }?.string
-                ?? labelValues?.first { $0.language == nil }?.string
-                ?? label
-            let entry = AddFromType(_id: type._id, label: label, englishLabel: englishLabel)
+            let entry = AddFromType(
+                _id: type._id,
+                labelValues: type.additionalProperties?["label"],
+                nameValues: type.name
+            )
+            result.typesById[type._id] = entry
 
             for parent in type.additionalProperties?["add_from"] ?? [] {
                 guard let parentId = parent.reference else { continue }
-                addFromMap[parentId, default: []].append(entry)
-                parentMap[type._id, default: []].append(parentId)
+                result.addFrom[parentId, default: []].append(entry)
+                result.parents[type._id, default: []].append(parentId)
             }
         }
 
-        // Stable alphabetical order per parent — mirrors webapp's sort.
-        for key in addFromMap.keys {
-            addFromMap[key]?.sort { $0.label.localizedCompare($1.label) == .orderedAscending }
+        for key in result.addFrom.keys {
+            result.addFrom[key]?.sort(by: labelOrder)
         }
-        return (addFromMap, parentMap)
+        return result
     }
 
     /// Cache key combining the active in-app language with the database id.

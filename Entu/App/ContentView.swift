@@ -1,11 +1,14 @@
 // Root router — shows sign-in, the database picker, or the main split
 // view depending on auth state, and owns the transitions between them.
+// The main view gets the orange support-access banner on top while the
+// active database is open through an Entu support grant.
 
 import SwiftUI
 
 /// Root router — picks between auth, database picker, or main view based on state.
 /// 1. A database is active → `MainView`.
-/// 2. At least one database known → `DatabaseListView` (or auto-select if only one).
+/// 2. At least one database known → `DatabaseListView` (or auto-select if
+///    only one and no support database is listed).
 /// 3. Nothing known and not signed in → `AuthView`.
 struct ContentView: View {
     @Environment(AuthModel.self) private var auth
@@ -15,6 +18,13 @@ struct ContentView: View {
     /// Total number of selectable databases (authenticated + saved public).
     private var totalDatabaseCount: Int {
         auth.databases.count + auth.publicDatabases.count
+    }
+
+    /// Auto-open only a lone own or public database — never when support
+    /// databases are listed too, nor a lone support database (webapp's
+    /// select page skips the redirect whenever support databases exist).
+    private var opensSoleDatabase: Bool {
+        totalDatabaseCount == 1 && auth.activeSupportDatabases.isEmpty
     }
 
     /// True when there's at least one entry to pick — either authenticated or
@@ -35,9 +45,10 @@ struct ContentView: View {
             Group {
                 if api.databaseId != nil {
                     MainView()
+                        .supportAccessChrome()
                         .transition(.opacity)
                 } else if hasAnyDatabase {
-                    if totalDatabaseCount == 1 {
+                    if opensSoleDatabase {
                         ProgressView()
                             .onAppear { autoSelectSoleDatabase() }
                     } else {

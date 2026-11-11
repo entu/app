@@ -33,7 +33,7 @@ extension EntityEditView {
                 isLoading = false
                 return
             }
-        case .create(_, let id, _):
+        case .create(_, _, let id, _):
             entity = nil
             typeId = id
             currentEntityId = nil

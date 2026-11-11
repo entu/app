@@ -9,7 +9,9 @@
 // readable without a token. Auto-logout on 401 fires only for requests
 // that carried the stored session token — never while browsing a public
 // database, for the one-time OAuth key, or for the token-less passkey
-// routes.
+// routes. The 401 and 403 hooks carry the request's database (nil for
+// auth routes), so `AuthModel` can leave an ended support database
+// instead of signing out.
 
 import Foundation
 
@@ -99,8 +101,14 @@ final class APIClient {
     /// out *of*).
     var suppressToken: Bool = false
 
-    /// Fires on 401 responses — set by AuthModel to trigger automatic logout.
-    var onUnauthorized: (() -> Void)?
+    /// Fires on 401 responses to the stored session, with the request's
+    /// database (nil for auth routes) — set by AuthModel to sign out, or to
+    /// leave a support database whose grant ended.
+    var onUnauthorized: ((String?) -> Void)?
+
+    /// Fires on 403 responses to the stored session, with the request's
+    /// database — set by AuthModel to recheck a support grant.
+    var onForbidden: ((String?) -> Void)?
 
     /// Awaited before each authenticated request — set by AuthModel to refresh
     /// the token when it is close to expiry, so the request uses a fresh token.
@@ -318,6 +326,9 @@ final class APIClient {
     ) async throws -> T {
         let url = await buildURL(path: path, params: method == "GET" ? params : [:])
         let suppress = await suppressToken
+        // The database this request is scoped to — same rule as `buildURL`.
+        let isUnscoped = path.starts(with: "auth") || path == "new"
+        let requestDatabaseId = isUnscoped ? nil : await databaseId
 
         // Refresh a near-expiry token before sending, so the request goes out
         // with a fresh token. Skipped for one-time keys, unauthenticated
@@ -374,9 +385,13 @@ final class APIClient {
             // guest request (public browsing) or a one-time auth key failing
             // says nothing about the stored session.
             if usesSession {
-                await MainActor.run { onUnauthorized?() }
+                await MainActor.run { onUnauthorized?(requestDatabaseId) }
             }
             throw APIError.unauthorized
+        }
+
+        if httpResponse.statusCode == 403, usesSession {
+            await MainActor.run { onForbidden?(requestDatabaseId) }
         }
 
         if httpResponse.statusCode >= 400 {

@@ -1,5 +1,6 @@
-// Global authentication state — the JWT token, accessible databases, and
-// current user, persisted to the keychain and shared app-wide.
+// Global authentication state — the JWT token, accessible databases,
+// databases open to Entu support, and current user, persisted to the
+// keychain and shared app-wide.
 
 import Foundation
 
@@ -13,6 +14,51 @@ final class AuthModel {
                 KeychainService.saveDatabases(data)
             }
         }
+    }
+
+    /// Databases whose owner granted Entu support access to this identity
+    /// (the auth response's `support`). Persisted to the keychain on change —
+    /// like `databases`, the list reveals which databases the user can open.
+    var supportDatabases: [Database] = [] {
+        didSet {
+            if let data = try? JSONEncoder().encode(supportDatabases) {
+                KeychainService.saveSupportDatabases(data)
+            }
+        }
+    }
+
+    /// Support databases whose grant still runs — the only ones listed or
+    /// opened (webapp's `activeSupportAccounts`). An own database of the
+    /// same id wins, mirroring the webapp's `account` lookup order.
+    var activeSupportDatabases: [Database] {
+        supportDatabases.filter { support in
+            support.isActiveSupportGrant && !databases.contains { $0._id == support._id }
+        }
+    }
+
+    /// True when the active database is open through an Entu support grant —
+    /// the user then acts as the database entity with every right
+    /// (webapp's `isSupport`).
+    var isCurrentDatabaseSupport: Bool {
+        currentSupportDatabase != nil
+    }
+
+    /// The active support database (with its `until`), nil otherwise.
+    var currentSupportDatabase: Database? {
+        guard let id = api.databaseId else { return nil }
+
+        return activeSupportDatabases.first { $0._id == id }
+    }
+
+    /// Rights on `entity` for the active user — every right in a support
+    /// database, where the API grants access per request while the grant
+    /// runs (webapp's `right` in `utils/entity.js`).
+    func rights(on entity: EntityDetail) -> EntityRights {
+        if isCurrentDatabaseSupport {
+            return .all
+        }
+
+        return entity.rights(for: currentUserId)
     }
 
     /// Names of public databases the user has added (independent of any sign-in).
@@ -45,22 +91,24 @@ final class AuthModel {
     /// True when the active database is being browsed as a guest.
     var isCurrentDatabasePublic: Bool {
         guard let id = api.databaseId else { return false }
-        return publicDatabases.contains(id) && !databases.contains(where: { $0._id == id })
+        return publicDatabases.contains(id) && database(for: id) == nil
     }
 
-    /// User id of the signed-in user *in the active authenticated database*.
-    /// Nil while signed out and nil in public mode — write affordances treat
-    /// nil as "no rights anywhere" via `EntityDetail.rights(for:)`.
+    /// User id of the signed-in user *in the active authenticated database*
+    /// — in a support database the database entity's id, as the API acts as
+    /// it there. Nil while signed out and nil in public mode — write
+    /// affordances treat nil as "no rights anywhere" via `rights(on:)`.
     var currentUserId: String? {
         database(for: api.databaseId)?.user?._id
     }
 
-    /// The authenticated database with `id`, or nil for unknown/public ids
+    /// The authenticated database with `id` — own first, then a support
+    /// database whose grant still runs — or nil for unknown/public ids
     /// (public databases carry no `Database` record — only their id).
     func database(for id: String?) -> Database? {
         guard let id else { return nil }
 
-        return databases.first { $0._id == id }
+        return databases.first { $0._id == id } ?? activeSupportDatabases.first { $0._id == id }
     }
 
     let api: APIClient
@@ -68,11 +116,16 @@ final class AuthModel {
     init(api: APIClient) {
         self.api = api
 
-        // Restore previous session from keychain on app launch
-        if let data = KeychainService.loadDatabases(),
-           let saved = try? JSONDecoder().decode([Database].self, from: data),
-           !saved.isEmpty {
-            self.databases = saved
+        // Restore previous session from keychain on app launch — a user
+        // with only support databases is signed in too.
+        let savedDatabases = KeychainService.loadDatabases()
+            .flatMap { try? JSONDecoder().decode([Database].self, from: $0) } ?? []
+        let savedSupport = KeychainService.loadSupportDatabases()
+            .flatMap { try? JSONDecoder().decode([Database].self, from: $0) } ?? []
+
+        if !savedDatabases.isEmpty || !savedSupport.isEmpty {
+            self.databases = savedDatabases
+            self.supportDatabases = savedSupport
             self.api.token = KeychainService.loadToken()
 
             if let expires = KeychainService.loadTokenExpiry() {
@@ -89,7 +142,7 @@ final class AuthModel {
         // Resolve the previously-active database. Authenticated dbs win when
         // the same id appears in both sets (shouldn't happen, but defensive).
         if let lastId = UserDefaults.standard.string(forKey: "auth.lastDatabaseId") {
-            if databases.contains(where: { $0._id == lastId }) {
+            if database(for: lastId) != nil {
                 self.api.databaseId = lastId
                 self.api.suppressToken = false
             } else if publicDatabases.contains(lastId) {
@@ -100,9 +153,15 @@ final class AuthModel {
             }
         }
 
-        // Auto-logout when the API returns 401 (expired/invalid token)
-        self.api.onUnauthorized = { [weak self] in
-            self?.logOut()
+        // Auto-logout when the API returns 401 (expired/invalid token) —
+        // except in a support database, whose grant may just have ended.
+        self.api.onUnauthorized = { [weak self] databaseId in
+            self?.handleUnauthorized(databaseId: databaseId)
+        }
+
+        // A 403 in a support database may mean the grant ended.
+        self.api.onForbidden = { [weak self] databaseId in
+            self?.handleForbidden(databaseId: databaseId)
         }
 
         // Refresh a near-expiry token before each authenticated request
@@ -193,7 +252,8 @@ final class AuthModel {
     ///   token and database list are discarded so the session stays as is.
     /// - An empty database list throws `.noAccessibleDatabases` — the app
     ///   has no database creation (`PUT /new` is not ported), so a token
-    ///   without databases would strand the user on an empty picker.
+    ///   without databases would strand the user on an empty picker. Support
+    ///   databases count: a support-only identity is signed in with databases.
     /// - A different person in the active database runs the sign-out sweep
     ///   minus credentials, so no cached content leaks across identities.
     func applyAuthResponse(_ response: AuthResponse, keepSession: Bool = false) throws {
@@ -203,7 +263,10 @@ final class AuthModel {
 
         if keepSession { return }
 
-        guard let newDatabases = response.accounts, !newDatabases.isEmpty else {
+        let newDatabases = response.accounts ?? []
+        let newSupport = response.support ?? []
+
+        guard !newDatabases.isEmpty || !newSupport.isEmpty else {
             throw APIError.noAccessibleDatabases
         }
 
@@ -214,14 +277,23 @@ final class AuthModel {
         // Identity comparison must read pre-exchange state. `currentUserId`
         // (the person entity in the active database) is the stable identity
         // marker — the login identity differs per provider for one person.
+        // In a support database `currentUserId` is the database entity for
+        // every staff member, so the login identity is compared there too —
+        // when both sides are known (`user` is not persisted across launches).
         let hadSession = api.token != nil
         let previousUserId = currentUserId
+        let wasSupport = isCurrentDatabaseSupport
+        let previousLogin = user?.loginIdentity
 
         databases = newDatabases
+        supportDatabases = newSupport
         storeToken(newToken, expires: response.expires)
         user = response.user
 
-        if hadSession, api.databaseId != nil, previousUserId != currentUserId {
+        let newLogin = response.user?.loginIdentity
+        let loginChanged = wasSupport && previousLogin != nil && newLogin != nil && previousLogin != newLogin
+
+        if hadSession, api.databaseId != nil, previousUserId != currentUserId || loginChanged {
             if currentUserId == nil {
                 // The new identity has no access to the active database —
                 // fall back to the database picker.
@@ -246,6 +318,64 @@ final class AuthModel {
         ImageCache.shared.clear()
         FileManager.default.clearTemporaryFiles()
         logOutToken &+= 1
+    }
+
+    // MARK: - Support grant end
+
+    /// In-flight grant recheck, so a burst of 403s triggers one refresh.
+    private var supportRecheckTask: Task<Void, Never>?
+
+    /// True when `id` is a support database — an own database of the same
+    /// id wins, as in `database(for:)`. Expired grants count too.
+    private func isSupportDatabase(_ id: String?) -> Bool {
+        guard let id else { return false }
+
+        return supportDatabases.contains { $0._id == id } && !databases.contains { $0._id == id }
+    }
+
+    /// 401 to the stored session: in a support database the grant ended or
+    /// was revoked, so leave that database; anywhere else, sign out.
+    private func handleUnauthorized(databaseId: String?) {
+        if isSupportDatabase(databaseId) {
+            leaveSupportDatabase(databaseId)
+        } else {
+            logOut()
+        }
+    }
+
+    /// 403 in the active support database. Support also gets 403 for logins
+    /// and its own grant while the grant runs, so the grant is rechecked
+    /// with a token refresh — `applyAuthResponse` leaves the database when
+    /// the API no longer lists it — instead of leaving on every 403.
+    private func handleForbidden(databaseId: String?) {
+        guard let databaseId, databaseId == api.databaseId, isSupportDatabase(databaseId),
+              supportRecheckTask == nil else { return }
+
+        supportRecheckTask = Task { [weak self] in
+            try? await self?.refreshToken()
+            self?.leaveEndedSupportDatabase()
+            self?.supportRecheckTask = nil
+        }
+    }
+
+    /// Leaves the active support database once its grant has run out
+    /// (`database(for:)` no longer returns it), unless it is also a saved
+    /// public database — so its loaded data doesn't stay on screen.
+    func leaveEndedSupportDatabase() {
+        guard let id = api.databaseId, isSupportDatabase(id),
+              database(for: id) == nil, !publicDatabases.contains(id) else { return }
+
+        leaveSupportDatabase(id)
+    }
+
+    /// Drops the active database back to the picker and sweeps every cache
+    /// and window state — a no-op when `id` is no longer the active one.
+    private func leaveSupportDatabase(_ id: String?) {
+        guard let id, id == api.databaseId else { return }
+
+        api.databaseId = nil
+        UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
+        resetSessionState()
     }
 
     // MARK: - Database selection
@@ -289,11 +419,13 @@ final class AuthModel {
         KeychainService.deleteToken()
         KeychainService.deleteTokenExpiry()
         KeychainService.deleteDatabases()
+        KeychainService.deleteSupportDatabases()
         api.token = nil
         api.suppressToken = false
         api.databaseId = nil
         tokenExpiresAt = nil
         databases = []
+        supportDatabases = []
         publicDatabases = []
         user = nil
         UserDefaults.standard.removeObject(forKey: "auth.lastDatabaseId")
@@ -331,7 +463,10 @@ final class AuthModel {
     /// After success, drops the database from the local list and either
     /// switches to another database or signs out entirely.
     func deleteCurrentAccount() async throws {
-        guard let activeId = api.databaseId,
+        // In a support database the "user" is the database entity itself —
+        // never delete it as if it were the user's own person.
+        guard !isCurrentDatabaseSupport,
+              let activeId = api.databaseId,
               let database = database(for: activeId),
               let personId = database.user?._id else {
             throw APIError.invalidResponse

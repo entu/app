@@ -56,17 +56,15 @@ struct PropertyEditor: View {
     /// is tapped. Parent runs the `DELETE /property/{id}` call.
     var onDelete: () async -> Void = {}
 
-    /// When true, focus the input (text/number/text-area) on first appear.
-    /// Used by `EntityEditView` to focus the first text field in the form,
-    /// matching webapp's auto-focus-first-input behaviour. No-op for
-    /// non-input editors (boolean, date, file, reference, picker, counter
-    /// without `_id`) since focus has nothing to land on.
-    var autoFocusOnAppear: Bool = false
-
     /// True when the edited entity is the signed-in user's own — gates the
     /// own-entity-only state of the reserved auth editors ("Add Login
     /// Method"). See `PropertyEditor+Auth`.
     var isOwnEntity: Bool = false
+
+    /// True when the user may add or remove this entity's logins and API
+    /// keys (its `_owner` or the person themselves, never Entu support).
+    /// Without it the reserved auth editors show their values read-only.
+    var canEditCredentials: Bool = false
 
     @FocusState private var isFocused: Bool
     @State private var showingDescription = false
@@ -140,35 +138,6 @@ struct PropertyEditor: View {
         }
         .onChange(of: value.stringValue) { onValueEdited() }
         .disabled(definition.readonly || definition.formula != nil)
-        .task {
-            // Slight delay so the sheet's present animation finishes before
-            // the keyboard slides up — without it, iOS sometimes drops the
-            // focus mid-animation and the field stays blurred.
-            guard autoFocusOnAppear, supportsAutoFocus else { return }
-            try? await Task.sleep(for: .milliseconds(300))
-            isFocused = true
-        }
-    }
-
-    /// Editor types whose underlying control accepts focus. Pickers,
-    /// toggles, date pickers, file buttons, reference pickers and the
-    /// "Generate" counter button have no focusable input to land on.
-    private var supportsAutoFocus: Bool {
-        switch definition.type {
-        case "text", "number":
-            return true
-        case "string":
-            // Set-backed string is a Picker (no text field to focus);
-            // reserved auth rows are button-driven.
-            return definition.set.isEmpty && !isReservedAuthProperty
-        case "counter":
-            // Generate button until the value exists; once saved it shows
-            // a TextField — but auto-focus only runs on first appear, so
-            // a freshly-saved counter row won't trip this anyway.
-            return value._id != nil
-        default:
-            return false
-        }
     }
 
     /// Shared row chrome (`LabeledRow`): right-aligned 140pt label column,

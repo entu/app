@@ -39,6 +39,7 @@ private struct EntityColumnComparator: SortComparator {
 /// rather than private (extensions in other files can't see private).
 struct MainEntityTable: View {
     @Environment(APIClient.self) private var api
+    @Environment(MenuModel.self) private var menu
     @Environment(SearchModel.self) private var search
     @Environment(\.locale) private var locale
     @Environment(\.openEntityInNewWindow) var openEntityInNewWindow
@@ -176,7 +177,8 @@ struct MainEntityTable: View {
             if selection == nil {
                 ToolbarItem(placement: .primaryAction) {
                     MenuLevelAddButton(menuId: menuId) { type in
-                        pendingCreate = .create(parentId: nil, typeId: type._id, typeLabel: type.label)
+                        let parentIds = menuId.flatMap { menu.menuAddParents[$0] } ?? []
+                        pendingCreate = .create(parentIds: parentIds, isChild: false, typeId: type._id, typeLabel: type.label)
                     }
                 }
                 ToolbarSpacer(.fixed, placement: .primaryAction)

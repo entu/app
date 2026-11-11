@@ -112,6 +112,17 @@ struct DatabaseCommands: Commands {
                 ))
             }
 
+            if !auth.activeSupportDatabases.isEmpty {
+                Section(String(localized: "supportTitle")) {
+                    ForEach(auth.activeSupportDatabases) { database in
+                        Toggle(database.name, isOn: Binding(
+                            get: { database._id == api.databaseId },
+                            set: { if $0 { auth.selectDatabase(database) } }
+                        ))
+                    }
+                }
+            }
+
             if !auth.publicDatabases.isEmpty {
                 Section(String(localized: "publicDatabasesSection")) {
                     ForEach(auth.publicDatabases, id: \.self) { id in

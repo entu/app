@@ -29,6 +29,18 @@ struct SidebarView: View {
         auth.database(for: api.databaseId)
     }
 
+    #if os(iOS)
+    /// Large-title subtitle — the user's name, or in a support database
+    /// (no person of its own) when the support access ends.
+    private var subtitle: Text {
+        if let until = auth.currentSupportDatabase?.untilDate {
+            return Text("supportAccessUntil \(until, format: .entuDateTime)")
+        }
+
+        return Text(verbatim: currentDatabase?.user?.name ?? "")
+    }
+    #endif
+
     var body: some View {
         Group {
             #if os(iOS)
@@ -39,7 +51,7 @@ struct SidebarView: View {
             // the list column's filter / search / New.
             menuList
                 .navigationTitle(currentDatabase?.name ?? "Entu")
-                .navigationSubtitle(currentDatabase?.user?.name ?? "")
+                .navigationSubtitle(subtitle)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         avatarButton
@@ -156,7 +168,8 @@ struct SidebarView: View {
     /// across database switches.
     private func loadUserThumbnail() async {
         userThumbnail = nil
-        guard let userId = currentDatabase?.user?._id else { return }
+        // Support acts as the database entity — no person avatar to show.
+        guard !auth.isCurrentDatabaseSupport, let userId = currentDatabase?.user?._id else { return }
 
         // No photo pre-check — the thumbnail endpoint itself returns
         // nothing for photo-less entities, and a `props=photo` probe

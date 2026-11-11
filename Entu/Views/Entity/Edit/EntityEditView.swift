@@ -19,14 +19,17 @@ import SwiftUI
 /// Edit vs create entry points for `EntityEditView`. `Hashable +
 /// Identifiable` so it can drive `.sheet(item:)`. `typeLabel` lets the
 /// sheet build the navigation title without re-fetching the type entity.
+/// `parentIds` become one `_parent` each — the open entity for a child add
+/// (`isChild`), the menu's `add_parent` list for a menu-level add.
 enum EntityEditMode: Hashable, Identifiable {
     case edit(entityId: String)
-    case create(parentId: String?, typeId: String, typeLabel: String)
+    case create(parentIds: [String], isChild: Bool, typeId: String, typeLabel: String)
 
     var id: String {
         switch self {
         case .edit(let id): return "edit:\(id)"
-        case .create(let parent, let type, _): return "create:\(parent ?? ""):\(type)"
+        case .create(let parents, let isChild, let type, _):
+            return "create:\(isChild ? "child" : "add"):\(parents.joined(separator: ",")):\(type)"
         }
     }
 }
@@ -145,8 +148,9 @@ struct EntityEditView: View {
 
     /// True when the edited entity is the signed-in user's own person
     /// entity — mirrors webapp's `isOwnEntity` in `property/edit.vue`.
+    /// Never in a support database, where the "user" is the database entity.
     var isOwnEntity: Bool {
-        auth.currentUserId != nil && auth.currentUserId == currentEntityId
+        !auth.isCurrentDatabaseSupport && auth.currentUserId != nil && auth.currentUserId == currentEntityId
     }
 
     var body: some View {
@@ -238,10 +242,10 @@ struct EntityEditView: View {
         switch mode {
         case .edit:
             return String(localized: "edit", bundle: .currentLocalized)
-        case .create(let parentId, _, _):
-            return parentId == nil
-                ? String(localized: "titleAddBare", bundle: .currentLocalized)
-                : String(localized: "titleChildBare", bundle: .currentLocalized)
+        case .create(_, let isChild, _, _):
+            return isChild
+                ? String(localized: "titleChildBare", bundle: .currentLocalized)
+                : String(localized: "titleAddBare", bundle: .currentLocalized)
         }
     }
 
@@ -254,7 +258,7 @@ struct EntityEditView: View {
                 return name
             }
             return entity?.typeName
-        case .create(_, _, let typeLabel):
+        case .create(_, _, _, let typeLabel):
             return typeLabel
         }
     }
@@ -302,12 +306,12 @@ struct EntityEditView: View {
                 }
             }
             // Plugin tabs (unlike the grouped Form) don't propose a height, so
-            // pin the app's usual sheet minimum — the menu-level Add sheet
-            // doesn't set one itself. Width only on macOS so compact iPhone
-            // sheets aren't forced wider than the screen.
-            .frame(minHeight: 600, maxHeight: .infinity)
+            // pin the app's usual sheet minimum on macOS — the menu-level Add
+            // sheet doesn't set one itself. iOS sheets are page-sized already;
+            // a minimum there overflows once the keyboard shrinks the sheet
+            // and pushes the tab picker up under the navigation bar.
             #if os(macOS)
-            .frame(minWidth: 640)
+            .frame(minWidth: 640, minHeight: 600)
             #endif
         }
     }
@@ -332,9 +336,10 @@ struct EntityEditView: View {
         switch mode {
         case .edit(let entityId):
             items.append(URLQueryItem(name: "entity", value: entityId))
-        case .create(let parentId, _, _):
-            if let parentId {
-                items.append(URLQueryItem(name: "parent", value: parentId))
+        case .create(let parentIds, _, _, _):
+            // One id as-is, several comma-separated (webapp parity).
+            if !parentIds.isEmpty {
+                items.append(URLQueryItem(name: "parent", value: parentIds.joined(separator: ",")))
             }
         }
 
@@ -425,10 +430,24 @@ struct EntityEditView: View {
         .background(Color("WindowBackground"))
     }
 
-    /// Visible only in edit mode + owner rights.
+    /// Visible only in edit mode + owner rights — never on the entity the
+    /// user acts as (in a support database, the database entity itself).
     private var showsDelete: Bool {
         guard currentEntityId != nil, let entity else { return false }
-        return entity.rights(for: auth.currentUserId).owner
+        if auth.isCurrentDatabaseSupport && entity._id == auth.currentUserId { return false }
+
+        return auth.rights(on: entity).owner
+    }
+
+    /// Logins and API keys grant sign-in as the entity, so only its
+    /// `_owner` or the person themselves may add or remove them — never
+    /// Entu support. A new entity is owned by its creator. Mirrors the
+    /// webapp's `canEditCredentials` in `property/edit.vue`.
+    var canEditCredentials: Bool {
+        guard !auth.isCurrentDatabaseSupport else { return false }
+        guard currentEntityId != nil else { return true }
+
+        return isOwnEntity || (entity?.rights(for: auth.currentUserId).owner ?? false)
     }
 
     /// Matches webapp's "Delete entity" / "Kustuta objekt".
@@ -442,7 +461,6 @@ struct EntityEditView: View {
     @ViewBuilder
     private func propertyRows(for def: PropertyDefinition, proxy: ScrollViewProxy) -> some View {
         let rows = values[def.name] ?? []
-        let isFirstFocusable = def._id == firstFocusableDefinitionId
 
         ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
             PropertyEditor(
@@ -476,8 +494,8 @@ struct EntityEditView: View {
                         await deleteValue(propertyName: def.name, value: row, propertyId: _id)
                     }
                 },
-                autoFocusOnAppear: isFirstFocusable && index == 0,
-                isOwnEntity: isOwnEntity
+                isOwnEntity: isOwnEntity,
+                canEditCredentials: canEditCredentials
             )
             .id(row.id)
         }
@@ -493,8 +511,14 @@ struct EntityEditView: View {
 
     /// Group + sort definitions for display. Includes `name` so the user
     /// can edit it (the read view skips name since the title shows it).
+    /// Entu support never gets the properties the API refuses it
+    /// (`support_until`, `add_user`) — native deviation, the webapp shows
+    /// them and the save fails with 403.
     private var orderedGroups: [EditorGroup] {
-        let visible = definitions.filter { !$0.hidden && $0.formula == nil && !$0.readonly }
+        let supportHidden: Set<String> = auth.isCurrentDatabaseSupport ? ["support_until", "add_user"] : []
+        let visible = definitions.filter {
+            !$0.hidden && $0.formula == nil && !$0.readonly && !supportHidden.contains($0.name)
+        }
         var byGroup: [String: [PropertyDefinition]] = [:]
         for def in visible {
             byGroup[def.group ?? "", default: []].append(def)
@@ -502,26 +526,6 @@ struct EntityEditView: View {
         return byGroup
             .map { EditorGroup(name: $0.key.isEmpty ? nil : $0.key, definitions: $0.value.sorted { $0.ordinal < $1.ordinal }) }
             .sorted { ($0.name ?? "") < ($1.name ?? "") }
-    }
-
-    /// `_id` of the first text-input definition in the form. Used to
-    /// auto-focus the first input when the sheet appears (mirrors webapp's
-    /// `inputRef.focus()` on drawer open). Returns nil when no definition
-    /// has a focusable input — boolean-only forms etc. just don't focus.
-    private var firstFocusableDefinitionId: String? {
-        for group in orderedGroups {
-            for def in group.definitions {
-                switch def.type {
-                case "text", "number":
-                    return def._id
-                case "string" where def.set.isEmpty && !PropertyEditor.reservedAuthNames.contains(def.name):
-                    return def._id
-                default:
-                    continue
-                }
-            }
-        }
-        return nil
     }
 
     // Per-value commit, file upload, delete and `manageEmptyFields`

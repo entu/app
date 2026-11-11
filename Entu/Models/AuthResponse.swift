@@ -1,4 +1,4 @@
-// Auth response models — token, accessible databases, user info, and
+// Auth response models — token, accessible and support databases, user info, and
 // expiry returned by `GET /auth`, `GET /auth/refresh` and the passkey
 // sign-in / creation POSTs, which all answer in the same shape.
 
@@ -8,6 +8,9 @@ import Foundation
 struct AuthResponse: Codable {
     let token: String?
     let accounts: [Database]?
+    /// Databases open to Entu support for this identity — never in
+    /// `accounts`, left out of the response when empty.
+    let support: [Database]?
     let user: AuthUser?
     /// Token expiry as an ISO 8601 datetime string.
     let expires: String?
@@ -27,4 +30,16 @@ struct AuthUser: Codable {
     let _id: String?
     let name: String?
     let email: String?
+    /// Sign-in provider (`smart-id`, `passkey`, …) — with `uid`, the
+    /// stable login identity.
+    let provider: String?
+    /// Provider-scoped login id.
+    let uid: String?
+
+    /// `provider:uid`, nil when either is missing.
+    var loginIdentity: String? {
+        guard let provider, let uid else { return nil }
+
+        return "\(provider):\(uid)"
+    }
 }

@@ -3976,6 +3976,162 @@
         }
       }
     },
+    "supportAccessActiveUntil %@" : {
+      "comment" : "Support access control on the database entity while a grant runs; the argument is the end date and time.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entu support can see and change all data until %@. Every change it makes is recorded."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entu kasutajatugi saab kõiki andmeid näha ja muuta kuni %@. Iga tehtud muudatus salvestatakse."
+          }
+        }
+      }
+    },
+    "supportAccessDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Let Entu support see and change all data in this database for a limited time, to help with a problem. Every change it makes is recorded."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Luba Entu kasutajatoel piiratud ajaks näha ja muuta kõiki selle andmebaasi andmeid, et aidata probleemi lahendada. Iga tehtud muudatus salvestatakse."
+          }
+        }
+      }
+    },
+    "supportAccessTitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entu support access"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entu kasutajatoe ligipääs"
+          }
+        }
+      }
+    },
+    "supportAccessUntil %@" : {
+      "comment" : "Strip along the window bottom in a support database; the argument is the end date and time.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support access until %@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kasutajatoe ligipääs kuni %@"
+          }
+        }
+      }
+    },
+    "supportAllowDays %lld" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Allow for %lld day"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Allow for %lld days"
+                }
+              }
+            }
+          }
+        },
+        "et" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Luba %lld päevaks"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Luba %lld päevaks"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "supportRevoke" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "End access now"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lõpeta ligipääs kohe"
+          }
+        }
+      }
+    },
+    "supportTitle" : {
+      "comment" : "Section of databases whose owner let Entu support in for a limited time.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support access"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kasutajatoe ligipääs"
+          }
+        }
+      }
+    },
+    "supportUntil %@" : {
+      "comment" : "End time of a support database's access in the database lists; the argument is the date and time.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Until %@"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kuni %@"
+          }
+        }
+      }
+    },
     "tableView" : {
       "localizations" : {
         "en" : {

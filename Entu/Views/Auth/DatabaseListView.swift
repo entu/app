@@ -3,8 +3,10 @@
 // databases) and none is currently active. Each authenticated database is
 // a card carrying its usage inline: capacity bars for entities and files
 // plus a current/deleted/limit mini-table (stats fetched concurrently per
-// database, like the webapp's select page). Selecting a card sets the
-// active databaseId for all subsequent API calls.
+// database, like the webapp's select page). Below the own databases, a
+// "Support access" section lists the databases open to Entu support whose
+// grant still runs — orange-edged cards showing when access ends. Selecting
+// a card sets the active databaseId for all subsequent API calls.
 
 import SwiftUI
 
@@ -52,6 +54,25 @@ struct DatabaseListView: View {
                             statsFailed: failedStats.contains(database.id)
                         ) {
                             auth.selectDatabase(database)
+                        }
+                    }
+
+                    if !auth.activeSupportDatabases.isEmpty {
+                        Text("supportTitle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.quaternary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, auth.databases.isEmpty ? 0 : 10)
+
+                        ForEach(auth.activeSupportDatabases) { database in
+                            DatabaseCard(
+                                database: database,
+                                stats: stats[database.id],
+                                statsFailed: failedStats.contains(database.id),
+                                supportUntil: database.untilDate
+                            ) {
+                                auth.selectDatabase(database)
+                            }
                         }
                     }
 
@@ -121,14 +142,14 @@ struct DatabaseListView: View {
             isPresented: $showingPublicEntry,
             isSubmitting: $isProbingPublicDatabase
         )
-        .task(id: auth.databases) { loadAllStats() }
+        .task(id: auth.databases + auth.activeSupportDatabases) { loadAllStats() }
     }
 
-    /// Fetches usage stats for every authenticated database concurrently
-    /// (`GET /{db}`, one independent task each), updating each card as its
-    /// result lands — mirrors the webapp's select page.
+    /// Fetches usage stats for every authenticated and support database
+    /// concurrently (`GET /{db}`, one independent task each), updating each
+    /// card as its result lands — mirrors the webapp's select page.
     private func loadAllStats() {
-        for database in auth.databases where stats[database.id] == nil {
+        for database in auth.databases + auth.activeSupportDatabases where stats[database.id] == nil {
             let id = database.id
 
             Task {
@@ -146,11 +167,13 @@ struct DatabaseListView: View {
 
 /// One database card: header row (letter tile, name, user, chevron), then —
 /// once stats arrive — entities/files capacity bars and a
-/// current/deleted/limit mini-table.
+/// current/deleted/limit mini-table. A support database's card carries an
+/// orange edge and its grant's end time instead of the user's name.
 private struct DatabaseCard: View {
     let database: Database
     let stats: DatabaseStats?
     let statsFailed: Bool
+    var supportUntil: Date?
     let action: () -> Void
 
     var body: some View {
@@ -159,7 +182,10 @@ private struct DatabaseCard: View {
                 DatabaseCardHeader(id: database.id, name: database.name) {
                     // Organization (the database's description) arrives with
                     // the stats; the signed-in user's name fills in until then.
-                    if let organization = PropertyValue.localized(stats?.organization) {
+                    if let supportUntil {
+                        Text("supportUntil \(supportUntil, format: .entuDateTime)")
+                            .foregroundStyle(.orange)
+                    } else if let organization = PropertyValue.localized(stats?.organization) {
                         Text(verbatim: organization)
                     } else if let userName = database.user?.name {
                         Text(verbatim: userName)
@@ -190,6 +216,12 @@ private struct DatabaseCard: View {
         }
         .buttonStyle(.plain)
         .cardSurface()
+        .overlay {
+            if supportUntil != nil {
+                RoundedRectangle(cornerRadius: CardMetrics.cornerRadius)
+                    .strokeBorder(Color.orange, lineWidth: 2)
+            }
+        }
     }
 }
 
