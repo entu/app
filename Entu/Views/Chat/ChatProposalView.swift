@@ -117,7 +117,7 @@ struct ChatProposalView: View {
         if ops.allSatisfy({ $0 == "create_entity_type" }) {
             return Text("aiCreateTypeConfirm")
         }
-        if ops.allSatisfy({ $0 == "add_property_definition" }) {
+        if ops.allSatisfy({ $0 == "create_property_definition" }) {
             return Text("aiAddPropertyConfirm")
         }
 
@@ -298,7 +298,7 @@ private struct OperationSection: View {
             return Text("aiOpDeleteProperty")
         case "create_entity_type":
             return Text("aiOpCreateType")
-        case "add_property_definition":
+        case "create_property_definition":
             return Text("aiOpAddPropertyDefinition")
         default:
             return Text(verbatim: operation.op)
