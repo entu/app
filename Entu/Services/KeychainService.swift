@@ -1,6 +1,6 @@
-// Keychain storage — the JWT token, the database list and the support
-// database list live here (never in UserDefaults), using the
-// data-protection keychain.
+// Keychain storage — the JWT token, the refresh token, the database list
+// and the support database list live here (never in UserDefaults), using
+// the data-protection keychain.
 
 import Foundation
 import Security
@@ -92,6 +92,50 @@ enum KeychainService {
 
     static func deleteTokenExpiry() {
         SecItemDelete(tokenExpiryQuery as CFDictionary)
+    }
+
+    // MARK: - Refresh token
+
+    private static let refreshTokenKey = "refresh-token"
+
+    private static var refreshTokenQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: refreshTokenKey,
+            kSecUseDataProtectionKeychain as String: true
+        ]
+    }
+
+    static func saveRefreshToken(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
+
+        SecItemDelete(refreshTokenQuery as CFDictionary)
+
+        // This device only — a 30-day credential must not travel to another
+        // device inside an encrypted backup.
+        var attributes = refreshTokenQuery
+        attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    static func loadRefreshToken() -> String? {
+        var query = refreshTokenQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func deleteRefreshToken() {
+        SecItemDelete(refreshTokenQuery as CFDictionary)
     }
 
     // MARK: - Database list (JSON-encoded)

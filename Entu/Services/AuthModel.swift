@@ -168,12 +168,18 @@ final class AuthModel {
         self.api.refreshIfNeeded = { [weak self] in
             await self?.refreshTokenIfNeeded()
         }
+
+        // Refresh once and retry before a 401 counts as signed out
+        self.api.recoverUnauthorized = { @Sendable [weak self] sentToken in
+            await self?.recoverFromUnauthorized(sentToken: sentToken) ?? .signOut
+        }
     }
 
     // MARK: - Token persistence & refresh
 
-    /// Persist a freshly issued token and its expiry (keychain + in-memory).
-    func storeToken(_ token: String, expires: String?) {
+    /// Persist a freshly issued token, its expiry and the refresh token that
+    /// renews it (keychain + in-memory).
+    func storeToken(_ token: String, expires: String?, refreshToken: String?) {
         KeychainService.saveToken(token)
         api.token = token
 
@@ -181,35 +187,85 @@ final class AuthModel {
             KeychainService.saveTokenExpiry(expires)
             tokenExpiresAt = ISO8601DateFormatter.parse(expires)
         }
+
+        if let refreshToken {
+            KeychainService.saveRefreshToken(refreshToken)
+        } else {
+            KeychainService.deleteRefreshToken()
+        }
     }
 
-    /// Exchange the current token for a fresh one via `GET /auth/refresh`.
-    /// The API refuses tokens older than 14 days, returning 401 → auto-logout.
-    func refreshToken() async throws {
-        let response: AuthResponse = try await api.requestSkippingRefresh("auth/refresh")
+    /// Trade the stored refresh token for a new access token, refresh token
+    /// and database list via `GET /auth/refresh`. The refresh token is the
+    /// credential, so a 401 here means the sign-in has ended — it works for
+    /// 7 days and never past 30 days after sign-in.
+    func refreshSession() async throws {
+        guard let refreshToken = KeychainService.loadRefreshToken() else {
+            throw APIError.unauthorized
+        }
 
-        try applyAuthResponse(response)
+        let response: AuthResponse = try await api.requestWithToken("auth/refresh", bearerToken: refreshToken)
+
+        try applyAuthResponse(response, isRefresh: true)
     }
 
-    /// Refresh the token if it is close to expiry. Deduplicates concurrent
-    /// callers so a burst of requests triggers a single refresh.
+    /// Refresh the token if it is close to expiry.
     func refreshTokenIfNeeded() async {
         guard api.token != nil, !api.suppressToken,
               let expiresAt = tokenExpiresAt,
               expiresAt.timeIntervalSinceNow < refreshThreshold else { return }
 
-        let task: Task<Void, Never>
-        if let existing = refreshTask {
-            task = existing
-        } else {
-            task = Task { [weak self] in
-                try? await self?.refreshToken()
-                self?.refreshTask = nil
-            }
-            refreshTask = task
+        await refreshShared()
+    }
+
+    /// After a 401 to `sentToken` — an IP-bound token stops working when the
+    /// network changes — refresh once and say what follows: retry with the
+    /// new token, sign out when the refresh was refused, or keep the session
+    /// when the refresh failed on the network. A token already replaced by
+    /// another request's refresh is retried without refreshing again.
+    func recoverFromUnauthorized(sentToken: String?) async -> UnauthorizedRecovery {
+        guard let sentToken, !api.suppressToken else { return .signOut }
+
+        if api.token == sentToken {
+            await refreshShared()
         }
 
+        guard let token = api.token else { return .signOut }
+
+        return token != sentToken ? .retry : .keep
+    }
+
+    /// One refresh shared by every caller while it runs, as a refresh token
+    /// presented twice ends the sign-in. A refused refresh token signs out;
+    /// a network failure leaves the session for the next request to retry.
+    private func refreshShared() async {
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+
+        let task = Task { [weak self] in
+            do {
+                try await self?.refreshSession()
+            } catch APIError.unauthorized {
+                self?.logOut()
+            } catch {}
+
+            self?.refreshTask = nil
+        }
+        refreshTask = task
+
         await task.value
+    }
+
+    /// Ends a sign-in on the server without waiting, so its refresh token
+    /// can't be used even if it was copied.
+    private func revoke(refreshToken: String?) {
+        guard let refreshToken else { return }
+
+        Task { [api] in
+            let _: RevokeResponse? = try? await api.postWithoutToken("auth/revoke", body: ["token": refreshToken])
+        }
     }
 
     // MARK: - Sign-in responses
@@ -256,7 +312,16 @@ final class AuthModel {
     ///   databases count: a support-only identity is signed in with databases.
     /// - A different person in the active database runs the sign-out sweep
     ///   minus credentials, so no cached content leaks across identities.
-    func applyAuthResponse(_ response: AuthResponse, keepSession: Bool = false) throws {
+    /// - A response that is not stored has its refresh token revoked; a new
+    ///   sign-in (not `isRefresh`) revokes the one it replaces.
+    func applyAuthResponse(_ response: AuthResponse, keepSession: Bool = false, isRefresh: Bool = false) throws {
+        // A response that is not stored ends its sign-in at once, instead of
+        // leaving it to linger until it expires.
+        var isStored = false
+        defer {
+            if !isStored { revoke(refreshToken: response.refreshToken) }
+        }
+
         if response.conflict == "invite" {
             throw APIError.inviteConflict
         }
@@ -287,7 +352,14 @@ final class AuthModel {
 
         databases = newDatabases
         supportDatabases = newSupport
-        storeToken(newToken, expires: response.expires)
+        // A new sign-in replaces the stored one, which is ended rather than
+        // left usable until it expires — a refresh already used it up.
+        if !isRefresh {
+            revoke(refreshToken: KeychainService.loadRefreshToken())
+        }
+
+        storeToken(newToken, expires: response.expires, refreshToken: response.refreshToken)
+        isStored = true
         user = response.user
 
         let newLogin = response.user?.loginIdentity
@@ -352,7 +424,7 @@ final class AuthModel {
               supportRecheckTask == nil else { return }
 
         supportRecheckTask = Task { [weak self] in
-            try? await self?.refreshToken()
+            await self?.refreshShared()
             self?.leaveEndedSupportDatabase()
             self?.supportRecheckTask = nil
         }
@@ -416,8 +488,11 @@ final class AuthModel {
     /// app-general settings survive: language, column widths, table page
     /// size. Returns the user to `AuthView`.
     func logOut() {
+        revoke(refreshToken: KeychainService.loadRefreshToken())
+
         KeychainService.deleteToken()
         KeychainService.deleteTokenExpiry()
+        KeychainService.deleteRefreshToken()
         KeychainService.deleteDatabases()
         KeychainService.deleteSupportDatabases()
         api.token = nil
@@ -517,3 +592,6 @@ final class AuthModel {
 struct DeleteResponse: Decodable {
     let deleted: Bool?
 }
+
+/// Response shape from `POST /auth/revoke` — an empty object.
+private struct RevokeResponse: Decodable {}

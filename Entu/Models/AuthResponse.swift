@@ -14,6 +14,9 @@ struct AuthResponse: Codable {
     let user: AuthUser?
     /// Token expiry as an ISO 8601 datetime string.
     let expires: String?
+    /// Single-use token for `GET /auth/refresh` — every sign-in and refresh
+    /// returns the next one, which replaces the stored one.
+    let refreshToken: String?
     /// `"invite"` when the invite was not accepted because the login
     /// identity already is another person in the invite's database.
     let conflict: String?

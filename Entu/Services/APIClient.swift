@@ -114,6 +114,10 @@ final class APIClient {
     /// the token when it is close to expiry, so the request uses a fresh token.
     var refreshIfNeeded: (@Sendable () async -> Void)?
 
+    /// Awaited on a 401 to the stored session with the token that was sent —
+    /// set by AuthModel to refresh once and say what follows.
+    var recoverUnauthorized: (@Sendable (String?) async -> UnauthorizedRecovery)?
+
     /// GET a decoded JSON response from the given path with optional query params.
     func get<T: Decodable>(_ path: String, params: [String: String] = [:]) async throws -> T {
         try await performRequest(path, method: "GET", params: params)
@@ -262,12 +266,6 @@ final class APIClient {
         try await performRequest(path, method: "POST", bodyData: try JSONEncoder().encode(body), credential: .none)
     }
 
-    /// GET that bypasses the pre-request refresh check — used by the refresh
-    /// flow itself to avoid recursion.
-    func requestSkippingRefresh<T: Decodable>(_ path: String) async throws -> T {
-        try await performRequest(path, method: "GET", credential: .session(refresh: false))
-    }
-
     /// Probe whether `{databaseId}` exists and is publicly accessible, without
     /// touching the active session state. Builds the URL by hand instead of
     /// going through `buildURL` so the candidate id never lands in `databaseId`.
@@ -322,7 +320,8 @@ final class APIClient {
         method: String,
         params: [String: String] = [:],
         bodyData: Data? = nil,
-        credential: Credential = .session(refresh: true)
+        credential: Credential = .session(refresh: true),
+        isRetry: Bool = false
     ) async throws -> T {
         let url = await buildURL(path: path, params: method == "GET" ? params : [:])
         let suppress = await suppressToken
@@ -383,9 +382,27 @@ final class APIClient {
         if httpResponse.statusCode == 401 {
             // Auto-logout only when the stored session token was sent. A
             // guest request (public browsing) or a one-time auth key failing
-            // says nothing about the stored session.
+            // says nothing about the stored session. An IP-bound token stops
+            // working when the network changes, so the session first gets one
+            // refresh and the request one retry.
             if usesSession {
-                await MainActor.run { onUnauthorized?(requestDatabaseId) }
+                let recover = isRetry ? nil : await recoverUnauthorized
+
+                switch await recover?(bearerToken) ?? .signOut {
+                case .retry:
+                    return try await performRequest(
+                        path,
+                        method: method,
+                        params: params,
+                        bodyData: bodyData,
+                        credential: .session(refresh: false),
+                        isRetry: true
+                    )
+                case .signOut:
+                    await MainActor.run { onUnauthorized?(requestDatabaseId) }
+                case .keep:
+                    break
+                }
             }
             throw APIError.unauthorized
         }
@@ -419,6 +436,18 @@ final class APIClient {
 
         return components.url!
     }
+}
+
+/// What follows a 401 to the stored session once the refresh has run.
+enum UnauthorizedRecovery: Sendable {
+    /// A new token is there — send the request once more.
+    case retry
+    /// The session has ended — `onUnauthorized` signs out or leaves the
+    /// support database.
+    case signOut
+    /// The refresh failed on the network — keep the session, fail only this
+    /// request.
+    case keep
 }
 
 /// `URLSessionTaskDelegate` that forwards `didSendBodyData` ticks as a
